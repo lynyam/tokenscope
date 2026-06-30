@@ -33,10 +33,11 @@ This is a basic explanation:
 
     ### example:
     - git clone git@github.com:lynyam/tokenscope.git tokenscope
+    - cd tokenscope
     - git switch develop (1)
     - git pull origin develop (2)
     - git swith -c feature/tse-13-repository-structure-and-branch-strategy
-    - continue 4 ... 10 
+    - continue 4 ... 10
 ## Commit message convention
 
 Use:
