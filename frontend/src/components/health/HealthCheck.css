@@ -1,0 +1,27 @@
+.health-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: #f4f4f9;
+  font-size: 13px;
+}
+
+.health-check__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.health-check__dot--loading {
+  background: #d4a017;
+}
+
+.health-check__dot--connected {
+  background: #16a34a;
+}
+
+.health-check__dot--disconnected {
+  background: #dc2626;
+}

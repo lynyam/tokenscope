@@ -1,5 +1,9 @@
+//si vite_api... existe dans le .env on l'utilise sinon on utilise la connexion par defaut
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
 
+
+//definition de la reponse attendu par le backend, le timestamp est optionnel (backend peut l'envoyer ou pas)
+//si timestamp la valeur doit etre du texte
 export interface HealthStatus
 {
     status: 'ok' | 'error'
