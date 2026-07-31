@@ -1,0 +1,63 @@
+services:
+
+  frontend:
+    image: node:24-alpine
+    working_dir: /app
+    volumes:
+      - type: bind
+        source: ./frontend
+        target: /app
+      - type: volume
+        source: tokenscope_frontend_node_modules
+        target: /app/node_modules
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    environment:
+      - BACKEND_URL=http://backend:3000
+    command:
+      - sh
+      - -c
+      - "npm ci && npm run dev"
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    image: tokenscope-backend:dev
+    volumes:
+      - type: bind
+        source: ./backend
+        target: /app/
+      - type: volume
+        source: tokenscope_backend_node_modules
+        target: /app/node_modules
+    expose:
+      - 3000
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: tokenscope
+      DB_PASSWORD: tokenscope_dev_password
+      DB_NAME: tokenscope
+    depends_on:
+      - postgres
+    command:
+      - sh
+      - -c
+      - "npm ci && npm run build && npm run start"
+
+  postgres:
+    image: postgres:16-alpine
+    volumes:
+      - type: volume
+        source: tokenscope_postgres_data
+        target: /var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: tokenscope
+      POSTGRES_PASSWORD: tokenscope_dev_password
+      POSTGRES_DB: tokenscope
+volumes:
+  tokenscope_frontend_node_modules:
+  tokenscope_backend_node_modules:
+  tokenscope_postgres_data:
