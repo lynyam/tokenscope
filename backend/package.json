@@ -10,7 +10,8 @@
     "config": "tsc --showConfig",
     "check": "tsc --noEmit",
     "build": "tsc && echo \"Build OK\n\"",
-    "start": "node ./dist/main.js"
+    "start": "node ./dist/main.js",
+	"start:dev": "nest start --watch"
   },
   "repository": {
     "type": "git",
@@ -36,6 +37,6 @@
     "@nestjs/cli": "^11.0.24",
     "@types/node": "^26.1.1",
     "@types/pg": "^8.20.0",
-    "typescript": "^7.0.2"
+    "typescript": "^6.0.3"
   }
 }

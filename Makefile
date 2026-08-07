@@ -1,3 +1,25 @@
+start:
+	docker compose up -d
+
+stop:
+	docker compose stop
+
+logs:
+	docker compose logs -f
+
+shell:
+	docker compose exec backend sh
+
+db-shell:
+	docker compose exec postgres \
+		psql -U $${POSTGRES_USER} -d $${POSTGRES_DB}
+
+clean:
+	docker compose down --remove-orphans
+
+fullclean:
+	docker compose down -v --remove-orphans
+
 iclean:
 	docker image rm $$(docker image ls -q)
 
@@ -15,8 +37,6 @@ vclean:
 fvclean:
 	docker volume rm -f $$(docker volume ls -q)
 
-fullclean: ficlean fcclean fvclean
-
 o opt option options:
 	@echo "\
 - iclean: clean image\\n\
@@ -27,4 +47,4 @@ o opt option options:
 - fvclean: forced clean named volume\\n\
 - fullclean: clean images container named volume"
 
-.PHONY: options o opt option iclean ficlean cclean fcclean vclean fvclean fullclean
+.PHONY: start stop logs shell db-shell clean options o opt option iclean ficlean cclean fcclean vclean fvclean fullclean

@@ -32,7 +32,7 @@ export class DatabaseService {
 	private readonly pool = new Pool(config);
 
 	async check() {
-		const result = await this.pool.query('SELECT 1 AS OK');
+		const result = await this.pool.query('SELECT 1 AS OKAy');
 		return result.rows;
 	}
 }
