@@ -366,7 +366,18 @@ This does not mean developers only execute orders. Contributors are expected to 
 
 ## 10. How we work
 
-### Git workflow
+### Local development
+
+To install and run TokenScope locally, follow:
+
+[Local Development](./LOCAL_DEVELOPMENT.md)
+
+A new contributor should be able to run:
+
+cp .env.example .env
+make start and access the frontend at http://localhost:5173.
+
+### Git workflow -> read full explanation in [REPOSITORY_WORKFLOW.md](./REPOSITORY_WORKFLOW.md)
 
 ```text
 main        = stable and demoable
@@ -375,9 +386,9 @@ feature/... = one focused feature branch
 fix/...     = focused defect branch
 ```
 
-Rules:
+Rules: 
 
-- No direct push to `main`.
+- No direct push to `main` or `develop`
 - Every non-trivial change is made through a pull request.
 - One reviewer minimum for important changes.
 - A PR must link to an issue and explain what changed, how it was tested, and what remains limited.

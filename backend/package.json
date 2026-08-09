@@ -1,0 +1,42 @@
+{
+  "name": "tokenscope-backend",
+  "version": "1.0.0",
+  "description": "Manage CRUD operation",
+  "main": "./dist/main.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "config": "tsc --showConfig",
+    "check": "tsc --noEmit",
+    "build": "tsc && echo \"Build OK\n\"",
+    "start": "node ./dist/main.js",
+	"dev": "nest start --watch"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lynyam/tokenscope.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/lynyam/tokenscope/issues"
+  },
+  "homepage": "https://github.com/lynyam/tokenscope#readme",
+  "dependencies": {
+    "@nestjs/common": "^11.1.28",
+    "@nestjs/core": "^11.1.28",
+    "@nestjs/platform-express": "^11.1.28",
+    "pg": "^8.22.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.24",
+    "@types/node": "^26.1.1",
+    "@types/pg": "^8.20.0",
+    "typescript": "^6.0.3"
+  }
+}

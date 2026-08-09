@@ -1,0 +1,71 @@
+services:
+
+  frontend:
+    image: node:24-alpine
+    working_dir: /app
+    volumes:
+      - type: bind
+        source: ./frontend
+        target: /app
+      - type: volume
+        source: tokenscope_frontend_node_modules
+        target: /app/node_modules
+    ports:
+      - "${FRONTEND_PORT}:5173"
+    depends_on:
+      - backend
+    environment:
+      BACKEND_URL: "http://backend:${BACKEND_PORT}"
+    command:
+      - sh
+      - -c
+      - "npm ci && npm run dev"
+  backend:
+    image: node:24-alpine
+    working_dir: /app
+    volumes:
+      - type: bind
+        source: ./backend
+        target: /app/
+      - type: volume
+        source: tokenscope_backend_node_modules
+        target: /app/node_modules
+    expose:
+      - "${BACKEND_PORT}"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: "${POSTGRES_USER}"
+      DB_PASSWORD: "${POSTGRES_PASSWORD}" 
+      DB_NAME: "${POSTGRES_DB}"
+    depends_on:
+     postgres:
+      condition: service_healthy
+    command:
+      - sh
+      - -c
+      - "npm ci && npm run dev"
+
+  postgres:
+    image: postgres:16-alpine
+    volumes:
+      - type: volume
+        source: tokenscope_postgres_data
+        target: /var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+      POSTGRES_DB: "${POSTGRES_DB}"
+    healthcheck:
+     test:
+      [
+       "CMD-SHELL",
+       "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"
+      ]
+     interval: 5s
+     timeout: 5s
+     retries: 5
+volumes:
+  tokenscope_frontend_node_modules:
+  tokenscope_backend_node_modules:
+  tokenscope_postgres_data:
