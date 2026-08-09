@@ -44,7 +44,7 @@ services:
     command:
       - sh
       - -c
-      - "npm ci && npm run start:dev"
+      - "npm ci && npm run dev"
 
   postgres:
     image: postgres:16-alpine

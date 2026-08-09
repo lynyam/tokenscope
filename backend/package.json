@@ -11,7 +11,7 @@
     "check": "tsc --noEmit",
     "build": "tsc && echo \"Build OK\n\"",
     "start": "node ./dist/main.js",
-	"start:dev": "nest start --watch"
+	"dev": "nest start --watch"
   },
   "repository": {
     "type": "git",
