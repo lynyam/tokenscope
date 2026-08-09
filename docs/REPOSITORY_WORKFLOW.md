@@ -28,16 +28,21 @@ This is a basic explanation:
 6. Push the branch.
 7. Open a Pull Request to `develop`.
 8. Request one review.
-9. Merge only after approval and successful tests.
+9. Merge only after approval and successful required checks.
 10. Delete the feature branch after merge.
 
     ### example:
-    - git clone git@github.com:lynyam/tokenscope.git tokenscope
+    - git clone git@github.com:lynyam/tokenscope.git
     - cd tokenscope
     - git switch develop (1)
     - git pull origin develop (2)
-    - git swith -c feature/tse-13-repository-structure-and-branch-strategy
+    - git switch -c feature/tse-13-repository-structure-and-branch-strategy
     - continue 4 ... 10
+
+## RULE: 
+	- One branch = one Linear issue or sub-issue
+	- A PR should remain small enough to review effectively.
+	- If an issue becomes too large, split it into Linear sub-issues.
 ## Commit message convention
 
 Use:
@@ -46,7 +51,7 @@ Use:
 
 Examples:
 
-`commit -m "docs(workflow): define repository structure and branch strategy"`
+`git commit -m "docs(workflow): define repository structure and branch strategy"`
 
 - `feat(auth): add sign-up form validation`
 - `fix(api): reject duplicate email`
@@ -77,6 +82,9 @@ Every PR must contain:
     feature/tse-13-health-endpoint
     feature/tse-14-react-shell
     fix/tse-21-health-error-state
+
+	feature/fix → develop → main
+	develop → main only for milestone/release stabilization
 
 ## Meaning
     feature branch -> Pull Request -> develop
