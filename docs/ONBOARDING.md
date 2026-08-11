@@ -343,7 +343,7 @@ Responsibilities:
 Every developer (All members are developer) is responsible for:
 
 - understanding the feature before implementation;
-- When yyou use AI to make your implementatuion, you had to take time to understand each line before ask a PR.
+- When you use AI to make your implementatuion, you had to take time to understand each line before ask a PR.
 - writing tests appropriate to the component;
 - documenting decisions and limitations;
 - participating in code review;
@@ -386,7 +386,7 @@ feature/... = one focused feature branch
 fix/...     = focused defect branch
 ```
 
-Rules: 
+Rules:
 
 - No direct push to `main` or `develop`
 - Every non-trivial change is made through a pull request.
@@ -566,8 +566,8 @@ Deliverables:
 
 - Read this document completely.
 - Read the current README and latest ADRs.
-- Run `docker compose up --build` successfully.
 - Create a local `.env` from `.env.example`.
+- Run `make start` successfully.
 - Open the app and reproduce the current demo flow.
 - Read the issues labeled `good-first-task` and `architecture`.
 
