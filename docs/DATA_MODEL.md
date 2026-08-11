@@ -1,4 +1,56 @@
 ## Domain model v1
+```text
+User
+- id
+- email
+- passwordHash
+- displayName
+- createdAt
+- updatedAt
+```
+```text
+Organization
+- id
+- name
+- slug
+- createdAt
+- updatedAt
+```
+```text
+Membership
+- id
+- userId
+- organizationId
+- role
+- createdAt
+```
+```text
+MembershipRole
+- OWNER
+- ADMIN
+- MEMBER
+```
+```text
+Project
+- id
+- organizationId
+- name
+- slug
+- description
+- archivedAt
+- createdAt
+- updatedAt
+```
+
+```text
+Relations:
+- User has many Memberships.
+- Organization has many Memberships.
+- Organization has many Projects.
+- Membership belongs to one User.
+- Membership belongs to one Organization.
+- Project belongs to one Organization.
+
 
 ```prisma
 model User {
