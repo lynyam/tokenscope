@@ -1,58 +1,13 @@
-## Domain model v1
-```text
-User
-- id
-- email
-- passwordHash
-- displayName
-- createdAt
-- updatedAt
-```
-```text
-Organization
-- id
-- name
-- slug
-- createdAt
-- updatedAt
-```
-```text
-Membership
-- id
-- userId
-- organizationId
-- role
-- createdAt
-```
-```text
-MembershipRole
-- OWNER
-- ADMIN
-- MEMBER
-```
-```text
-Project
-- id
-- organizationId
-- name
-- slug
-- description
-- archivedAt
-- createdAt
-- updatedAt
-```
+datasource db {
+	provider = "postgresql"
+}
 
-```text
-Relations:
-- User has many Memberships.
-- Organization has many Memberships.
-- Organization has many Projects.
-- Membership belongs to one User.
-- Membership belongs to one Organization.
-- Project belongs to one Organization.
+generator client {
+	provider = "prisma-client"
+	output = "../src/generated/prisma"
+	importFileExtension = "ts"
+}
 
-
-```prisma
 enum MembershipRole {
 	OWNER
 	ADMIN
@@ -99,6 +54,7 @@ model Membership {
 		onDelete: Restrict
 	)
 
+
 	createdAt		DateTime @default(now())
 	updatedAt		DateTime @updatedAt
 	@@unique([organizationId, userId])
@@ -111,7 +67,7 @@ model Project {
 	organizationId	String
 	description    String?
 	archivedAt     DateTime?
-
+	
 	organization	Organization @relation(
 		fields: [organizationId],
 		references: [id],
@@ -122,4 +78,4 @@ model Project {
 	updatedAt		DateTime @updatedAt
 	@@unique([organizationId, slug])
 }
-```
+
