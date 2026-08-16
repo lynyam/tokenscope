@@ -10,6 +10,7 @@ function HomePage()
 {
     return <h1>Home Page</h1>;
 }
+
 export function AppRouter()
 {
     return(
@@ -19,6 +20,7 @@ export function AppRouter()
                 <Route path="/signin" element={<SignInPage />} />
                 <Route path="/signup" element={<SignUpPage />} />
                 <Route path="/organizations" element={<OrganizationsPage />} />
+                <Route path="*" element={<h1>404 Not Found</h1>}/>
             </Routes>
         </BrowserRouter>
     );
