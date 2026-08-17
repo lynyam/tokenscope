@@ -1,10 +1,14 @@
-import {BrowserRouter} from "react-router-dom"
 // Browser Router, enables routing to the components inside it 
-import {Routes, Route} from "react-router-dom"
+import { BrowserRouter} from "react-router-dom"
 //Routes, to define different routes
-import {SignInPage} from "../pages/auth/SignInPage";
-import {SignUpPage} from "../pages/auth/SignUpPage";
-import {OrganizationsPage} from "../pages/organizations/OrganizationsPage";
+import { Routes, Route} from "react-router-dom"
+//Pages
+import { SignInPage} from "../pages/auth/SignInPage";
+import { SignUpPage} from "../pages/auth/SignUpPage";
+import { OrganizationsPage} from "../pages/organizations/OrganizationsPage";
+//Layouts
+import { AuthLayout } from "../layouts/AuthLayout";
+import { AppLayout } from "../layouts/AppLayout";
 
 function HomePage()
 {
@@ -17,8 +21,8 @@ export function AppRouter()
         <BrowserRouter>
             <Routes>
                 <Route path="/" element={<HomePage />} />
-                <Route path="/signin" element={<SignInPage />} />
-                <Route path="/signup" element={<SignUpPage />} />
+                <Route path="/signin" element={<AuthLayout><SignInPage /></AuthLayout>} />
+                <Route path="/signup" element={<AuthLayout><SignUpPage /></AuthLayout>} />
                 <Route path="/organizations" element={<OrganizationsPage />} />
                 <Route path="*" element={<h1>404 Not Found</h1>}/>
             </Routes>
