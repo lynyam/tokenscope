@@ -11,7 +11,12 @@
     "check": "tsc --noEmit",
     "build": "tsc && echo \"Build OK\n\"",
     "start": "node ./dist/main.js",
-    "dev": "nest start --watch"
+    "dev": "nest start --watch",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "prisma db seed",
+    "db:status": "prisma migrate status",
+    "db:studio": "prisma studio"
   },
   "repository": {
     "type": "git",
@@ -40,6 +45,7 @@
     "@types/node": "^26.1.1",
     "@types/pg": "^8.20.0",
     "prisma": "^7.9.1",
+    "tsx": "^4.23.12",
     "typescript": "^6.0.3"
   }
 }

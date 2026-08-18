@@ -35,7 +35,9 @@ Start the application:
 ```bash
 make start
 ```
-
+```bash
+make db-setup
+```
 The frontend is available at:
 
 ```text

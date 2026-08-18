@@ -12,7 +12,23 @@ shell:
 
 db-shell:
 	docker compose exec postgres \
-		psql -U $${POSTGRES_USER} -d $${POSTGRES_DB}
+		sh -c 'psql -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"'
+db-generate:
+	docker compose exec backend npx prisma generate
+
+db-migrate:
+	docker compose exec backend npx prisma migrate dev
+
+db-seed:
+	docker compose exec backend npx prisma db seed
+
+db-status:
+	docker compose exec backend npx prisma migrate status
+
+db-setup:
+	docker compose exec backend npx prisma generate
+	docker compose exec backend npx prisma migrate dev
+	docker compose exec backend npx prisma db seed
 
 clean:
 	docker compose down --remove-orphans

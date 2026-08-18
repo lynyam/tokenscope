@@ -1,69 +1,69 @@
 datasource db {
-	provider = "postgresql"
+  provider = "postgresql"
 }
 
 generator client {
-	provider = "prisma-client"
-	output = "../src/generated/prisma"
-	importFileExtension = "ts"
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  importFileExtension = "ts"
 }
 
 enum MembershipRole {
-	OWNER
-	ADMIN
-	MEMBER
+  OWNER
+  ADMIN
+  MEMBER
 }
 
 model User {
-	id				String @id @default(uuid())
-	email			String @unique
-	passwordHash	String
-	displayName		String
+  id           String @id @default(uuid())
+  email        String @unique
+  passwordHash String
+  displayName  String
 
-	memberships 	Membership[]
+  memberships Membership[]
 
-	createdAt		DateTime @default(now())
-	updatedAt		DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Organization {
-	id				String @id @default(uuid())
-	name			String
-	slug			String @unique
+  id   String @id @default(uuid())
+  name String
+  slug String @unique
 
-	memberships		Membership[]
-	projects		Project[]
+  memberships Membership[]
+  projects    Project[]
 
-	createdAt		DateTime @default(now())
-	updatedAt		DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Membership {
-	id				String @id @default(uuid())
-	userId			String
-	organizationId	String
-	role			MembershipRole @default(MEMBER)
-	user			User @relation(fields: [userId], references: [id], onDelete: Restrict)
-	organization	Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  id             String         @id @default(uuid())
+  userId         String
+  organizationId String
+  role           MembershipRole @default(MEMBER)
+  user           User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-	createdAt		DateTime @default(now())
-	updatedAt		DateTime @updatedAt
-	@@unique([organizationId, userId])
+  @@unique([organizationId, userId])
 }
 
 model Project {
-	id				String @id @default(uuid())
-	name			String
-	slug			String
-	organizationId	String
-	description    String?
-	archivedAt     DateTime?
+  id             String    @id @default(uuid())
+  name           String
+  slug           String
+  organizationId String
+  description    String?
+  archivedAt     DateTime?
 
-	organization	Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
-	createdAt		DateTime @default(now())
-	updatedAt		DateTime @updatedAt
-	@@unique([organizationId, slug])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, slug])
 }
-
