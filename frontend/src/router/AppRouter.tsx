@@ -10,20 +10,19 @@ import { OrganizationsPage} from "../pages/organizations/OrganizationsPage";
 import { AuthLayout } from "../layouts/AuthLayout";
 import { AppLayout } from "../layouts/AppLayout";
 
-function HomePage()
-{
-    return <h1>Home Page</h1>;
-}
-
 export function AppRouter()
 {
     return(
         <BrowserRouter>
             <Routes>
-                <Route path="/" element={<HomePage />} />
+                <Route path="/" element={<SignInPage />} />
                 <Route path="/signin" element={<AuthLayout><SignInPage /></AuthLayout>} />
                 <Route path="/signup" element={<AuthLayout><SignUpPage /></AuthLayout>} />
-                <Route path="/organizations" element={<OrganizationsPage />} />
+                <Route 
+                    path="/organizations" 
+                    element={
+                    <AppLayout><OrganizationsPage /></AppLayout>
+                    } />
                 <Route path="*" element={<h1>404 Not Found</h1>}/>
             </Routes>
         </BrowserRouter>
