@@ -375,7 +375,9 @@ To install and run TokenScope locally, follow:
 A new contributor should be able to run:
 
 cp .env.example .env
-make start and access the frontend at http://localhost:5173.
+make up
+make db-setup
+Access the frontend at http://localhost:5173.
 
 ### Git workflow -> read full explanation in [REPOSITORY_WORKFLOW.md](./REPOSITORY_WORKFLOW.md)
 
@@ -567,7 +569,7 @@ Deliverables:
 - Read this document completely.
 - Read the current README and latest ADRs.
 - Create a local `.env` from `.env.example`.
-- Run `make start` successfully.
+- Run `make up and make db-setup` successfully.
 - Open the app and reproduce the current demo flow.
 - Read the issues labeled `good-first-task` and `architecture`.
 

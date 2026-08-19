@@ -11,7 +11,12 @@
     "check": "tsc --noEmit",
     "build": "tsc && echo \"Build OK\n\"",
     "start": "node ./dist/main.js",
-	"dev": "nest start --watch"
+    "dev": "nest start --watch",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "prisma db seed",
+    "db:status": "prisma migrate status",
+    "db:studio": "prisma studio"
   },
   "repository": {
     "type": "git",
@@ -29,14 +34,20 @@
     "@nestjs/common": "^11.1.28",
     "@nestjs/core": "^11.1.28",
     "@nestjs/platform-express": "^11.1.28",
+    "@prisma/adapter-pg": "^7.9.1",
+    "@prisma/client": "^7.9.1",
     "pg": "^8.22.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.24",
+    "@types/jest": "^30.0.0",
     "@types/node": "^26.1.1",
     "@types/pg": "^8.20.0",
+    "prisma": "^7.9.1",
+    "ts-jest": "^29.4.12",
+    "tsx": "^4.23.12",
     "typescript": "^6.0.3"
   }
 }

@@ -1,4 +1,13 @@
 ## Domain model v1
+
+## Overview
+
+- `User` represents a global TokenScope identity.
+- `Organization` is the tenant boundary.
+- `Membership` materializes the User ↔ Organization many-to-many relationship and carries the organization-scoped role.
+- `Project` is owned by an Organization, not directly by a User.
+- Organization ownership is represented by `Membership.role = OWNER`; there is no separate `ownerId`.
+
 ```text
 User
 - id
@@ -23,6 +32,7 @@ Membership
 - organizationId
 - role
 - createdAt
+- updatedAt
 ```
 ```text
 MembershipRole
@@ -42,69 +52,27 @@ Project
 - updatedAt
 ```
 
-```text
-Relations:
+## Relationships:
 - User has many Memberships.
 - Organization has many Memberships.
 - Organization has many Projects.
-- Membership belongs to one User.
-- Membership belongs to one Organization.
-- Project belongs to one Organization.
+- Membership belongs to exactly one User.
+- Membership belongs to exactly one Organization.
+- Project belongs to exactly one Organization.
+
+## Database invariants(Things PostgreSQL actually guarantees):
+- User.email is unique
+- Membership(userId, organizationId) is unique
+- Project(organizationId, slug) is unique
+- Membership.userId references User.id
+- Membership.organizationId references Organization.id
+- Project.organizationId references Organization.id
+
+## Application invariants(Things our schema does not completely enforce):
+- Every active Organization must have >= 1 OWNER.
+- The last OWNER cannot be removed/demoted.
+- Only authorized organization members may access its projects.
+- OWNER / ADMIN / MEMBER permissions must be enforced by backend logic.
 
 
-```prisma
-model User {
-  id           String       @id @default(uuid())
-  email        String       @unique
-  passwordHash String
-  displayName  String
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-  memberships  Membership[]
-  ownedOrganizations Organization[] @relation("OrganizationOwner")
-}
-
-model Organization {
-  id          String       @id @default(uuid())
-  name        String
-  slug        String       @unique
-  ownerId     String
-  owner       User         @relation("OrganizationOwner", fields: [ownerId], references: [id])
-  memberships Membership[]
-  projects    Project[]
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-}
-
-model Membership {
-  id             String           @id @default(uuid())
-  userId         String
-  organizationId String
-  role           MembershipRole   @default(MEMBER)
-  user           User             @relation(fields: [userId], references: [id])
-  organization   Organization     @relation(fields: [organizationId], references: [id])
-  createdAt      DateTime         @default(now())
-
-  @@unique([userId, organizationId])
-}
-
-enum MembershipRole {
-  OWNER
-  ADMIN
-  MEMBER
-}
-
-model Project {
-  id             String       @id @default(uuid())
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id])
-  name           String
-  slug           String
-  description    String?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  archivedAt     DateTime?
-
-  @@unique([organizationId, slug])
-}
-```
+NB: The schema is located inside backend/prisma/schema.prisma

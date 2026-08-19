@@ -1,0 +1,45 @@
+services:
+  postgres-test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: tokenscope_test
+      POSTGRES_PASSWORD: tokenscope_test
+      POSTGRES_DB: tokenscope_test
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U tokenscope_test -d tokenscope_test"
+        ]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+    tmpfs:
+      - /var/lib/postgresql/data
+
+  backend-test:
+    image: node:24-alpine
+    working_dir: /app
+
+    environment:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://tokenscope_test:tokenscope_test@postgres-test:5432/tokenscope_test
+
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+
+    volumes:
+      - ./backend:/app
+      - backend-test-node-modules:/app/node_modules
+
+    command: >
+      sh -c "
+        npm ci &&
+        npx prisma generate &&
+        npx prisma migrate deploy &&
+        npx jest --config test/jest-integration.json --runInBand
+      "
+
+volumes:
+  backend-test-node-modules:

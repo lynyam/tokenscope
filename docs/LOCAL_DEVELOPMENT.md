@@ -33,9 +33,11 @@ cp .env.example .env
 Start the application:
 
 ```bash
-make start
+make up
 ```
-
+```bash
+make db-setup
+```
 The frontend is available at:
 
 ```text
@@ -184,6 +186,7 @@ Current variables include:
 POSTGRES_USER
 POSTGRES_PASSWORD
 POSTGRES_DB
+DATABASE_URL
 FRONTEND_PORT
 BACKEND_PORT
 ```
@@ -197,10 +200,10 @@ Docker Compose automatically loads the root `.env` file when resolving variables
 ### Start
 
 ```bash
-make start
+make up
 ```
 
-Starts the local stack in the background.
+create containers and Starts the local stack in the background.
 
 ---
 
@@ -231,6 +234,16 @@ make shell
 ```
 
 Opens a shell inside the backend container.
+
+---
+
+### DB/Prisma
+
+```bash
+make db-setup
+```
+
+Generate prisma cient code source + migrate data model (sql) + seed
 
 ---
 
