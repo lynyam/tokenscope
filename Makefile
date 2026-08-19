@@ -61,7 +61,7 @@ db-status:
 
 db-studio:
 	$(COMPOSE) exec $(BACKEND) \
-		npx prisma studio --browser none --hostname 0.0.0.0
+		npx prisma studio --browser none
 
 db-setup: db-generate db-migrate db-seed
 
