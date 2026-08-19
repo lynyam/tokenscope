@@ -9,4 +9,4 @@ dist/
 .eslintcache
 
 #prisma
-src/generated/prisma/
+backend/src/generated/

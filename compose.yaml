@@ -40,6 +40,7 @@ services:
       DB_USER: "${POSTGRES_USER}"
       DB_PASSWORD: "${POSTGRES_PASSWORD}"
       DB_NAME: "${POSTGRES_DB}"
+      DATABASE_URL: ${DATABASE_URL}
     depends_on:
      postgres:
       condition: service_healthy

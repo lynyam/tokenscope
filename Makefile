@@ -1,66 +1,113 @@
+.DEFAULT_GOAL := help
+
+COMPOSE := docker compose
+BACKEND := backend
+DATABASE := postgres
+
+
+#APPS
+
+up:
+	$(COMPOSE) up -d
+
 start:
-	docker compose up -d
+	$(COMPOSE) start
+
+restart:
+	$(COMPOSE) restart
+
+pause:
+	$(COMPOSE) pause
 
 stop:
-	docker compose stop
+	$(COMPOSE) stop
+
+kill:
+	$(COMPOSE) kill
 
 logs:
-	docker compose logs -f
+	$(COMPOSE) logs -f
+
+ps:
+	$(COMPOSE) ps
+
+psa:
+	$(COMPOSE) ps -a
 
 shell:
-	docker compose exec backend sh
+	$(COMPOSE) exec $(BACKEND) sh
 
+#DB / PRISMA
 db-shell:
-	docker compose exec postgres \
+	$(COMPOSE) exec $(DATABASE) \
 		sh -c 'psql -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"'
 db-generate:
-	docker compose exec backend npx prisma generate
+	$(COMPOSE) exec $(BACKEND) npx prisma generate
 
 db-migrate:
-	docker compose exec backend npx prisma migrate dev
+	$(COMPOSE) exec $(BACKEND) npx prisma migrate dev
+
+db-migration:
+	@test -n "$(name)" || \
+		(echo "Usage: make db-migration name=<migration_name>" && exit 1)
+	$(COMPOSE) exec $(BACKEND) \
+		npx prisma migrate dev --name "$(name)"
 
 db-seed:
-	docker compose exec backend npx prisma db seed
+	$(COMPOSE) exec $(BACKEND) npx prisma db seed
 
 db-status:
-	docker compose exec backend npx prisma migrate status
+	$(COMPOSE) exec $(BACKEND) npx prisma migrate status
 
-db-setup:
-	docker compose exec backend npx prisma generate
-	docker compose exec backend npx prisma migrate dev
-	docker compose exec backend npx prisma db seed
+db-studio:
+	$(COMPOSE) exec $(BACKEND) \
+		npx prisma studio --browser none --hostname 0.0.0.0
+
+db-setup: db-generate db-migrate db-seed
+
+#CLEANUP
 
 clean:
-	docker compose down --remove-orphans
+	$(COMPOSE) down --remove-orphans
 
 fullclean:
-	docker compose down -v --remove-orphans
+	$(COMPOSE) down -v --remove-orphans --rmi local
 
-iclean:
-	docker image rm $$(docker image ls -q)
+#HELP
 
-ficlean:
-	docker image rm -f $$(docker image ls -q)
-cclean:
-	docker rm $$(docker ps -aq)
+help:
+	@echo ""
+	@echo "TokenScope"
+	@echo ""
+	@echo "Application:"
+	@echo "  make up                            create and Start services"
+	@echo "  make start                         Start services"
+	@echo "  make restart                       Restart services"
+	@echo "  make pause                         Pause services"
+	@echo "  make stop                          Stop services"
+	@echo "  make kill                          Force stop service containers"
 
-fcclean:
-	docker rm -f $$(docker ps -aq)
+	@echo "  make logs                          Follow service logs"
+	@echo "  make ps                            Show service status"
+	@echo "  make psa                            Show all service status"
+	@echo "  make shell                         Open backend shell"
+	@echo ""
+	@echo "Database:"
+	@echo "  make db-shell                      Open PostgreSQL shell"
+	@echo "  make db-generate                   Generate Prisma Client"
+	@echo "  make db-migrate                    Apply pending dev migrations"
+	@echo "  make db-migration name=<name>      Create a new migration"
+	@echo "  make db-seed                       Seed development database"
+	@echo "  make db-status                     Show migration status"
+	@echo "  make db-studio                     Start Prisma Studio"
+	@echo "  make db-setup                      Generate + migrate + seed"
+	@echo ""
+	@echo "Cleanup:"
+	@echo "  make clean                         Remove project containers/network"
+	@echo "  make fullclean                     Also remove volumes/local images"
+	@echo ""
 
-vclean:
-	docker volume rm $$(docker volume ls -q)
-
-fvclean:
-	docker volume rm -f $$(docker volume ls -q)
-
-o opt option options:
-	@echo "\
-- iclean: clean image\\n\
-- ficlean: forced clean image\\n\
-- cclean: clean container\\n\
-- fcclean: forced clean container\\n\
-- vclean: clean named volume\\n\
-- fvclean: forced clean named volume\\n\
-- fullclean: clean images container named volume"
-
-.PHONY: start stop logs shell db-shell clean options o opt option iclean ficlean cclean fcclean vclean fvclean fullclean
+.PHONY: \
+	start stop restart logs ps shell \
+	db-shell db-generate db-migrate db-migration db-seed db-status db-studio db-setup \
+	clean fullclean help
