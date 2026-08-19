@@ -73,6 +73,18 @@ clean:
 fullclean:
 	$(COMPOSE) down -v --remove-orphans --rmi local
 
+#TEST
+TEST_COMPOSE := docker compose -p tokenscope-test -f compose.test.yaml
+
+test-db:
+	$(TEST_COMPOSE) up \
+		--abort-on-container-exit \
+		--exit-code-from backend-test
+
+test-db-clean:
+	$(TEST_COMPOSE) down -v --remove-orphans
+
+test-db-fresh: test-db-clean test-db
 #HELP
 
 help:
@@ -110,4 +122,4 @@ help:
 .PHONY: \
 	start stop restart logs ps shell \
 	db-shell db-generate db-migrate db-migration db-seed db-status db-studio db-setup \
-	clean fullclean help
+	clean fullclean help test-db test-db-clean test-db-fresh

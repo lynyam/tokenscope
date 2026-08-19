@@ -42,9 +42,11 @@
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.24",
+    "@types/jest": "^30.0.0",
     "@types/node": "^26.1.1",
     "@types/pg": "^8.20.0",
     "prisma": "^7.9.1",
+    "ts-jest": "^29.4.12",
     "tsx": "^4.23.12",
     "typescript": "^6.0.3"
   }
