@@ -1,13 +1,13 @@
 import { ReactNode } from "react";
-// import { Sidebar } from "../components/Sidebar";
-// import { Topbar } from "../components/Topbar";
+import { Sidebar } from "../components/Sidebar";
+import { Topbar } from "../components/Topbar";
 
 export function AppLayout({ children }: { children: ReactNode }) {
   return (
     <div className="app-shell">
-      {/* <Sidebar /> */}
+      <Sidebar />
       <div className="main-area">
-        {/* <Topbar /> */}
+        <Topbar />
         <main className="page-content">
           {children}
         </main>
@@ -15,5 +15,3 @@ export function AppLayout({ children }: { children: ReactNode }) {
     </div>
   );
 }
-
-//todo: uncomment sidebar and topbar
