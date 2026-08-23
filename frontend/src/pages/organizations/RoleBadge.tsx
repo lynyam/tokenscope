@@ -1,3 +1,4 @@
+import "./RoleBadge.css"
 import type { MembershipRole } from "../../types/workspace.types";
 
 type RoleBadgeProps = {
