@@ -31,3 +31,21 @@ button.addEventListener("click", async () => {
     button.disabled = false;
   }
 });
+
+import { createRoot } from "react-dom/client";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { Organizations } from "./pages/organizations";
+import { OrganizationDetail } from "./pages/organizationDetail";
+
+const rootElement = document.getElementById("root");
+if (!rootElement) {
+  throw new Error("Root element not found");
+}
+createRoot(rootElement).render(
+  <BrowserRouter>
+    <Routes>
+      <Route path="/organizations" element={<Organizations />} />
+      <Route path="/organizations/:organizationId" element={<OrganizationDetail />} />
+    </Routes>
+  </BrowserRouter>
+);

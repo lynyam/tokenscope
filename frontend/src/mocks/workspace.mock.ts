@@ -1,4 +1,5 @@
-import { User, Organization, Member, Project } from '../types/workspace.types';
+import { User, Organization, Member,
+    Membership, Project } from '../types/workspace.types';
 
 
 export const mockUser: User = {
@@ -7,26 +8,49 @@ export const mockUser: User = {
     name: "dina"
 };
 
+export const mockOtherUser: User = {
+    id: "user-2",
+    email: "mockdi@test.com",
+    name: "jojo"
+};
+
 export const mockOrganizations: Organization[] = [{
     id: "mockorganization",
     name: "MockOrg",
-    slug: "mock-organization-test",
-    role: "OWNER"
+    slug: "mock-org-test",
 },
 {
     id: "fausseorg",
     name: "xlIton",
-    slug: "xlitn-org-test",
-    role: "ADMIN",
-
+    slug: "xliton-org-test",
 }];
 
 export const mockMembers: Member[] = [{
     id: "user-1",
     email: "mockdina@test.com",
-    name: "anid",
+    name: "dina",
     role: "ADMIN",
+},
+{
+    id: "user-2",
+    email: "mockdi@test.com",
+    name: "jojo",
+    role: "MEMBER"
 }];
+
+export const mockMemberships: Membership[] = [{
+    id: "00001",
+    userId: "user-1",
+    organizationId: "fausseorg",
+    role: "OWNER",
+},
+{
+    id: "00002",
+    userId: "user-2",
+    organizationId: "mockorganization",
+    role: "MEMBER",
+}];
+
 
 export const mockProjects: Project[] = [{
     id: "p1",

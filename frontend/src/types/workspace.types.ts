@@ -5,12 +5,18 @@ export interface User {
     name: string;
 }
 
-export type MembershipRole = "OWNER" | "ADMIN" | "MEMBER";
-
 export interface Organization {
     id: string;
     name: string;
     slug: string;
+}
+
+export type MembershipRole = "OWNER" | "ADMIN" | "MEMBER";
+
+export interface Membership {
+    id: string;
+    userId: string;
+    organizationId: string;
     role: MembershipRole;
 }
 
