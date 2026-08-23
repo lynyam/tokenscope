@@ -34,8 +34,8 @@ button.addEventListener("click", async () => {
 
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { Organizations } from "./pages/organizations";
-import { OrganizationDetail } from "./pages/organizationDetail";
+import { Organizations } from "./pages/organizations/OrganizationsPage";
+import { OrganizationDetail } from "./pages/organizations/OrganizationDetailPage";
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {

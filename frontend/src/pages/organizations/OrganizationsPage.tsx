@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { getOrganizations } from "../api/organizations.api";
-import { Membership, Organization } from "../types/workspace.types";
+import { getOrganizations } from "../../api/organizations.api";
+import { Membership, Organization } from "../../types/workspace.types";
 import { useEffect } from "react";
-import { mockUser } from "../mocks/workspace.mock"
+import { mockUser } from "../../mocks/workspace.mock"
 
 //le composant gere proprement l'etat de chargement
 export function Organizations() {

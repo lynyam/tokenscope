@@ -1,8 +1,8 @@
 import { useParams } from "react-router-dom";
-import { getOrganizations } from "../api/organizations.api";
-import { getMembershipForOrganization } from "../api/memberships.api";
+import { getOrganizations } from "../../api/organizations.api";
+import { getMembershipForOrganization } from "../../api/memberships.api";
 import { useEffect, useState } from "react";
-import { Organization, Membership } from "../types/workspace.types";
+import { Organization, Membership } from "../../types/workspace.types";
 
 export function OrganizationDetail() {
     const { organizationId } = useParams();
