@@ -34,8 +34,8 @@ button.addEventListener("click", async () => {
 
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { Organizations } from "./pages/organizations/OrganizationsPage";
-import { OrganizationDetail } from "./pages/organizations/OrganizationDetailPage";
+import { OrganizationsPage } from "./pages/organizations/OrganizationsPage";
+import { OrganizationDetailPage } from "./pages/organizations/OrganizationDetailPage";
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {
@@ -44,8 +44,12 @@ if (!rootElement) {
 createRoot(rootElement).render(
   <BrowserRouter>
     <Routes>
-      <Route path="/organizations" element={<Organizations />} />
-      <Route path="/organizations/:organizationId" element={<OrganizationDetail />} />
+      <Route path="/organizations" element={<OrganizationsPage />} />
+      <Route path="/organizations/:organizationId" element={<OrganizationDetailPage />} />
     </Routes>
   </BrowserRouter>
 );
+
+// import { signIn } from "./api/auth.api";
+
+// await signIn({ email: "alice@tokenscope.dev", password: "password123" });

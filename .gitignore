@@ -7,3 +7,4 @@ dist/
 
 #tools caches
 .eslintcache
+backend/src/generated/
