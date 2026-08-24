@@ -1,4 +1,14 @@
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { AppRouter } from "./router/AppRouter";
 export {}
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <AppRouter />
+  </React.StrictMode>
+);
+
+/*export {}
 const button = document.querySelector<HTMLButtonElement>("#health-check-button");
 const status = document.querySelector<HTMLElement>("#health-status");
 
@@ -31,3 +41,4 @@ button.addEventListener("click", async () => {
     button.disabled = false;
   }
 });
+*/

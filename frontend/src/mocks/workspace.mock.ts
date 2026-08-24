@@ -29,7 +29,7 @@ export const mockAccounts = [
     { userId: "user-alice", password: "password123" },
     { userId: "user-bob", password: "password123" },
     { userId: "user-charlie", password: "password123" },
-    { userId: "user-diana", password: "password123" },
+    { userId: "user-dina", password: "password123" },
 ];
 
 // mock-session state used by auth.api.ts.
@@ -94,7 +94,7 @@ export const mockMemberships: Membership[] = [
     },
     {
       id: "membership-observability-lab-diana",
-      userId: "user-diana",
+      userId: "user-dina",
       organizationId: "organization-observability-lab",
       role: "OWNER",
     },

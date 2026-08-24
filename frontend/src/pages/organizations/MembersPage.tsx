@@ -17,14 +17,59 @@ export function MembersPage() {
 		if (!organizationId)
 			return ;
 		let ignore = false;
-		async function loadMembership(organizationId: string) {
-			const response: OrganizationMembershipsResponse =
-				await getOrganizationMemberships(organizationId);
-			// to be continue.
-
+		async function loadMemberships(validOrganizationId: string) {
+			setMembershipData(null);
+			setRequestStatus("loading");
+			try {
+				const response = await getOrganizationMemberships(validOrganizationId);
+				if (ignore)
+					return;
+				setMembershipData(response);
+				setRequestStatus("success");
+			} catch {
+				if (ignore) {
+					return;
+				}
+				setMembershipData(null);
+				setRequestStatus("error");
+			}
 		}
+		loadMemberships(organizationId);
+		return () => {
+			ignore = true;
+		};
 	}, [organizationId]);
 
-  // Effect comes next.
-  // Render branches come afterward.
+	if (!organizationId) {
+		return (
+			<p>Missing organization</p>
+		);
+	}
+	if (requestStatus === "loading") {
+		return (
+			<p>Members page is Loading...</p>
+		);
+	}
+	if (requestStatus === "error") {
+		return (
+			<p>Unable to load members.</p>
+		);
+	}
+	if (!membershipData) {
+		return (
+			<p>Membership data is unavailable.</p>
+		);
+	}
+	const canManageMembers = membershipData.currentUserRole === "OWNER";
+	return (
+		<main>
+			<h1>Organization members</h1>
+			{canManageMembers && <AddMemberForm />}
+			{membershipData.memberships.length === 0 ? (
+				<p>No member yet.</p>
+			): (<MembersTable memberships={membershipData.memberships}
+				canManageMembers={canManageMembers}/>
+			)}
+		</main>
+	);
 }
