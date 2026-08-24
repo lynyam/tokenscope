@@ -1,22 +1,8 @@
-/*import { Organization } from '../types/workspace.types'
-import { mockOrganizations } from '../mocks/workspace.mock'
-
-//renvoi toutes les organisations qui existent dans la base de donnes
-export async function getOrganizations(): Promise<Organization[]> {
-   return mockOrganizations;
-}
-
-// export async function getOrganizations(): Promise<Organization[]> {
-//     throw new Error("Erreur simulée pour tester l'état d'erreur");
-// }
-
-
-//plustard backend vas renvoie seulement celles ou l'utilisateur connecte est membre
-*/
-
 import { mockMemberships, mockOrganizations, } from "../mocks/workspace.mock";
-import type { Membership, Organization, OrganizationSummary, } from "../types/workspace.types";
+import type { Membership, Organization, OrganizationSummary, CreateOrganizationInput } from "../types/workspace.types";
 import { cloneMockValue, MockApiError, requireAuthenticatedUserId, waitForMockApi, } from "./mock-api.utils";
+
+
 
 function createOrganizationSummary(
   organization: Organization,
@@ -71,4 +57,43 @@ export async function getOrganization(organizationId: string,): Promise<Organiza
   return cloneMockValue(
     createOrganizationSummary(organization, currentMembership),
   );
+}
+
+
+//crée à la fois une nouvelle Organization ET son Membership OWNER
+export async function createOrganization(
+  input: CreateOrganizationInput,
+): Promise<OrganizationSummary> {
+  await waitForMockApi();
+  const currentUserId = requireAuthenticatedUserId();
+
+  const name = input.name.trim();
+  if (!name) {
+    throw new MockApiError(400, "Organization name is required.");
+  }
+
+  const slug = name.toLowerCase().replace(/\s+/g, "-");
+  const slugAlreadyExists = mockOrganizations.some(
+    (organization) => organization.slug === slug,
+  );
+  if (slugAlreadyExists) {
+    throw new MockApiError(409, "An organization already uses this slug.");
+  }
+
+  const organization: Organization = {
+    id: `organization-${mockOrganizations.length + 1}`,
+    name,
+    slug,
+  };
+  mockOrganizations.push(organization);
+
+  const membership: Membership = {
+    id: `membership-${mockMemberships.length + 1}`,
+    userId: currentUserId,
+    organizationId: organization.id,
+    role: "OWNER",
+  };
+  mockMemberships.push(membership);
+
+  return cloneMockValue(createOrganizationSummary(organization, membership));
 }

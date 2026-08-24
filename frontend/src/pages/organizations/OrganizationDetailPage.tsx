@@ -25,22 +25,24 @@ export function OrganizationDetailPage() {
             });
     }, [organizationId]);
 
+    if (isLoading) {
+        return <p>Loading...</p>;
+    }
+
+    if (error) {
+        return <p>{error}</p>;
+    }
+
+    if (!organization) {
+        return <p>Organization not found.</p>;
+    }
+
     return (
         <div>
             <h1>Detail of {organizationId}</h1>
-            {isLoading ? (
-                <p>Loading...</p>
-            ) : error ? (
-                <p>{error}</p>
-            ) : !organization ? (
-                <p>Organization not found.</p>
-            ) : (
-                <div>
-                    <p>Name: {organization.name}</p>
-                    <p>Slug: {organization.slug}</p>
-                    <p>Your role: {organization.currentUserRole}</p>
-                </div>
-            )}
+            <p>Name: {organization.name}</p>
+            <p>Slug: {organization.slug}</p>
+            <p>Your role: {organization.currentUserRole}</p>
         </div>
     );
 }

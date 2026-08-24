@@ -52,4 +52,4 @@ createRoot(rootElement).render(
 
 // import { signIn } from "./api/auth.api";
 
-// await signIn({ email: "alice@tokenscope.dev", password: "password123" });
+// await signIn({ email: "bob@tokenscope.dev", password: "password123" });
