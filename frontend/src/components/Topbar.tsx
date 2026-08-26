@@ -13,12 +13,10 @@ export function Topbar() {
 
   return (
     <header className="topbar">
-      <p>Here topbar</p>
-      <span>{user?.name}</span>
+      <span>{user?.displayName}</span>
       <button onClick={handleLogout}>Log out</button>
     </header>
   );
 }
 
 
-// TODO: see authentication flow, like name of user 

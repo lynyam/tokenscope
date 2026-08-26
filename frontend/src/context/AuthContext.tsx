@@ -31,10 +31,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   /* Section 1 */
-  //TODO: clarify u notation
   useEffect(() => {
-    getCurrentUser().then((u) => {
-      setUser(u);
+    getCurrentUser().then((currentUser) => {
+      setUser(currentUser);
       setIsLoading(false);
     });
   }, []);
