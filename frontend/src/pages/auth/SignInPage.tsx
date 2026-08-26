@@ -13,11 +13,11 @@ export function SignInPage()
 {    
     // automatic handling of form data
     const {register, handleSubmit, formState: { errors }} = useForm();
-    // import context and its method
+    // import context and its relevant method
     const { signIn } = useAuthContext();  
     // set navigate to redirect to relevant pages
     const navigate = useNavigate();
-    // miau
+      //to notify failures that can arise only from checking database via backend
     const [authError, setAuthError] = useState<string | null>(null);
 
     /**
