@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { User } from "../types/workspace.types";
-import { getCurrentUser, signIn as apiSignIn, signOut as apiSignOut, signUp as apiSignUp } from "../api/auth.api";
+import { User, SignInInput, SignUpInput } from "../types/workspace.types";
+import { getCurrentUser, signIn as apiSignIn, signOut as apiSignOut, signUp as apiSignUp } from "../api/L_auth.api";
 
 
 /**
@@ -11,16 +11,13 @@ import { getCurrentUser, signIn as apiSignIn, signOut as apiSignOut, signUp as a
 interface AuthContextValue {
   user: User | null;
   isLoading: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
+  signIn: (input: SignInInput) => Promise<void>;
   signOut: () => Promise<void>;
-  signUp: (email: string, password: string) => Promise<void>;
+  signUp: (input: SignInInput) => Promise<void>;
 }
 
-/*
- * Creating the authentication context 
- */
+/* Creating the authentication context */
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
-
 
 
 /**
@@ -34,6 +31,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   /* Section 1 */
+  //TODO: clarify u notation
   useEffect(() => {
     getCurrentUser().then((u) => {
       setUser(u);
@@ -42,8 +40,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /* Section 2 */
-  async function signIn(email: string, password: string) {
-    const loggedInUser = await apiSignIn(email, password);
+  async function signIn(input: SignInInput) {
+    const loggedInUser = await apiSignIn(input);
     setUser(loggedInUser);
   }
 
@@ -52,8 +50,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }
 
-  async function signUp(email: string, password: string) {
-  const loggedInUser = await apiSignUp(email, password);
+  async function signUp(input: SignUpInput) {
+  const loggedInUser = await apiSignUp(input);
   setUser(loggedInUser);
   }
 
