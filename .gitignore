@@ -7,4 +7,6 @@ dist/
 
 #tools caches
 .eslintcache
+
+#prisma
 backend/src/generated/

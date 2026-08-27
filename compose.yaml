@@ -32,12 +32,15 @@ services:
         target: /app/node_modules
     expose:
       - "${BACKEND_PORT}"
+    ports:
+     - 51212:51212
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USER: "${POSTGRES_USER}"
-      DB_PASSWORD: "${POSTGRES_PASSWORD}" 
+      DB_PASSWORD: "${POSTGRES_PASSWORD}"
       DB_NAME: "${POSTGRES_DB}"
+      DATABASE_URL: ${DATABASE_URL}
     depends_on:
      postgres:
       condition: service_healthy
