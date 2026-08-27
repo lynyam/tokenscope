@@ -50,6 +50,6 @@ createRoot(rootElement).render(
   </BrowserRouter>
 );
 
-// import { signIn } from "./api/auth.api";
+import { signIn } from "./api/auth.api";
 
-// await signIn({ email: "bob@tokenscope.dev", password: "password123" });
+await signIn({ email: "bob@tokenscope.dev", password: "password123" });
