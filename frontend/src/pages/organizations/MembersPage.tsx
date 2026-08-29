@@ -62,14 +62,14 @@ export function MembersPage() {
 	}
 	const canManageMembers = membershipData.currentUserRole === "OWNER";
 	return (
-		<main>
-			<h1>Organization members</h1>
+		<section aria-labelledby="organization-members-heading">
+			<h1 id="organization-members-heading">Organization members</h1>
 			{canManageMembers && <AddMemberForm />}
 			{membershipData.memberships.length === 0 ? (
 				<p>No member yet.</p>
 			): (<MembersTable memberships={membershipData.memberships}
 				canManageMembers={canManageMembers}/>
 			)}
-		</main>
+		</section>
 	);
 }

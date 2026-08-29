@@ -19,7 +19,7 @@ import { cloneMockValue, MockApiError, requireAuthenticatedUserId, waitForMockAp
 export async function getOrganizationMemberships(organizationId: string,
   ): Promise<OrganizationMembershipsResponse> {
   await waitForMockApi();
-  const currentUserId = "user-alice"//requireAuthenticatedUserId();
+  const currentUserId = requireAuthenticatedUserId();
   const organizationExists = mockOrganizations.some(
     ({ id }) => id === organizationId,
   );
