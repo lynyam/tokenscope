@@ -36,6 +36,8 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { OrganizationsPage } from "./pages/organizations/OrganizationsPage";
 import { OrganizationDetailPage } from "./pages/organizations/OrganizationDetailPage";
+import { ProjectsPage } from "./pages/projects/ProjectsPage";
+import { ProjectDetailPage } from "./pages/projects/ProjectDetailPage";
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {
@@ -46,6 +48,8 @@ createRoot(rootElement).render(
     <Routes>
       <Route path="/organizations" element={<OrganizationsPage />} />
       <Route path="/organizations/:organizationId" element={<OrganizationDetailPage />} />
+      <Route path="/organizations/:organizationId/projects" element={<ProjectsPage />} />
+      <Route path="/organizations/:organizationId/projects/:projectId" element={<ProjectDetailPage />} />
     </Routes>
   </BrowserRouter>
 );

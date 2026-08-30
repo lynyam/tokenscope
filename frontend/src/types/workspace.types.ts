@@ -67,3 +67,7 @@ export interface SignUpInput extends SignInInput {
 export interface CreateOrganizationInput {
     name: string;
 }
+
+export interface CreateProjectInput {
+    name: string;
+}
