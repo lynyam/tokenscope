@@ -10,13 +10,24 @@ import { OrganizationsPage} from "../pages/organizations/OrganizationsPage";
 import { AuthLayout } from "../layouts/AuthLayout";
 import { AppLayout } from "../layouts/AppLayout";
 import { ProtectedRoute } from "../components/ProtectedRoute";
+//Custom hook to get the current user
+import { useCurrentUser } from "../hooks/useCurrentUser";
+
+//Root redirection
+function RootRedirect() {
+  const { user, isLoading } = useCurrentUser();
+
+  if (isLoading) return <div>Loading...</div>;
+  if (user) return <Navigate to="/organizations" replace />;
+  return <Navigate to="/signup" replace />;
+}
 
 export function AppRouter()
 {
     return(
         <BrowserRouter>
             <Routes>
-                <Route path="/" element={<Navigate to="/organizations" replace />} />
+                <Route path="/" element={<RootRedirect />} />
                 <Route path="/signin" element={<AuthLayout><SignInPage /></AuthLayout>} />
                 <Route path="/signup" element={<AuthLayout><SignUpPage /></AuthLayout>} />
                 <Route 

@@ -10,7 +10,6 @@ interface SignUpFormData {
 }
 
 
-
 export function SignUpPage() {
   //automatic handling of form data
   const { register, handleSubmit, formState: { errors } } = useForm<SignUpFormData>();
@@ -21,6 +20,7 @@ export function SignUpPage() {
   //to notify failures that can arise only from checking database via backend
   const [authError, setAuthError] = useState<string | null>(null);
 
+  //TODO: Can replace with mock types
   async function onSubmit(data: SignUpFormData) {
     setAuthError(null);
     try {
