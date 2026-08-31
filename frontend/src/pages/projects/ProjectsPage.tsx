@@ -18,22 +18,38 @@ export function ProjectsPage() {
         if (!organizationId) {
             return;
         }
+        let isStale = false;
         getOrganization(organizationId)
             .then((org) => {
+                if (isStale) {
+                    return;
+                }
                 setCurrentUserRole(org.currentUserRole);
             })
             .catch(() => {
+                if (isStale) {
+                    return;
+                }
                     //on ignore silencieusement"
             });
         getOrganizationProjects(organizationId)
             .then((data) => {
+                if (isStale) {
+                    return;
+                }
                 setProjects(data);
                 setIsLoading(false);
             })
             .catch((err) => {
+                if (isStale) {
+                    return;
+                }
                 setLoadError(err instanceof Error ? err.message : "Failed to load projects.");
                 setIsLoading(false);
             });
+            return () => {
+                isStale = true;
+            };
     }, [organizationId]);
     function handleCreate(event: FormEvent) {
         event.preventDefault();
