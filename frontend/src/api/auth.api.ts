@@ -1,56 +1,105 @@
-import { User } from '../types/workspace.types'
-import { mockUser } from '../mocks/workspace.mock'
-
-//getcurrentuser est une fonction que sert juste a demander, qui est l'utilisateur
-//actuelment connecte, et a recuperer ses infos, pour les afficher a l'ecran
-// export async function getCurrentUser(): Promise<User> {
-//     return mockUser;
-// } 
-
+//TODO: remove duplicate auth.api.ts
+import { mockAccounts, mockSession, mockUsers,} from "../mocks/workspace.mock";
+import type { SignInInput, SignUpInput, User, } from "../types/workspace.types";
+import { cloneMockValue, MockApiError, waitForMockApi, } from "./mock-api.utils";
 
 /**
- * function getCurrentUser, retrieves current user from local storage
- * value is stored under the key mock session
+ * Objective: Fetches the profile data of the currently logged-in user.
+
+  Key Subfunctionalities:
+  + Simulates network latency via waitForMockApi().
+  + Checks mockSession to see if a user ID is present; returns null if unauthenticated.
+  + Searches mockUsers to locate the matching user profile.
+  + Performs session cleanup by setting mockSession.currentUserId to null if the stored ID does not match any user.
+  + Returns a deep clone of the user object to avoid direct mutations.
  */
 export async function getCurrentUser(): Promise<User | null> {
-    const stored = localStorage.getItem("mockSession");
-  return stored ? JSON.parse(stored) : null;
+  await waitForMockApi();
+  if (!mockSession.currentUserId) {
+    return null;
+  }
+  const user = mockUsers.find(({ id }) => id === mockSession.currentUserId,);
+  if (!user) {
+    mockSession.currentUserId = null;
+    return null;
+  }
+  return cloneMockValue(user);
+}
+
+/*
+ * Objective: Authenticates a user using email and password credentials, starting a session if successful.
+  * Subfunctionalities:
+    + Simulates network latency via waitForMockApi().
+    + Normalizes the incoming email (trims whitespace and converts to lowercase).
+    + Finds the corresponding user and account credentials in mockUsers and mockAccounts.
+    + Validates the provided password against stored credentials and throws a 401 MockApiError on failure.
+    + Updates mockSession.currentUserId to establish the authenticated session.
+    + Returns a deep copy of the authenticated user profile.
+    Key Validations/processing:
+    + to lower 
+    + validates user and password 
+*/
+export async function signIn(input: SignInInput): Promise<User> {
+  await waitForMockApi();
+  const normalizedEmail = input.email.trim().toLowerCase();
+  const user = mockUsers.find(({ email }) => email.toLowerCase() === normalizedEmail,);
+  const account = user
+      ? mockAccounts.find(({ userId }) => userId === user.id) : undefined;
+  if (!user || !account || account.password !== input.password) {
+    throw new MockApiError(401, "Invalid email or password.");
+  }
+  mockSession.currentUserId = user.id;
+  return cloneMockValue(user);
 }
 
 
 /**
- *  sign in function that simulates backend call
- *  local storage: browser provided storage mechanism
+ * Objective: Registers a new user account and automatically logs them in upon creation.
+  Subfunctionalities:
+    + Simulates network latency via waitForMockApi().
+    + Validates required input fields (email, display name, password) and throws a 400 MockApiError if missing.
+    + Checks for duplicate email addresses and throws a 409 MockApiError if conflict exists.
+    + Generates a new user ID and pushes new records to mockUsers and mockAccounts.
+    + Sets mockSession.currentUserId to log the new user in immediately.
+    + Returns a deep clone of the newly created user profile.
+  Key Validations:
+    + non duplicate: email 
+    + all field must exist: email, display name, password
  */
+export async function signUp(input: SignUpInput): Promise<User> {
+  await waitForMockApi();
+  const normalizedEmail = input.email.trim().toLowerCase();
+  const displayName = input.displayName.trim();
 
-export async function signIn(email: string, password: string): Promise<User> {
-  await new Promise((res) => setTimeout(res, 300)); // simulate network delay
-  localStorage.setItem("mockSession", JSON.stringify(mockUser));
-  return mockUser;
+  if (!normalizedEmail || !displayName || !input.password) {
+    throw new MockApiError(400, "All sign-up fields are required.");
+  }
+  const emailAlreadyExists = mockUsers.some(({ email }) => email.toLowerCase() === normalizedEmail,);
+  if (emailAlreadyExists) {
+    throw new MockApiError(409, "An account already uses this email.");
+  }
+  const user: User = {
+    id: `user-${mockUsers.length + 1}`,
+    email: normalizedEmail,
+    displayName,
+  };
+  mockUsers.push(user);
+  mockAccounts.push({
+    userId: user.id,
+    password: input.password,
+  });
+  mockSession.currentUserId = user.id;
+  return cloneMockValue(user);
 }
 
-
 /**
- * TODO: verify duplication verification is added 
- */
-export async function signUp(email: string, password: string): Promise<User> {
-  await new Promise((res) => setTimeout(res, 300)); // simulate network delay
-  localStorage.setItem("mockSession", JSON.stringify(mockUser));
-  return mockUser;
-}
-
-
-
-
-/**
- * sign in function that simulates backend call
- * removes current signed in user 
+ * Objective: Logs out the current user by terminating the active mock session.
+   Subfunctionalities:
+    + Simulates network latency via waitForMockApi().
+    + Resets mockSession.currentUserId to null.
  */
 export async function signOut(): Promise<void> {
-  localStorage.removeItem("mockSession");
+  await waitForMockApi();
+  mockSession.currentUserId = null;
 }
 
-
-
-//TODO: decide which version of getCurrentUser() stays
-//TODO: decide if signIn*) and signOut() stays

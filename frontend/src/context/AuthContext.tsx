@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { User, SignInInput, SignUpInput } from "../types/workspace.types";
-import { getCurrentUser, signIn as apiSignIn, signOut as apiSignOut, signUp as apiSignUp } from "../api/L_auth.api";
+import { getCurrentUser, signIn as apiSignIn, signOut as apiSignOut, signUp as apiSignUp } from "../api/auth.api";
 
 
 /**
@@ -13,13 +13,13 @@ interface AuthContextValue {
   isLoading: boolean;
   signIn: (input: SignInInput) => Promise<void>;
   signOut: () => Promise<void>;
-  signUp: (input: SignInInput) => Promise<void>;
+  signUp: (input: SignUpInput) => Promise<void>; //corrected the type of signUp to match the SignUpInput interface
 }
 
 /* Creating the authentication context */
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-
+//miau
 /**
  * AuthProvider function contains:
  * 1. Loading of a session if it already exists via useEffect hook
