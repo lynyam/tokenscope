@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useAuthContext } from "../../context/AuthContext";
 
 interface SignUpFormData {
@@ -78,8 +78,11 @@ export function SignUpPage() {
       </div>
 
       {authError && <span className="form-error">{authError}</span>}
-
       <button type="submit">Create account</button>
+
+      <p>
+        Already have an account? <Link to="/signin">Sign in</Link>
+      </p>
     </form>
   );
 }

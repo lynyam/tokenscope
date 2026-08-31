@@ -1,6 +1,6 @@
 import { useState, FormEvent } from "react";
 import { useForm } from "react-hook-form";  //For form error handling 
-import { useNavigate } from "react-router-dom" //For changing routes
+import { useNavigate, Link } from "react-router-dom" //For changing routes
 import { useAuthContext } from "../../context/AuthContext";
 
 
@@ -61,6 +61,10 @@ export function SignInPage()
 
         {authError && <span className="form-error">{authError}</span>}
         <button type="submit">Sign in</button>
+
+        <p>
+          Don't have an account? <Link to="/signup">Create one</Link>
+        </p>
     </form>
     );
 }
