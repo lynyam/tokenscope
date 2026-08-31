@@ -37,6 +37,12 @@ vclean:
 fvclean:
 	docker volume rm -f $$(docker volume ls -q)
 
+frontendcheck:
+	docker compose exec frontend npm run check
+
+backedncheck:
+	docker compose exec backend npm run check
+
 o opt option options:
 	@echo "\
 - iclean: clean image\\n\

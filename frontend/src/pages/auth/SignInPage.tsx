@@ -12,7 +12,7 @@ interface SignInFormData {
 export function SignInPage()
 {    
     // automatic handling of form data
-    const {register, handleSubmit, formState: { errors }} = useForm();
+    const {register, handleSubmit, formState: { errors }} = useForm<SignInFormData>();
     // import context and its relevant method
     const { signIn } = useAuthContext();  
     // set navigate to redirect to relevant pages
