@@ -3,6 +3,9 @@ import { mockAccounts, mockSession, mockUsers,} from "../mocks/workspace.mock";
 import type { SignInInput, SignUpInput, User, } from "../types/workspace.types";
 import { cloneMockValue, MockApiError, waitForMockApi, } from "./mock-api.utils";
 
+//local storage key
+const SESSION_STORAGE_KEY = "mockSession";
+
 /**
  * Objective: Fetches the profile data of the currently logged-in user.
 
@@ -12,15 +15,23 @@ import { cloneMockValue, MockApiError, waitForMockApi, } from "./mock-api.utils"
   + Searches mockUsers to locate the matching user profile.
   + Performs session cleanup by setting mockSession.currentUserId to null if the stored ID does not match any user.
   + Returns a deep clone of the user object to avoid direct mutations.
+  // ADDED:
+    +1 read the persisted session id from localStorage instead of
+      an in-memory mockSession object.
+    +2 clear the stale/invalid session from localStorage
  */
+
 export async function getCurrentUser(): Promise<User | null> {
   await waitForMockApi();
-  if (!mockSession.currentUserId) {
+  //+1
+  const currentUserId = localStorage.getItem(SESSION_STORAGE_KEY);
+  if (!currentUserId) {
     return null;
   }
   const user = mockUsers.find(({ id }) => id === mockSession.currentUserId,);
   if (!user) {
-    mockSession.currentUserId = null;
+    //+2
+    localStorage.removeItem(SESSION_STORAGE_KEY);
     return null;
   }
   return cloneMockValue(user);
@@ -38,6 +49,8 @@ export async function getCurrentUser(): Promise<User | null> {
     Key Validations/processing:
     + to lower 
     + validates user and password 
+    ADDED: 
+      +1 persist the session to localStorage instead of mockSession.currentUserId
 */
 export async function signIn(input: SignInInput): Promise<User> {
   await waitForMockApi();
@@ -48,7 +61,8 @@ export async function signIn(input: SignInInput): Promise<User> {
   if (!user || !account || account.password !== input.password) {
     throw new MockApiError(401, "Invalid email or password.");
   }
-  mockSession.currentUserId = user.id;
+  //+!
+  localStorage.setItem(SESSION_STORAGE_KEY, user.id);
   return cloneMockValue(user);
 }
 
@@ -65,6 +79,8 @@ export async function signIn(input: SignInInput): Promise<User> {
   Key Validations:
     + non duplicate: email 
     + all field must exist: email, display name, password
+    // ADDED: 
+      +1 persist the newly created session to localStorage.
  */
 export async function signUp(input: SignUpInput): Promise<User> {
   await waitForMockApi();
@@ -88,7 +104,8 @@ export async function signUp(input: SignUpInput): Promise<User> {
     userId: user.id,
     password: input.password,
   });
-  mockSession.currentUserId = user.id;
+  // +1
+  localStorage.setItem(SESSION_STORAGE_KEY, user.id);
   return cloneMockValue(user);
 }
 
@@ -100,6 +117,6 @@ export async function signUp(input: SignUpInput): Promise<User> {
  */
 export async function signOut(): Promise<void> {
   await waitForMockApi();
-  mockSession.currentUserId = null;
+  localStorage.removeItem(SESSION_STORAGE_KEY);
 }
 
