@@ -40,6 +40,7 @@ export function SignInPage()
             <div>
                 <label htmlFor="email">Email</label>
                 <input 
+                    id="email"
                     type ="email" 
                     placeholder="member@example.com"
                     {...register("email", { required: "Email is required"})}
