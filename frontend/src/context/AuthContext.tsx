@@ -32,10 +32,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   /* Section 1 */
   useEffect(() => {
-    getCurrentUser().then((currentUser) => {
-      setUser(currentUser);
-      setIsLoading(false);
-    });
+    async function initializeSession() {
+      try {
+        const currentUser = await getCurrentUser();
+        setUser(currentUser);
+      } catch (err) {
+        setUser(null);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    initializeSession();
   }, []);
 
   /* Section 2 */
