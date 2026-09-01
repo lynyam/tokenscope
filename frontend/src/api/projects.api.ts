@@ -43,7 +43,6 @@ export async function getOrganizationProject(organizationId: string, projectId: 
   }
   return cloneMockValue(project);
 }
-
 export async function createProject(
   organizationId: string,
   input: CreateProjectInput,
@@ -79,6 +78,7 @@ export async function createProject(
   if (slugAlreadyExists) {
     throw new MockApiError(409, "A project already uses this slug.");
   }
+  const now = new Date().toISOString();
   const project: Project = {
       id: `project-${mockProjects.length + 1}`,
       organizationId,
@@ -86,6 +86,8 @@ export async function createProject(
       slug,
       description: null,
       archivedAt: null,
+      createdAt: now,
+      updatedAt: now,
     };
     mockProjects.push(project);
     return cloneMockValue(project);

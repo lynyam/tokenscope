@@ -30,15 +30,18 @@ export function ProjectDetailPage() {
                 if (isStale) {
                     return;
                 }
-                setError(err instanceof Error ? err.message : "Failed to load organization.");
+                setError(err instanceof Error ? err.message : "Failed to load project.");
                 setIsLoading(false);
             });
             return () => {
                 isStale = true;
             };
     }, [organizationId, projectId]);
-    if (!projectId) {
+    if (!organizationId) {
         return <p>Missing organization.</p>
+    }
+    if (!projectId) {
+        return <p>Missing project.</p>
     }
     if (isLoading) {
         return <p>Loading...</p>;
@@ -58,6 +61,9 @@ export function ProjectDetailPage() {
             <p>Name: {project.name}</p>
             <p>Slug: {project.slug}</p>
             <p>Description: {project.description ?? "No description yet."}</p>
+            <p>Status: {project.archivedAt ? "Archived" : "Active"}</p>
+            <p>Created at: {project.createdAt}</p>
+            <p>Updated at: {project.updatedAt}</p>
             <h2>Coming soon</h2>
             <p>API keys coming in M2.</p>
             <p>Traces coming in M2.</p>
