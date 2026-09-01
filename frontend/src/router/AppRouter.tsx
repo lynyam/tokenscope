@@ -10,6 +10,7 @@ import { OrganizationsPage} from "../pages/organizations/OrganizationsPage";
 import { AuthLayout } from "../layouts/AuthLayout";
 import { AppLayout } from "../layouts/AppLayout";
 import { ProtectedRoute } from "../components/ProtectedRoute";
+import { AnonymousRoute } from "../components/AnonymousRoute";
 //Custom hook to get the current user
 import { useCurrentUser } from "../hooks/useCurrentUser";
 
@@ -28,8 +29,13 @@ export function AppRouter()
         <BrowserRouter>
             <Routes>
                 <Route path="/" element={<RootRedirect />} />
-                <Route path="/signin" element={<AuthLayout><SignInPage /></AuthLayout>} />
-                <Route path="/signup" element={<AuthLayout><SignUpPage /></AuthLayout>} />
+                <Route path="/signin" 
+                element={<AnonymousRoute><AuthLayout><SignInPage /></AuthLayout></AnonymousRoute>} />
+                <Route path="/signup" element={
+                    <AnonymousRoute>
+                        <AuthLayout><SignUpPage /></AuthLayout>
+                    </AnonymousRoute>
+                } />
                 <Route 
                     path="/organizations" 
                     element={
