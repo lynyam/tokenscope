@@ -48,6 +48,8 @@ export function cloneMockValue<T>(value: T): T {
  * 
  */
 
+
+/**TODO: change to localStorage if needed`, to be consistent  */
 export function requireAuthenticatedUserId(): string {
   if (!mockSession.currentUserId) {
     throw new MockApiError(401, "Authentication is required.");

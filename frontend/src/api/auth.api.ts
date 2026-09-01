@@ -5,6 +5,41 @@ import { cloneMockValue, MockApiError, waitForMockApi, } from "./mock-api.utils"
 
 //local storage key
 const SESSION_STORAGE_KEY = "mockSession";
+const USERS_STORAGE_KEY = "mockUsersData";
+const ACCOUNTS_STORAGE_KEY = "mockAccountsData";
+
+/**
+ * Loads the current user list from localStorage
+ */
+
+function loadUsers(): User[] {
+  const stored = localStorage.getItem(USERS_STORAGE_KEY);
+  return stored ? JSON.parse(stored) : cloneMockValue(mockUsers);
+}
+
+/**
+ * ADDED: Loads account/password records from localStorage.
+ */
+function loadAccounts(): { userId: string; password: string }[] {
+  const stored = localStorage.getItem(ACCOUNTS_STORAGE_KEY);
+  return stored ? JSON.parse(stored) : cloneMockValue(mockAccounts);
+}
+
+//Variables to load users and accounts from localStorage or fallback to mock data if not present.
+let users: User[] = loadUsers();
+let accounts: { userId: string; password: string }[] = loadAccounts();
+
+
+//Store the current session in localStorage to persist across page reloads.
+function persistUsers(): void {
+  localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
+}
+
+function persistAccounts(): void {
+  localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(accounts));
+}
+
+
 
 /**
  * Objective: Fetches the profile data of the currently logged-in user.
@@ -28,7 +63,7 @@ export async function getCurrentUser(): Promise<User | null> {
   if (!currentUserId) {
     return null;
   }
-  const user = mockUsers.find(({ id }) => id === mockSession.currentUserId,);
+  const user = users.find(({ id }) => id === currentUserId,);
   if (!user) {
     //+2
     localStorage.removeItem(SESSION_STORAGE_KEY);
@@ -55,9 +90,9 @@ export async function getCurrentUser(): Promise<User | null> {
 export async function signIn(input: SignInInput): Promise<User> {
   await waitForMockApi();
   const normalizedEmail = input.email.trim().toLowerCase();
-  const user = mockUsers.find(({ email }) => email.toLowerCase() === normalizedEmail,);
+  const user = users.find(({ email }) => email.toLowerCase() === normalizedEmail,);
   const account = user
-      ? mockAccounts.find(({ userId }) => userId === user.id) : undefined;
+      ? accounts.find(({ userId }) => userId === user.id) : undefined;
   if (!user || !account || account.password !== input.password) {
     throw new MockApiError(401, "Invalid email or password.");
   }
@@ -90,20 +125,22 @@ export async function signUp(input: SignUpInput): Promise<User> {
   if (!normalizedEmail || !displayName || !input.password) {
     throw new MockApiError(400, "All sign-up fields are required.");
   }
-  const emailAlreadyExists = mockUsers.some(({ email }) => email.toLowerCase() === normalizedEmail,);
+  const emailAlreadyExists = users.some(({ email }) => email.toLowerCase() === normalizedEmail,);
   if (emailAlreadyExists) {
     throw new MockApiError(409, "An account already uses this email.");
   }
   const user: User = {
-    id: `user-${mockUsers.length + 1}`,
+    id: `user-${users.length + 1}`,
     email: normalizedEmail,
     displayName,
   };
-  mockUsers.push(user);
-  mockAccounts.push({
+  users.push(user);
+  accounts.push({
     userId: user.id,
     password: input.password,
   });
+  persistUsers();
+  persistAccounts();
   // +1
   localStorage.setItem(SESSION_STORAGE_KEY, user.id);
   return cloneMockValue(user);
