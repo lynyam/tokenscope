@@ -7,6 +7,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <AppRouter />
   </React.StrictMode>
 );
+import { signIn } from "./api/auth.api";
+
+await signIn({ email: "alic@tokenscope.dev", password: "password123" });
 
 /*export {}
 const button = document.querySelector<HTMLButtonElement>("#health-check-button");

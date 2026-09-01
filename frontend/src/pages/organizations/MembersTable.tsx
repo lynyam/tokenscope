@@ -1,4 +1,4 @@
-import { RoleBadge } from "./RoleBadge";
+import { RoleBadge } from "../../components/RoleBadge";
 import type { MembershipWithUser } from "../../types/workspace.types";
 
 type MembersTableProps = {
