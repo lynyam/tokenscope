@@ -1,0 +1,26 @@
+.role-badge {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.role-badge--owner {
+  color: #6b21a8;
+  background-color: #f3e8ff;
+  border-color: #d8b4fe;
+}
+
+.role-badge--admin {
+  color: #1e40af;
+  background-color: #dbeafe;
+  border-color: #93c5fd;
+}
+
+.role-badge--member {
+  color: #374151;
+  background-color: #f3f4f6;
+  border-color: #d1d5db;
+}
