@@ -54,9 +54,10 @@ export function OrganizationDetailPage() {
         <div>
             <h1>Detail of {organizationId}</h1>
             <p>
-                <Link to={`/organizations/${organizationId}/members`}>Members</Link>
-                {" "}
                 <Link to={`/organizations/${organizationId}/projects`}>Projects</Link>
+            </p>
+            <p>
+                <Link to={`/organizations/${organizationId}/members`}>Members</Link>
             </p>
             <p>Name: {organization.name}</p>
             <p>Slug: {organization.slug}</p>

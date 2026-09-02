@@ -19,7 +19,7 @@ export const mockUsers: User[] = [
     },
     {
         id: "user-dina",
-        email: "mockdina@test.com",
+        email: "mockdiana@test.com",
         displayName: "dina"
     },
 ];
@@ -120,6 +120,8 @@ export const mockProjects: Project[] = [
         slug: "mock-project",
         description:"description test",
         archivedAt: null,
+        createdAt: new Date("2026-01-20").toISOString(),
+        updatedAt: new Date("2026-01-20").toISOString(),
     },
     {
         id: "project-acme-support-assistant",
@@ -128,6 +130,8 @@ export const mockProjects: Project[] = [
         slug: "support-assistant",
         description: "Customer-support LLM observability project.",
         archivedAt: null,
+        createdAt: new Date("2026-03-19").toISOString(),
+        updatedAt: new Date("2026-03-19").toISOString(),
     },
     {
         id: "project-acme-rag-evaluator",
@@ -136,6 +140,8 @@ export const mockProjects: Project[] = [
         slug: "rag-evaluator",
         description: "Archived retrieval evaluation workspace.",
         archivedAt: "2026-08-01T10:00:00.000Z",
+        createdAt: new Date("2026-06-26").toISOString(),
+        updatedAt: new Date("2026-06-26").toISOString(),
     },
     {
         id: "project-observability-cost-dashboard",
@@ -144,6 +150,8 @@ export const mockProjects: Project[] = [
         slug: "cost-dashboard",
         description: null,
         archivedAt: null,
+        createdAt: new Date("2026-08-02").toISOString(),
+        updatedAt: new Date("2026-08-02").toISOString(),
     },
     {
         id: "project-private-model-experiment",
@@ -152,5 +160,7 @@ export const mockProjects: Project[] = [
         slug: "model-experiment",
         description: "A project Alice must not be able to access.",
         archivedAt: null,
+        createdAt: new Date("2026-10-04").toISOString(),
+        updatedAt: new Date("2026-10-04").toISOString(),
     },
 ];

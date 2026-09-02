@@ -15,6 +15,8 @@ import { AnonymousRoute } from "../components/AnonymousRoute";
 import { useCurrentUser } from "../hooks/useCurrentUser";
 import { OrganizationDetailPage } from "../pages/organizations/OrganizationDetailPage";
 import { MembersPage } from "../pages/organizations/MembersPage";
+import { ProjectsPage } from "../pages/projects/ProjectsPage";
+import { ProjectDetailPage } from "../pages/projects/ProjectDetailPage";
 
 //Root redirection
 function RootRedirect() {
@@ -55,6 +57,8 @@ export function AppRouter()
 					</AppLayout>
                     }
                 />
+                <Route path="/organizations/:organizationId/projects" element={<ProjectsPage />} />
+                <Route path="/organizations/:organizationId/projects/:projectId" element={<ProjectDetailPage />} />
                 <Route path="*" element={<h1>404 Not Found</h1>}/>
             </Routes>
         </BrowserRouter>

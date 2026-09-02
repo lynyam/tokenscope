@@ -63,6 +63,8 @@ export interface Project {
     slug: string;
     description: string | null; //our Prisma model return nullable
     archivedAt: string | null; //http serialise date as string
+    createdAt: string;
+    updatedAt: string;
 }
 
 export interface OrganizationSummary extends Organization {
@@ -99,5 +101,9 @@ export interface SignUpInput extends SignInInput {
 }
 
 export interface CreateOrganizationInput {
+    name: string;
+}
+
+export interface CreateProjectInput {
     name: string;
 }
