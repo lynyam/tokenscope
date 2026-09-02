@@ -1,13 +1,19 @@
 import { getCurrentUser } from './api/auth.api';
 import { getOrganizations } from './api/organizations.api';
-//import { getMembers } from './api/memberships.api';
-//import { getProjects } from './api/projects.api';
+import { signIn } from './api/auth.api';
+import { createOrganization } from './api/organizations.api';
 
 async function main() {
+  // Se connecter d'abord, sinon createOrganization échoue
+  await signIn({ email: "alice@tokenscope.dev", password: "password123" });
+
   console.log('User:', await getCurrentUser());
-  console.log('Organizations:', await getOrganizations());
-  //console.log('Members:', await getMembers("mockorganization"));
-  //console.log('Projects:', await getProjects("mockorganization"));
+  console.log('Organizations before:', await getOrganizations());
+
+  const newOrg = await createOrganization({ name: "Test Org" });
+  console.log('Created:', newOrg);
+
+  console.log('Organizations after:', await getOrganizations());
 }
 
 main();

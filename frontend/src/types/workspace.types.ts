@@ -97,3 +97,7 @@ export interface SignInInput {
 export interface SignUpInput extends SignInInput {
     displayName: string;
 }
+
+export interface CreateOrganizationInput {
+    name: string;
+}

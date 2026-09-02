@@ -1,4 +1,4 @@
-// Browser Router, enables routing to the components inside it 
+// Browser Router, enables routing to the components inside it
 import { BrowserRouter, Navigate} from "react-router-dom"
 //Routes, to define different routes
 import { Routes, Route} from "react-router-dom"
@@ -13,6 +13,7 @@ import { ProtectedRoute } from "../components/ProtectedRoute";
 import { AnonymousRoute } from "../components/AnonymousRoute";
 //Custom hook to get the current user
 import { useCurrentUser } from "../hooks/useCurrentUser";
+import { OrganizationDetailPage } from "../pages/organizations/OrganizationDetailPage";
 
 //Root redirection
 function RootRedirect() {
@@ -29,20 +30,22 @@ export function AppRouter()
         <BrowserRouter>
             <Routes>
                 <Route path="/" element={<RootRedirect />} />
-                <Route path="/signin" 
+                <Route path="/signin"
                 element={<AnonymousRoute><AuthLayout><SignInPage /></AuthLayout></AnonymousRoute>} />
                 <Route path="/signup" element={
                     <AnonymousRoute>
                         <AuthLayout><SignUpPage /></AuthLayout>
                     </AnonymousRoute>
                 } />
-                <Route 
-                    path="/organizations" 
+                <Route
+                    path="/organizations"
                     element={
                         <ProtectedRoute>
                             <AppLayout><OrganizationsPage /></AppLayout>
                         </ProtectedRoute>
-                    } />
+                    }
+                />
+                <Route path="/organizations/:organizationId" element={<OrganizationDetailPage />} />
                 <Route path="*" element={<h1>404 Not Found</h1>}/>
             </Routes>
         </BrowserRouter>
