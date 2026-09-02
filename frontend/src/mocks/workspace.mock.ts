@@ -32,11 +32,6 @@ export const mockAccounts = [
     { userId: "user-dina", password: "password123" },
 ];
 
-// mock-session state used by auth.api.ts.
-export const mockSession: { currentUserId: string | null } = {
-    currentUserId: null,
-};
-
 export const mockOrganizations: Organization[] = [
     {
         id: "mockorganization",
@@ -64,14 +59,7 @@ export const mockOrganizations: Organization[] = [
         slug: "private-research",
     },
 ];
-/** We don't need this
-export const mockMembers: Member[] = [{
-    id: "user-1",
-    email: "mockdina@test.com",
-    name: "anid",
-    role: "ADMIN",
-}];
-*/
+
 
 export const mockMemberships: Membership[] = [
     {

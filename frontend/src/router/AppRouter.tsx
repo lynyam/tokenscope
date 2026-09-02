@@ -1,7 +1,5 @@
 // Browser Router, enables routing to the components inside it
-import { BrowserRouter, Navigate} from "react-router-dom"
-//Routes, to define different routes
-import { Routes, Route} from "react-router-dom"
+import { BrowserRouter, Navigate, Routes, Route, Outlet} from "react-router-dom"
 //Pages
 import { SignInPage} from "../pages/auth/SignInPage";
 import { SignUpPage} from "../pages/auth/SignUpPage";
@@ -41,25 +39,41 @@ export function AppRouter()
                     </AnonymousRoute>
                 } />
                 <Route
+                    element={
+                    <ProtectedRoute>
+                        <AppLayout>
+                        <Outlet />
+                        </AppLayout>
+                    </ProtectedRoute>
+                    }
+                >
+                    <Route
                     path="/organizations"
-                    element={
-                        <ProtectedRoute>
-                            <AppLayout><OrganizationsPage /></AppLayout>
-                        </ProtectedRoute>
-                    }
-                />
-                <Route path="/organizations/:organizationId" element={<OrganizationDetailPage />} />
-                <Route
+                    element={<OrganizationsPage />}
+                    />
+
+                    <Route
+                    path="/organizations/:organizationId"
+                    element={<OrganizationDetailPage />}
+                    />
+
+                    <Route
                     path="/organizations/:organizationId/members"
-                    element={
-                    <AppLayout>
-						<MembersPage />
-					</AppLayout>
-                    }
-                />
-                <Route path="/organizations/:organizationId/projects" element={<ProjectsPage />} />
-                <Route path="/organizations/:organizationId/projects/:projectId" element={<ProjectDetailPage />} />
-                <Route path="*" element={<h1>404 Not Found</h1>}/>
+                    element={<MembersPage />}
+                    />
+
+                    <Route
+                    path="/organizations/:organizationId/projects"
+                    element={<ProjectsPage />}
+                    />
+
+                    <Route
+                    path="/organizations/:organizationId/projects/:projectId"
+                    element={<ProjectDetailPage />}
+                    />
+                </Route>
+
+                <Route path="*" element={<h1>404 Not Found</h1>} />
             </Routes>
         </BrowserRouter>
     );

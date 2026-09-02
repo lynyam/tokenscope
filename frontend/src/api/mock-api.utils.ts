@@ -1,4 +1,4 @@
-import { mockSession } from "../mocks/workspace.mock";
+import { getMockSessionUserId, } from "./mock-session";
 
 const MOCK_API_DELAY_MS = 150;
 
@@ -49,12 +49,16 @@ export function cloneMockValue<T>(value: T): T {
  */
 
 
-/**TODO: change to localStorage if needed`, to be consistent  */
 export function requireAuthenticatedUserId(): string {
-  if (!mockSession.currentUserId) {
-    throw new MockApiError(401, "Authentication is required.");
+  const currentUserId = getMockSessionUserId();
+
+  if (!currentUserId) {
+    throw new MockApiError(
+      401,
+      "Authentication is required.",
+    );
   }
-  return mockSession.currentUserId;
+  return currentUserId;
 }
 
 /**

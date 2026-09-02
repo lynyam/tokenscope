@@ -1,9 +1,9 @@
-import { mockAccounts, mockSession, mockUsers,} from "../mocks/workspace.mock";
+import { mockAccounts, mockUsers,} from "../mocks/workspace.mock";
 import type { SignInInput, SignUpInput, User, } from "../types/workspace.types";
 import { cloneMockValue, MockApiError, waitForMockApi, } from "./mock-api.utils";
+import { getMockSessionUserId, setMockSessionUserId, } from "./mock-session";
 
 //local storage key
-const SESSION_STORAGE_KEY = "mockSession";
 const USERS_STORAGE_KEY = "mockUsersData";
 const ACCOUNTS_STORAGE_KEY = "mockAccountsData";
 
@@ -57,15 +57,17 @@ function persistAccounts(): void {
 
 export async function getCurrentUser(): Promise<User | null> {
   await waitForMockApi();
-  //+1
-  const currentUserId = localStorage.getItem(SESSION_STORAGE_KEY);
+  const currentUserId = getMockSessionUserId();
+
   if (!currentUserId) {
     return null;
   }
-  const user = users.find(({ id }) => id === currentUserId,);
+  const user = users.find(
+    ({ id }) => id === currentUserId,
+  );
+
   if (!user) {
-    //+2
-    localStorage.removeItem(SESSION_STORAGE_KEY);
+    setMockSessionUserId(null);
     return null;
   }
   return cloneMockValue(user);
@@ -96,7 +98,7 @@ export async function signIn(input: SignInInput): Promise<User> {
     throw new MockApiError(401, "Invalid email or password.");
   }
   //+!
-  localStorage.setItem(SESSION_STORAGE_KEY, user.id);
+  setMockSessionUserId(user.id);
   return cloneMockValue(user);
 }
 
@@ -141,7 +143,7 @@ export async function signUp(input: SignUpInput): Promise<User> {
   persistUsers();
   persistAccounts();
   // +1
-  localStorage.setItem(SESSION_STORAGE_KEY, user.id);
+  setMockSessionUserId(user.id);
   return cloneMockValue(user);
 }
 
@@ -153,5 +155,5 @@ export async function signUp(input: SignUpInput): Promise<User> {
  */
 export async function signOut(): Promise<void> {
   await waitForMockApi();
-  localStorage.removeItem(SESSION_STORAGE_KEY);
+  setMockSessionUserId(null);
 }
