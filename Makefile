@@ -2,6 +2,7 @@
 
 COMPOSE := docker compose
 BACKEND := backend
+FRONTEND := frontend
 DATABASE := postgres
 
 
@@ -64,6 +65,12 @@ db-studio:
 		npx prisma studio --browser none
 
 db-setup: db-generate db-migrate db-seed
+#frontend
+frontendcheck:
+	$(COMPOSE) exec $(FRONTEND) npm run check
+
+backeNDcheck:
+	$(COMPOSE) exec $(BACKEND) npm run check
 
 #CLEANUP
 
