@@ -37,3 +37,8 @@ command to set preset
     initialize a new shadcn app with this [preset code]
     3. 
     react bits landing page
+
+
+## Demo of use of shadcn
+
+https://www.youtube.com/watch?v=m-gIqQTHcAY
