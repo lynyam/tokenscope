@@ -1,4 +1,4 @@
-# M1 security — Authentication, authorization, and tenant isolation
+# M1 security: Authentication, authorization, and tenant isolation
 
 ## Purpose
 
@@ -117,8 +117,8 @@ logout endpoint that claims to revoke a token.
 ### Frontend token storage
 
 The current M1 bearer-token approach requires frontend storage across refresh.
-Store only the access token—never passwords, password hashes, or mock account
-records—and clear it on sign-out or unrecoverable authentication failure.
+Store only the access token; never passwords, password hashes, or mock account
+records; and clear it on sign-out or unrecoverable authentication failure.
 
 Browser storage is exposed to successful XSS. Short token lifetime, strict
 input/output handling, dependency review, and avoiding unsafe HTML reduce the

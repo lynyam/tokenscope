@@ -1,4 +1,4 @@
-# M1 data model — Identity and workspace
+# M1 data model - Identity and workspace
 
 ## Purpose
 
@@ -211,8 +211,8 @@ the organization exists without an owner must never be externally visible.
 M1 adds already-registered users by normalized email; invitation emails are out
 of scope. Membership removal deletes only the membership, not the global user.
 
-Multiple owners are allowed. An owner may remove or demote another owner—or
-themselves—only if at least one owner remains.
+Multiple owners are allowed. An owner may remove or demote another owner/or
+themselves only if at least one owner remains.
 
 ### Project archive
 
