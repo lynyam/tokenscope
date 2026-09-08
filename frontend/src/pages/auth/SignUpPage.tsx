@@ -2,6 +2,9 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuthContext } from "../../context/AuthContext";
+//Adding UI components 
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 interface SignUpFormData {
   email: string;
@@ -20,7 +23,6 @@ export function SignUpPage() {
   //to notify failures that can arise only from checking database via backend
   const [authError, setAuthError] = useState<string | null>(null);
 
-  //TODO: Can replace with mock types
   async function onSubmit(data: SignUpFormData) {
     setAuthError(null);
     try {

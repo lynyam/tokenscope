@@ -1,5 +1,12 @@
 # UI and UX Setup
 
+
+
+## Definitions
++ UI (User Interface) is what the user sees — the colors, fonts, buttons, inputs, and visual design configured by Tailwind and your shadcn preset.
+
++ UX (User Experience) is how the user feels using it — the ease, speed, and clarity of interacting with those styled components (e.g., a smooth login flow).
+
 ## Setup 
 
 ## 1. Configure TypeScript path
