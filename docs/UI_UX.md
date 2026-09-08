@@ -1,44 +1,59 @@
 # UI and UX Setup
 
-
 ## Setup 
 
-### Install Tailwind CSS
-shadcn is built on Tailwind utility classes, so Tailwind must exist in frontend/ first. For Vite: npm install tailwindcss @tailwindcss/vite, then add the Tailwind plugin to vite.config.js and import "tailwindcss" in your main CSS file.
+## 1. Configure TypeScript path
 
-## Configure TypeScript path
-shadcn components import each other using an alias like @/components/ui/button. Add "paths": { "@/*": ["./src/*"] } to frontend/tsconfig.json (and a matching resolve.alias entry in vite.config.js), or the CLI init will fail.
+Add "paths": { "@/*": ["./src/*"] } to frontend/tsconfig.json and a matching resolve.alias entry in vite.config.js. This is a hard prerequisite — with or without a preset, the CLI checks for it and fails init if it's missing
 
-## Run the shadcn init command
-From frontend/, run npx shadcn@latest init. It detects Vite + React + TS, asks the style/CSS-variable questions (this is likely what your screenshot shows), and creates components.json plus a src/lib/utils.ts helper.
+## 2. Install Tailwind CSS
+//TODO: rewrite instructios synthesize real processes.
 
-## Add components one at a time
-Run npx shadcn@latest add button input label form card etc. Each command copies the component's source into src/components/ui/. You own that code — no black-box npm package to upgrade later, just files you can edit.
+shadcn is built on Tailwind utility classes, so Tailwind must exist in frontend/ first. Utilitiy classes are defined in CSS, they serve to define different of the appeareance of the frontend. 
 
-## Wire components into existing pages
-Swap your plain <input>/<button> tags for the copied shadcn versions inside pages like SignInPage.tsx, keeping your react-hook-form logic untouched — shadcn's Input/Button are just styled wrappers around native elements.
+a. run:
+```bash
+    npm install tailwindcss @tailwindcss/vite
+```
+b. Add the Tailwind plugin to vite.config.js
+TODO: prompt file to see how to adapt to file and technology stack. 
 
-## Configuration 
-link to define preset(appeareance):
+c. Import "tailwindcss" in your main CSS file.
+TODO: define concretely with an example, probably in SignInForm. 
+
+
+## 3. Run the shadcn init command with appeareance config
+//TODO: rewrite instructios synthesize real processes.
+
+
+1. Define preset(appearence of web application)
+
+a. link to define preset(appeareance):
 https://ui.shadcn.com/create?preset=b1zfPaHfOq 
 
 
-chosen preset value:
+b. chosen preset value:
     --preset b1zfPaHfOq
 
-command to set preset
-    npx shadcn@rc init [preset value from generator]
+2. From frontend/, run 
+```bash
+npx shadcn@latest init --preset b1zfPaHfOq --template vite -b base
+```
+It detects Vite + React + TS, asks the style/CSS-variable questions, and creates components.json plus a src/lib/utils.ts helper.
 
 
-## Setting UI with agents
-    1.
-    npx skills add shadcn-ui/ui //check what this command does
-    2.  
-    initialize a new shadcn app with this [preset code]
-    3. 
-    react bits landing page
+## 4. Add components one at a time
+
+TODO: prompt gema, to define what is UI and Ui
+
+```bash
+npx shadcn@latest add button input label form card
+```
+Each pulls from the registry already styled according to your preset's CSS variables — you don't re-apply the preset per component
+
+TODO: create components table
 
 
-## Demo of use of shadcn
+## 5. Wire components into existing pages
 
-https://www.youtube.com/watch?v=m-gIqQTHcAY
+Swap your plain tags for the copied shadcn versions inside pages like SignInPage.tsx, keeping your react-hook-form logic untouched — shadcn's Input/Button are just styled wrappers around native elements.
