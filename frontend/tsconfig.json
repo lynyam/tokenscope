@@ -9,7 +9,17 @@
 		"lib": ["ES2022", "DOM", "DOM.Iterable"],
 		"skipLibCheck": true,
 		"isolatedModules": true,
-		"types": ["vite/client"]
+		"types": ["vite/client"],
+		// required root for "paths" below to resolve relative to
+		"baseUrl": ".", 
+		// tells TypeScript "@" means src/, matching the Vite alias
+		"paths": {
+			"@/*": ["./src/*"] 
+		}
 	},
 	"include": ["src"]
 }
+
+/*
+ * TypeScript configuration: paths make it type-check correctly in your editor (TypeScript knows what @ points to).
+ */

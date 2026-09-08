@@ -4,7 +4,12 @@
 
 ## 1. Configure TypeScript path
 
-Add "paths": { "@/*": ["./src/*"] } to frontend/tsconfig.json and a matching resolve.alias entry in vite.config.js. This is a hard prerequisite — with or without a preset, the CLI checks for it and fails init if it's missing
+Add "paths": 
+
+{ "@/*": ["./src/*"] }
+
+to frontend/tsconfig.json and a matching resolve.alias entry in vite.config.js. 
+This is a hard prerequisite — with or without a preset, the CLI checks for it and fails init if it's missing
 
 ## 2. Install Tailwind CSS
 //TODO: rewrite instructios synthesize real processes.
@@ -26,7 +31,7 @@ TODO: define concretely with an example, probably in SignInForm.
 //TODO: rewrite instructios synthesize real processes.
 
 
-1. Define preset(appearence of web application)
+1. Define preset(appearence of web application: colors, fonts and radius)
 
 a. link to define preset(appeareance):
 https://ui.shadcn.com/create?preset=b1zfPaHfOq 
@@ -57,3 +62,12 @@ TODO: create components table
 ## 5. Wire components into existing pages
 
 Swap your plain tags for the copied shadcn versions inside pages like SignInPage.tsx, keeping your react-hook-form logic untouched — shadcn's Input/Button are just styled wrappers around native elements.
+
+
+## 6. Present Change
+
+Eventually, when preset wants to be updated, use this command
+
+```bash
+npx shadcn@latest init --preset <new-code> --force --no-reinstall
+```
