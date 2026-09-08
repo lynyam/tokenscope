@@ -21,14 +21,15 @@ a. run:
     npm install tailwindcss @tailwindcss/vite
 ```
 b. Add the Tailwind plugin to vite.config.js
-TODO: prompt file to see how to adapt to file and technology stack. 
+TODO: remove/relocate this instruction
+
 
 c. Import "tailwindcss" in your main CSS file.
 TODO: define concretely with an example, probably in SignInForm. 
 
 
 ## 3. Run the shadcn init command with appeareance config
-//TODO: rewrite instructios synthesize real processes.
+//TODO: rewrite instructions synthesize real processes.
 
 
 1. Define preset(appearence of web application: colors, fonts and radius)
@@ -38,7 +39,9 @@ https://ui.shadcn.com/create?preset=b1zfPaHfOq
 
 
 b. chosen preset value:
+```bash
     --preset b1zfPaHfOq
+```
 
 2. From frontend/, run 
 ```bash
