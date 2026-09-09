@@ -82,6 +82,8 @@ Eventually, when preset wants to be updated, use this command
 npx shadcn@latest init --preset <new-code> --force --no-reinstall
 ```
 
+TODO: verify command, and file permissions in the project, could not change preset with this command 
+
 ## Notes:
 
 Claude conversation to have context:
