@@ -5,6 +5,7 @@ import { useAuthContext } from "../../context/AuthContext";
 //Adding UI components 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 interface SignUpFormData {
   email: string;
@@ -38,7 +39,7 @@ export function SignUpPage() {
       <h1>Sign up</h1>
 
       <div>
-        <label htmlFor="displayName">Name</label>
+        <Label htmlFor="displayName">Name</Label>
         <Input
           id="displayName"
           type="text"
@@ -51,7 +52,7 @@ export function SignUpPage() {
       </div>
 
       <div>
-        <label htmlFor="email">Email</label>
+        <Label htmlFor="email">Email</Label>
         <Input
           id="email"
           type="email"
@@ -64,7 +65,7 @@ export function SignUpPage() {
       </div>
 
       <div>
-        <label htmlFor="password">Password</label>
+        <Label htmlFor="password">Password</Label>
         <Input
           id="password"
           type="password"
