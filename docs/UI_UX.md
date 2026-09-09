@@ -81,3 +81,8 @@ Eventually, when preset wants to be updated, use this command
 ```bash
 npx shadcn@latest init --preset <new-code> --force --no-reinstall
 ```
+
+## Notes:
+
+Claude conversation to have context:
+https://claude.ai/share/c5e31bfe-ea22-47cd-8885-6d8bb26fbd55
