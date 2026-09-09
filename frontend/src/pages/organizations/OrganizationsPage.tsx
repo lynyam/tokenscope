@@ -2,6 +2,12 @@ import { useState, useEffect, type FormEvent  } from "react";
 import { getOrganizations, createOrganization } from "../../api/organizations.api";
 import type { OrganizationSummary } from "../../types/workspace.types";
 import { Link } from "react-router-dom";
+//Adding UI components 
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+
+
 
 export function OrganizationsPage() {
     const [organizations, setOrganizations] = useState<OrganizationSummary[]>([]);
@@ -51,8 +57,8 @@ export function OrganizationsPage() {
             <h1>Organizations</h1>
 
             <form onSubmit={handleCreate}>
-            <label htmlFor="org-name">Organization name </label>
-            <input
+            <Label htmlFor="org-name">Organization name </Label>
+            <Input
                 id="org-name"
                 value={newOrgName}
                 onChange={(e) => {
@@ -60,7 +66,7 @@ export function OrganizationsPage() {
                     setCreateError(null);
             }}
             />
-            <button type="submit">Create</button>
+            <Button type="submit">Create</Button>
             </form>
             {createError && <p>{createError}</p>}
             {organizations.length === 0 ? (
