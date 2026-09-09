@@ -6,7 +6,14 @@ import { useAuthContext } from "../../context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-
+// Card pieces
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  CardFooter,
+} from "@/components/ui/card";
 
 
 interface SignInFormData {
@@ -38,40 +45,55 @@ export function SignInPage()
         }
     }
 
-    return (
-    <form onSubmit={handleSubmit(onSubmit)}>
-        <h1>Sign In</h1>
+  return (
+    // NEW: Card is now the page's own box, matching SignUpPage's pattern.
+    // AuthLayout (the parent) only centers this on the page now.
+    <Card className="w-full max-w-sm">
+      <CardHeader>
+        <CardTitle>Sign In</CardTitle>
+      </CardHeader>
 
-            <div>
-                <Label htmlFor="email">Email</Label>
-                <Input 
-                    id="email"
-                    type ="email" 
-                    placeholder="member@example.com"
-                    {...register("email", { required: "Email is required"})}
-                />
-                {errors.email && (<span className="form-error">{errors.email.message}</span>)}
-            </div>
-            <div>
-                <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="**********"
-                  {...register("password", { required: "Password is required" })}
-                />
-                {errors.password && (
-                  <span className="form-error">{errors.password.message}</span>
-                )}
-            </div>
+      <form onSubmit={handleSubmit(onSubmit)}>
+        {/* NEW: CardContent groups the fields: email and password */}
+        <CardContent className="flex flex-col gap-4">
+          <div>
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
+              type="email"
+              placeholder="member@example.com"
+              {...register("email", { required: "Email is required" })}
+            />
+            {errors.email && (
+              <span className="form-error">{errors.email.message}</span>
+            )}
+          </div>
 
-        {authError && <span className="form-error">{authError}</span>}
-        <Button type="submit">Sign in</Button>
+          <div>
+            <Label htmlFor="password">Password</Label>
+            <Input
+              id="password"
+              type="password"
+              placeholder="**********"
+              {...register("password", { required: "Password is required" })}
+            />
+            {errors.password && (
+              <span className="form-error">{errors.password.message}</span>
+            )}
+          </div>
 
-        <p>
-          Don't have an account? <Link to="/signup">Create one</Link>
-        </p>
-    </form>
-    );
+          {authError && <span className="form-error">{authError}</span>}
+        </CardContent>
+
+        {/* NEW: CardFooter holds submit + sign-up link, same as SignUpPage */}
+        <CardFooter className="flex flex-col gap-3">
+          <Button type="submit" className="w-full">Sign in</Button>
+          <p className="text-sm">
+            Don't have an account? <Link to="/signup">Create one</Link>
+          </p>
+        </CardFooter>
+      </form>
+    </Card>
+  );
 }
 
