@@ -2,6 +2,11 @@ import { useState, FormEvent } from "react";
 import { useForm } from "react-hook-form";  //For form error handling 
 import { useNavigate, Link } from "react-router-dom" //For changing routes
 import { useAuthContext } from "../../context/AuthContext";
+//Adding UI components 
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+
 
 
 interface SignInFormData {
@@ -38,8 +43,8 @@ export function SignInPage()
         <h1>Sign In</h1>
 
             <div>
-                <label htmlFor="email">Email</label>
-                <input 
+                <Label htmlFor="email">Email</Label>
+                <Input 
                     id="email"
                     type ="email" 
                     placeholder="member@example.com"
@@ -48,8 +53,8 @@ export function SignInPage()
                 {errors.email && (<span className="form-error">{errors.email.message}</span>)}
             </div>
             <div>
-                <label htmlFor="password">Password</label>
-                <input
+                <Label htmlFor="password">Password</Label>
+                <Input
                   id="password"
                   type="password"
                   placeholder="**********"
@@ -61,7 +66,7 @@ export function SignInPage()
             </div>
 
         {authError && <span className="form-error">{authError}</span>}
-        <button type="submit">Sign in</button>
+        <Button type="submit">Sign in</Button>
 
         <p>
           Don't have an account? <Link to="/signup">Create one</Link>
