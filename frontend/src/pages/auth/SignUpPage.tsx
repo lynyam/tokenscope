@@ -39,7 +39,7 @@ export function SignUpPage() {
 
       <div>
         <label htmlFor="displayName">Name</label>
-        <input
+        <Input
           id="displayName"
           type="text"
           placeholder="Pepito Perez"
@@ -52,7 +52,7 @@ export function SignUpPage() {
 
       <div>
         <label htmlFor="email">Email</label>
-        <input
+        <Input
           id="email"
           type="email"
           placeholder="member@example.com"
@@ -65,7 +65,7 @@ export function SignUpPage() {
 
       <div>
         <label htmlFor="password">Password</label>
-        <input
+        <Input
           id="password"
           type="password"
           placeholder="**********"
@@ -80,7 +80,7 @@ export function SignUpPage() {
       </div>
 
       {authError && <span className="form-error">{authError}</span>}
-      <button type="submit">Create account</button>
+      <Button type="submit">Create account</Button>
 
       <p>
         Already have an account? <Link to="/signin">Sign in</Link>
