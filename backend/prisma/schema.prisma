@@ -5,7 +5,8 @@ datasource db {
 generator client {
   provider            = "prisma-client"
   output              = "../src/generated/prisma"
-  importFileExtension = "ts"
+  moduleFormat        = "cjs"
+  importFileExtension = ""
 }
 
 enum MembershipRole {

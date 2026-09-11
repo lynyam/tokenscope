@@ -59,6 +59,11 @@ The backend accepts an optional `X-Request-Id` header. If it is absent or
 invalid, the backend generates one. Every response returns the effective value
 in `X-Request-Id`, and every error body includes `requestId`.
 
+>A supplied request ID must be a single value containing 1–128 ASCII
+>letters, digits, `.`, `_`, `:`, or `-`. Missing or invalid values are
+>replaced with a generated UUID. Request IDs are diagnostic metadata
+>and do not grant authorization.
+
 ### Ordering
 
 M1 list endpoints return records ordered by `createdAt` ascending and then
@@ -196,7 +201,7 @@ Response — `200 OK`:
 ```
 
 If PostgreSQL is unavailable, return `503 Service Unavailable` using the
-standard error format.
+standard error format, with the message `Database is unavailable.`.
 
 ## Authentication
 
@@ -589,7 +594,7 @@ Validation errors add field details:
   "requestId": "req_01J6Y7CQB56W7YZT68Q5YMG9T3"
 }
 ```
-
+### Default code table
 | Status | Meaning |
 |---:|---|
 | `400` | Body, route parameter, or query validation failed |
@@ -600,8 +605,33 @@ Validation errors add field details:
 | `500` | Unexpected server failure; internal details are not exposed |
 | `503` | A required dependency such as PostgreSQL is unavailable |
 
-The backend logs the full internal error with `requestId`; responses never
-include stack traces, SQL, Prisma errors, tokens, hashes, or passwords.
+Backend application error logs contain the request ID, HTTP method,
+matched route template, status code, and application error code.
+Unmatched routes are logged as <unmatched>.
+
+Responses and application logs never include raw exception objects,
+stack traces, SQL, database-driver messages, request bodies,
+Authorization headers, passwords, hashes, tokens, or secrets.
+
+| HTTP status | Default application code  |
+| ----------- | ------------------------- |
+| 400         | `VALIDATION_ERROR`        |
+| 401         | `AUTHENTICATION_REQUIRED` |
+| 403         | `FORBIDDEN`               |
+| 404         | `NOT_FOUND`               |
+| 409         | `CONFLICT`                |
+| 413         | `PAYLOAD_TOO_LARGE`       |
+| 415         | `UNSUPPORTED_MEDIA_TYPE`  |
+| 500         | `INTERNAL_SERVER_ERROR`   |
+| 503         | `SERVICE_UNAVAILABLE`     |
+
+Explicit application exceptions use the more specific codes documented
+for each endpoint. Every 500 response uses the generic
+INTERNAL_SERVER_ERROR code and message.
+
+Other recognized HTTP errors retain their status and receive a generic
+HTTP_ERROR code for 4xx responses or INTERNAL_SERVER_ERROR for 5xx
+responses. Unexpected non-HTTP exceptions return 500.
 
 ## Frontend integration requirements
 
