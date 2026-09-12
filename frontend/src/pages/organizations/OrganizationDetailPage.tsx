@@ -71,25 +71,21 @@ export function OrganizationDetailPage() {
                 </div>
             </Card>
             <div className="grid grid-cols-2 gap-3 mb-6 max-w-md mx-auto ">
-                <Button asChild variant="default" className="rounded-lg normal-case">
-                    <Link to={`/organizations/${organizationId}/projects`} className="flex items-center justify-center gap-2">
+                <Link
+                    to={`/organizations/${organizationId}/projects`}
+                    className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/80 h-10 px-6 text-sm font-medium normal-case transition-all"
+                    >
                         <Folder className="h-4 w-4" />
                         Projects
                     </Link>
-                    </Button>
-                    <Button asChild variant="default" className="rounded-lg normal-case">
-                    <Link to={`/organizations/${organizationId}/members`} className="flex items-center justify-center gap-2">
+                    <Link
+                        to={`/organizations/${organizationId}/members`}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/80 h-10 px-6 text-sm font-medium normal-case transition-all"
+                        >
                         <Users className="h-4 w-4" />
                         Members
                     </Link>
-                </Button>
-            </div>
-            {/* <p>
-                <Link to={`/organizations/${organizationId}/projects`}>Projects</Link>
-            </p>
-            <p>
-                <Link to={`/organizations/${organizationId}/members`}>Members</Link>
-            </p> */}
+                </div>
         </div>
     );
 }
