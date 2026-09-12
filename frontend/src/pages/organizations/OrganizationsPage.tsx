@@ -47,7 +47,7 @@ export function OrganizationsPage() {
                 setNewOrgName("");
             })
             .catch((err) => {
-                setCreateError(err instanceof Error ? err.message : "Failed to create organization.");
+                toast.error(err instanceof Error ? err.message : "Failed to create organization.");
             });
     }
     if (loadError) {
