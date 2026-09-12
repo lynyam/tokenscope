@@ -3,6 +3,9 @@ import { useEffect, useState } from "react";
 import { getOrganization } from "../../api/organizations.api";
 import type { OrganizationSummary } from "../../types/workspace.types";
 import { Link } from "react-router-dom"
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Folder, Users } from "lucide-react";
 
 export function OrganizationDetailPage() {
     const { organizationId } = useParams();
@@ -52,16 +55,41 @@ export function OrganizationDetailPage() {
     }
     return (
         <div>
-            <h1>Detail of {organizationId}</h1>
-            <p>
+            <h1 className="mb-6 text-2xl font-bold max-w-md mx-auto" >Detail of {organizationId}</h1>
+            <Card className="mb-6 max-w-md mx-auto rounded-lg px-8">
+                <div className="flex justify-between py-2 border-b">
+                    <span className="text-sm text-muted-foreground">Name</span>
+                    <span className="text-sm font-medium">{organization.name}</span>
+                </div>
+                <div className="flex justify-between py-2 border-b">
+                    <span className="text-sm text-muted-foreground">Slug</span>
+                    <span className="text-sm font-medium">{organization.slug}</span>
+                </div>
+                <div className="flex justify-between py-2 border-b">
+                    <span className="text-sm text-muted-foreground">Your role</span>
+                    <span className="text-sm font-medium">{organization.currentUserRole}</span>
+                </div>
+            </Card>
+            <div className="grid grid-cols-2 gap-3 mb-6 max-w-md mx-auto ">
+                <Button asChild variant="default" className="rounded-lg normal-case">
+                    <Link to={`/organizations/${organizationId}/projects`} className="flex items-center justify-center gap-2">
+                        <Folder className="h-4 w-4" />
+                        Projects
+                    </Link>
+                    </Button>
+                    <Button asChild variant="default" className="rounded-lg normal-case">
+                    <Link to={`/organizations/${organizationId}/members`} className="flex items-center justify-center gap-2">
+                        <Users className="h-4 w-4" />
+                        Members
+                    </Link>
+                </Button>
+            </div>
+            {/* <p>
                 <Link to={`/organizations/${organizationId}/projects`}>Projects</Link>
             </p>
             <p>
                 <Link to={`/organizations/${organizationId}/members`}>Members</Link>
-            </p>
-            <p>Name: {organization.name}</p>
-            <p>Slug: {organization.slug}</p>
-            <p>Your role: {organization.currentUserRole}</p>
+            </p> */}
         </div>
     );
 }

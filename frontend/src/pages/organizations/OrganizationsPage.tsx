@@ -2,7 +2,6 @@ import { useState, useEffect, type FormEvent  } from "react";
 import { getOrganizations, createOrganization } from "../../api/organizations.api";
 import type { OrganizationSummary } from "../../types/workspace.types";
 import { Link } from "react-router-dom";
-//Adding UI components 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,7 +9,6 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
-
 
 
 export function OrganizationsPage() {
@@ -53,7 +51,7 @@ export function OrganizationsPage() {
     if (loadError) {
         return <p>{loadError}</p>;
     }
-if (isLoading) {
+    if (isLoading) {
         return (
             <>
             <Skeleton className="h-8 w-48 mx-auto mb-6" />
@@ -91,7 +89,6 @@ if (isLoading) {
             </form>
         </CardContent>
         </Card>
-
         {organizations.length === 0 ? (
         <p className="text-muted-foreground max-w-md mx-auto">No organizations yet.</p>
         ) : (
