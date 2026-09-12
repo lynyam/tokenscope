@@ -113,18 +113,18 @@ export function OrganizationDetailPage() {
                 <Link
                     to={`/organizations/${organizationId}/projects`}
                     className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/80 h-10 px-6 text-sm font-medium normal-case transition-all"
-                    >
-                        <Folder className="h-4 w-4" />
-                        Projects
-                    </Link>
-                    <Link
-                        to={`/organizations/${organizationId}/members`}
-                        className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/80 h-10 px-6 text-sm font-medium normal-case transition-all"
-                        >
-                        <Users className="h-4 w-4" />
-                        Members
-                    </Link>
-                </div>
+                >
+                <Folder className="h-4 w-4" />
+                    Projects
+                </Link>
+                <Link
+                    to={`/organizations/${organizationId}/members`}
+                    className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/80 h-10 px-6 text-sm font-medium normal-case transition-all"
+                >
+                <Users className="h-4 w-4" />
+                    Members
+                </Link>
+            </div>
         </div>
     );
 }

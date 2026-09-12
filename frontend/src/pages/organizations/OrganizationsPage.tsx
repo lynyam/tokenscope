@@ -73,19 +73,19 @@ export function OrganizationsPage() {
         </CardHeader>
         <CardContent>
             <form onSubmit={handleCreate} className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1.5">
-                <Label htmlFor="org-name">Organization name</Label>
-                <Input
-                id="org-name"
-                value={newOrgName}
-                onChange={(e) => {
-                    setNewOrgName(e.target.value);
-                    setCreateError(null);
-                }}
-                />
-            </div>
-            <Button className="rounded-lg" type="submit">Create</Button>
-            {createError && <p className="text-sm text-destructive">{createError}</p>}
+                <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="org-name">Organization name</Label>
+                    <Input
+                    id="org-name"
+                    value={newOrgName}
+                    onChange={(e) => {
+                        setNewOrgName(e.target.value);
+                        setCreateError(null);
+                    }}
+                    />
+                </div>
+                <Button className="rounded-lg" type="submit">Create</Button>
+                {createError && <p className="text-sm text-destructive">{createError}</p>}
             </form>
         </CardContent>
         </Card>
