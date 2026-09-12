@@ -3,9 +3,9 @@ import { useEffect, useState } from "react";
 import { getOrganization } from "../../api/organizations.api";
 import type { OrganizationSummary } from "../../types/workspace.types";
 import { Link } from "react-router-dom"
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Folder, Users } from "lucide-react";
+import { Card } from "@/components/ui/card";
+import { Folder, Users, FolderX, ArrowLeft } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export function OrganizationDetailPage() {
     const { organizationId } = useParams();
@@ -42,16 +42,55 @@ export function OrganizationDetailPage() {
             };
     }, [organizationId]);
     if (!organizationId) {
-        return <p>Missing organization.</p>
+        return (
+            <div className="flex h-full flex-col items-center justify-center gap-1 text-center mb-6 ">
+                <FolderX className="h-12 w-12 text-muted-foreground" />
+                <p className="mt-4 text-xl font-semibold">Organization not found</p>
+                <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+                    This organization doesn't exist or you don't have access to it.
+                </p>
+                <Link
+                    to="/organizations"
+                    className="mt-5 inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-transparent hover:bg-muted h-10 px-6 text-sm font-medium normal-case transition-all"
+                >
+                <ArrowLeft className="h-4 w-4" />
+                    Back to organizations
+                </Link>
+            </div>
+        );
     }
     if (isLoading) {
-        return <p>Loading...</p>;
+        return (
+            <>
+            <Skeleton className="h-8 w-48 mx-auto mb-6" />
+                <div className="flex flex-col gap-2 max-w-md mx-auto">
+                    {Array.from({ length: 5 }).map((_, index) => (
+                    <Skeleton key={index} className="h-16 w-full" />
+                    ))}
+                </div>
+            </>
+        );
+    }
+    if (!organization) {
+        return (
+            <div className="flex h-full flex-col items-center justify-center gap-1 text-center mb-6 ">
+                <FolderX className="h-12 w-12 text-muted-foreground" />
+                <p className="mt-4 text-xl font-semibold">Organization not found</p>
+                <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+                    This organization doesn't exist or you don't have access to it.
+                </p>
+                <Link
+                    to="/organizations"
+                    className="mt-5 inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-transparent hover:bg-muted h-10 px-6 text-sm font-medium normal-case transition-all"
+                >
+                <ArrowLeft className="h-4 w-4" />
+                    Back to organizations
+                </Link>
+            </div>
+        );
     }
     if (error) {
         return <p>{error}</p>;
-    }
-    if (!organization) {
-        return <p>Organization not found.</p>;
     }
     return (
         <div>
