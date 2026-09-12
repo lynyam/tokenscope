@@ -69,7 +69,7 @@ if (isLoading) {
     <>
         <h1 className="mb-6 text-2xl font-bold max-w-md mx-auto">Organizations</h1>
 
-        <Card className="mb-6 max-w-md mx-auto">
+        <Card className="mb-6 max-w-md mx-auto rounded-lg">
         <CardHeader>
             <CardTitle>Create an organization</CardTitle>
         </CardHeader>
@@ -86,7 +86,7 @@ if (isLoading) {
                 }}
                 />
             </div>
-            <Button type="submit">Create</Button>
+            <Button className="rounded-lg" type="submit">Create</Button>
             {createError && <p className="text-sm text-destructive">{createError}</p>}
             </form>
         </CardContent>
