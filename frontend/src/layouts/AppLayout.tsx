@@ -5,9 +5,9 @@ import { Topbar } from "../components/Topbar";
 export function AppLayout({ children }: { children: ReactNode }) {
   return (
     <div className="app-shell">
+      <Topbar />
       <Sidebar />
       <div className="main-area">
-        <Topbar />
         <main className="page-content">
           {children}
         </main>

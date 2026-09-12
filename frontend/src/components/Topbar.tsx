@@ -12,9 +12,8 @@ export function Topbar() {
   }
 
   return (
-    <header className="topbar">
-      <span>{user?.displayName}</span>
-      <button onClick={handleLogout}>Log out</button>
+    <header className="flex items-center h-14 border-b px-6">
+      <span className="text-lg font-semibold">TokenScope</span>
     </header>
   );
 }
