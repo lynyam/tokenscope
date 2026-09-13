@@ -1,4 +1,4 @@
-import { HttpStatus, Injectable, ServiceUnavailableException } from "@nestjs/common";
+import { HttpStatus, Injectable, } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
 import { ApiException } from "../common/errors/api.exception";
 
