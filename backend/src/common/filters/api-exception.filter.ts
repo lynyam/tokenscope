@@ -9,6 +9,7 @@ import { ApiException } from "../errors/api.exception";
 import { REQUEST_ID_HEADER } from "../constants/http.constants"
 import type { ApiErrorResponse } from "../types/api-error";
 import type { RequestWithRequestId } from "../types/request-with-request-id";
+import { requestLogContext } from "../logging/request-log-context";
 
 type PublicError = Pick<ApiErrorResponse, "code" | "message">;
 
@@ -92,12 +93,9 @@ export class ApiExceptionFilter implements ExceptionFilter {
 			}));
 		}
 
-		const route: unknown = request.route?.path;
 		const log = JSON.stringify({
 			event: "request_failed",
-			requestId,
-			method: request.method,
-			route: typeof route === "string" ? route : "<unmatched>",
+			...requestLogContext(request),
 			statusCode,
 			code: body.code,
 		});
