@@ -169,6 +169,39 @@ src/
       slug.ts
 ```
 
+### Shared backend foundation after TSE-49
+
+```text
+AppModule
+├── ConfigurationModule
+├── DatabaseModule
+│   └── PrismaService
+└── HealthModule
+
+configureApp()
+├── /api/v1 global prefix
+├── request-ID middleware
+├── safe request logging
+├── global ValidationPipe
+└── global API exception filter
+
+The backend now provides:
+
+- validated startup configuration;
+- one shared Prisma service with NestJS lifecycle management;
+- /api/v1 as the public API prefix;
+- global DTO and UUID validation;
+- X-Request-Id generation and propagation;
+- one stable API error contract;
+- safe request/error logging;
+- public liveness and database-readiness endpoints;
+- one reusable application bootstrap for production and E2E tests;
+- isolated backend unit, E2E, and PostgreSQL integration testing.
+
+Domain modules added after this foundation reuse these facilities rather than
+creating their own Prisma clients, validation configuration, request-ID
+handling, or exception contracts.
+
 Exact filenames may change during implementation, but module ownership and
 dependency direction must remain stable.
 
