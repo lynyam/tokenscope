@@ -14,7 +14,7 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="flex h-screen w-56 flex-col justify-between border-r p-4">
+    <aside className="flex h-full w-56 flex-col justify-between border-r p-4">
       <div className="flex flex-col gap-4">
         <nav className="flex flex-col gap-1">
           <Link to="/organizations" className="rounded-md px-3 py-2 text-sm font-medium bg-muted">
