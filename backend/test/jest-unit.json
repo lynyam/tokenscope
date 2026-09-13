@@ -2,10 +2,7 @@
   "moduleFileExtensions": ["js", "json", "ts"],
   "rootDir": "..",
   "testEnvironment": "node",
-  "testRegex": "test/database/.*\\.integration\\.spec\\.ts$",
-  "setupFiles": [
-    "<rootDir>/test/support/require-test-database.ts"
-  ],
+  "testRegex": "test/.*\\.unit\\.spec\\.ts$",
   "transform": {
     "^.+\\.ts$": [
       "ts-jest",
