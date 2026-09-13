@@ -69,7 +69,7 @@ db-setup: db-generate db-migrate db-seed
 frontendcheck:
 	$(COMPOSE) exec $(FRONTEND) npm run check
 
-backeNDcheck:
+backendcheck:
 	$(COMPOSE) exec $(BACKEND) npm run check
 
 #CLEANUP

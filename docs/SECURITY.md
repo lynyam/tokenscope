@@ -344,6 +344,18 @@ minimum:
 - never spread an unvalidated request body directly into a Prisma `data`
   object.
 
+Controllers use decorated DTO classes imported as runtime values.
+DTO properties require validation decorators to be accepted.
+
+The global pipe creates DTO instances with implicit property-type
+conversion disabled. Validation errors expose only field names and
+safe messages; submitted values and validated objects are omitted.
+Custom validation messages must not interpolate sensitive values.
+
+UUID route parameters use the shared @UuidParam decorator.
+Malformed UUIDs return 400 VALIDATION_ERROR before the controller runs.
+Resource existence and authorization are checked separately.
+
 ## Safe output
 
 Use explicit response mappers/selection. Do not serialize Prisma entities
@@ -374,6 +386,24 @@ The API error format is defined in [`API.md`](./API.md#error-contract).
 - Log enough context to diagnose the failure: request ID, route, method,
   authenticated user ID when known, and safe resource IDs.
 - Redact Authorization, password, password hash, and secret fields.
+
+Request completion logs contain the effective request ID, HTTP method,
+matched route template, final HTTP status, and duration in milliseconds.
+
+Resource IDs are selected from explicitly allowed route parameters and
+included only when they are well-formed UUIDs. These IDs are diagnostic
+context and do not establish authorization.
+
+Unmatched routes are logged as `<unmatched>`. Request bodies, raw URLs,
+query strings, authorization headers, and arbitrary route values are
+omitted.
+
+The exception filter additionally emits a `request_failed` event with
+the HTTP status and stable application error code. Raw exception
+objects, SQL, Prisma error details, and stack traces are omitted.
+
+Seed execution logs selected identifiers on success and fixed messages
+on failure. It never logs complete database records or password hashes.
 
 ## Required security tests
 

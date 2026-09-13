@@ -594,6 +594,11 @@ Validation errors add field details:
   "requestId": "req_01J6Y7CQB56W7YZT68Q5YMG9T3"
 }
 ```
+
+Nested validation fields use dot-separated paths, such as child.name.
+Validation errors that cannot identify a field use body.
+Details contain only field and messages.
+
 ### Default code table
 | Status | Meaning |
 |---:|---|
