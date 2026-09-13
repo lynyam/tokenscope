@@ -35,12 +35,12 @@ services:
     ports:
      - 51212:51212
     environment:
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: "${POSTGRES_USER}"
-      DB_PASSWORD: "${POSTGRES_PASSWORD}"
-      DB_NAME: "${POSTGRES_DB}"
-      DATABASE_URL: ${DATABASE_URL}
+      BACKEND_PORT: "${BACKEND_PORT}"
+      DATABASE_URL: "${DATABASE_URL}"
+      JWT_SECRET: "${JWT_SECRET}"
+      JWT_ISSUER: "${JWT_ISSUER}"
+      JWT_AUDIENCE: "${JWT_AUDIENCE}"
+      JWT_ACCESS_TTL_SECONDS: "${JWT_ACCESS_TTL_SECONDS}"
     depends_on:
      postgres:
       condition: service_healthy
