@@ -4,11 +4,11 @@ import { Topbar } from "../components/Topbar";
 
 export function AppLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="app-shell">
+    <div className="flex h-screen flex-col">
       <Topbar />
-      <Sidebar />
-      <div className="main-area">
-        <main className="page-content">
+      <div className="flex flex-1 overflow-hidden">
+        <Sidebar />
+        <main className="flex-1 overflow-y-auto p-6">
           {children}
         </main>
       </div>
