@@ -171,7 +171,7 @@ assertOrganizationMember(
 assertOrganizationRole(
   userId: string,
   organizationId: string,
-  allowedRoles: MembershipRole[],
+  allowedRoles: readonly MembershipRole[],
 ): Promise<Membership>
 ```
 
@@ -180,7 +180,7 @@ assertProjectAccess(
   userId: string,
   organizationId: string,
   projectId: string,
-  allowedRoles: MembershipRole[],
+  allowedRoles: readonly MembershipRole[],
 ): Promise<Project>
 ```
 
@@ -193,6 +193,70 @@ Recommended ownership:
 
 Controllers pass the authenticated user ID and validated route IDs to services.
 Controllers do not decide roles and do not call Prisma.
+
+### Implemented helper contract
+
+`MembershipsModule` exports `OrganizationAccessService`, which implements
+`assertOrganizationMember` and `assertOrganizationRole`.
+`ProjectsModule` imports `MembershipsModule` and exports `ProjectAccessService`,
+which implements `assertProjectAccess`. Both use the shared `PrismaService`.
+
+Domain services pass the acting user ID from verified authentication and
+validated organization/project route IDs. The target user of a membership
+mutation is distinct from its acting user. Allowed roles are selected by
+backend policy, never by request input or JWT role claims.
+
+Each call reads current membership data from PostgreSQL. A helper returns a
+selected record or throws; its result does not replace a domain response mapper.
+
+Organization checks return `404 ORGANIZATION_NOT_FOUND` for absent membership,
+then `403 INSUFFICIENT_ORGANIZATION_ROLE` for a known member lacking permission.
+Project access performs the organization role check first. It converts only
+`ORGANIZATION_NOT_FOUND` into `PROJECT_NOT_FOUND`; it preserves role errors.
+Thus a known member lacking mutation privileges receives `403` before the
+project lookup, even when the project ID would also fail that lookup.
+
+The project query includes project ID, route organization ID, active state,
+and membership of the same acting user with an allowed role. It returns
+`404 PROJECT_NOT_FOUND` when no row matches, including when it observes a
+membership removal or disallowed role change committed between the two checks.
+Unexpected database failures propagate to the shared filter as safe `500`
+responses; they must not be disguised as missing resources.
+
+Helpers perform reads. Subsequent mutations must preserve tenant, active-state,
+and acting-user role predicates in the write or an equivalent concurrency-safe
+transaction. A successful helper call does not authorize an unrestricted later
+write. TSE-40 separately owns transactional last-owner protection.
+
+TSE-42 delivers exported helpers, tests, and this calling contract. TSE-39,
+TSE-40, and TSE-41 must adopt the helpers and verify real endpoint behavior:
+
+| Operation | Required authorization |
+|---|---|
+| Organization creation | Authenticated user; atomic initial OWNER creation |
+| Organization list | Query through the acting user's memberships |
+| Organization detail / membership list | `assertOrganizationMember` |
+| Organization rename / membership mutations | `assertOrganizationRole` with OWNER |
+| Project list | Membership check plus organization, active-state and user scope |
+| Project creation | `assertOrganizationRole` with OWNER and ADMIN |
+| Project detail | `assertProjectAccess` with OWNER, ADMIN and MEMBER |
+| Project update / archive | `assertProjectAccess` with OWNER and ADMIN |
+
+DTOs accept only the fields documented for the operation. A rename cannot
+supply the acting user, organization, slug, archive timestamp, or role policy.
+A membership DTO's role is the requested target role, not the caller's authority.
+Construct Prisma write data explicitly from validated fields.
+
+Verification uses `make test-backend`:
+
+- `test/database/tenant-authorization.integration.spec.ts` proves the helpers'
+  tenant, role, archive, fresh-membership, and selected-output behavior against
+  guarded, isolated PostgreSQL.
+- `test/authorization/tenant-authorization.e2e-spec.ts` uses the real helpers,
+  `configureApp`, and substituted Prisma results to prove HTTP error contracts,
+  request IDs, safe failures, and rejection of protected rename fields.
+- HTTP probe controllers and their fixed actor exist only in tests. JWT
+  authentication and real domain endpoint adoption remain downstream duties.
 
 ## Tenant isolation
 

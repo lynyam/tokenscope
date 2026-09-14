@@ -184,6 +184,7 @@ configureApp()
 ├── safe request logging
 ├── global ValidationPipe
 └── global API exception filter
+```
 
 The backend now provides:
 
@@ -204,6 +205,23 @@ handling, or exception contracts.
 
 Exact filenames may change during implementation, but module ownership and
 dependency direction must remain stable.
+
+### Authorization services after TSE-42
+
+`MembershipsModule` imports `DatabaseModule` and exports
+`OrganizationAccessService`. `ProjectsModule` imports `DatabaseModule` and
+`MembershipsModule`, then exports `ProjectAccessService`. `AppModule` imports
+both domain modules.
+
+A consuming module imports the module exporting the helper; it does not
+redeclare the helper provider. For example, `OrganizationsModule` imports
+`MembershipsModule` so `OrganizationsService` can inject
+`OrganizationAccessService`.
+
+TSE-39, TSE-40, and TSE-41 must adopt these helpers in their business services
+and verify real endpoints with TSE-38's authenticated caller context.
+See the [implemented helper contract](./SECURITY.md#implemented-helper-contract)
+for trusted inputs, role policy, error order, and mutation requirements.
 
 ## Dependency rules
 
