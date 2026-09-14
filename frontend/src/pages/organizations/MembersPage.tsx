@@ -7,6 +7,10 @@ import { MockApiError } from "../../api/mock-api.utils";
 
 import { AddMemberForm } from "./AddMemberForm";
 import { MembersTable } from "./MembersTable";
+import { FolderX, ArrowLeft } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Link } from "react-router-dom";
+import { CircleAlert } from "lucide-react";
 
 type RequestStatus = "loading" | "success" | "error";
 
@@ -45,16 +49,66 @@ export function MembersPage() {
   }, [organizationId]);
 
   if (!organizationId) {
-    return <p>Missing organization</p>;
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-1 text-center mb-6">
+        <FolderX className="h-12 w-12 text-muted-foreground" />
+        <p className="mt-4 text-xl font-semibold">Missing organization</p>
+        <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+          No organization was specified in the URL.
+        </p>
+        <Link
+          to="/organizations"
+          className="mt-5 inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-transparent hover:bg-muted h-10 px-6 text-sm font-medium normal-case transition-all"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to organizations
+        </Link>
+      </div>
+    );
   }
+
   if (requestStatus === "loading") {
-    return <p>Loading...</p>;
+    return (
+      <>
+        <Skeleton className="h-8 w-48 mx-auto mb-6" />
+        <div className="flex flex-col gap-2">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <Skeleton key={index} className="h-16 w-full" />
+          ))}
+        </div>
+      </>
+    );
   }
+
   if (requestStatus === "error") {
-    return <p>{loadError?.message ?? "Unable to load members."}</p>;
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-1 text-center mb-6">
+        <CircleAlert className="h-12 w-12 text-muted-foreground" />
+        <p className="mt-4 text-xl font-semibold">Something went wrong</p>
+        <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+          {loadError?.message ?? "Unable to load members."}
+        </p>
+        <Link
+          to="/organizations"
+          className="mt-5 inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-transparent hover:bg-muted h-10 px-6 text-sm font-medium normal-case transition-all"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to organizations
+        </Link>
+      </div>
+    );
   }
+
   if (!membershipData) {
-    return <p>Membership data is unavailable.</p>;
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-1 text-center mb-6">
+        <FolderX className="h-12 w-12 text-muted-foreground" />
+        <p className="mt-4 text-xl font-semibold">No data available</p>
+        <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+          Membership data is unavailable.
+        </p>
+      </div>
+    );
   }
   const canManageMembers = membershipData.currentUserRole === "OWNER";
   return (
@@ -64,12 +118,13 @@ export function MembersPage() {
         {canManageMembers && <AddMemberForm />}
       </div>
       <p className="text-sm text-muted-foreground">
-        {membershipData.memberships.length} people have access to this organization
+        {membershipData.memberships.length} people have access to this
+        organization
       </p>
       {membershipData.memberships.length === 0 ? (
         <p>No member yet.</p>
       ) : (
-        <MembersTable 
+        <MembersTable
           memberships={membershipData.memberships}
           canManageMembers={canManageMembers}
         />
