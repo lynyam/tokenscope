@@ -169,8 +169,59 @@ src/
       slug.ts
 ```
 
+### Shared backend foundation after TSE-49
+
+```text
+AppModule
+├── ConfigurationModule
+├── DatabaseModule
+│   └── PrismaService
+└── HealthModule
+
+configureApp()
+├── /api/v1 global prefix
+├── request-ID middleware
+├── safe request logging
+├── global ValidationPipe
+└── global API exception filter
+```
+
+The backend now provides:
+
+- validated startup configuration;
+- one shared Prisma service with NestJS lifecycle management;
+- /api/v1 as the public API prefix;
+- global DTO and UUID validation;
+- X-Request-Id generation and propagation;
+- one stable API error contract;
+- safe request/error logging;
+- public liveness and database-readiness endpoints;
+- one reusable application bootstrap for production and E2E tests;
+- isolated backend unit, E2E, and PostgreSQL integration testing.
+
+Domain modules added after this foundation reuse these facilities rather than
+creating their own Prisma clients, validation configuration, request-ID
+handling, or exception contracts.
+
 Exact filenames may change during implementation, but module ownership and
 dependency direction must remain stable.
+
+### Authorization services after TSE-42
+
+`MembershipsModule` imports `DatabaseModule` and exports
+`OrganizationAccessService`. `ProjectsModule` imports `DatabaseModule` and
+`MembershipsModule`, then exports `ProjectAccessService`. `AppModule` imports
+both domain modules.
+
+A consuming module imports the module exporting the helper; it does not
+redeclare the helper provider. For example, `OrganizationsModule` imports
+`MembershipsModule` so `OrganizationsService` can inject
+`OrganizationAccessService`.
+
+TSE-39, TSE-40, and TSE-41 must adopt these helpers in their business services
+and verify real endpoints with TSE-38's authenticated caller context.
+See the [implemented helper contract](./SECURITY.md#implemented-helper-contract)
+for trusted inputs, role policy, error order, and mutation requirements.
 
 ## Dependency rules
 
