@@ -1,7 +1,7 @@
 require('dotenv').config();
 const jwt = require('jsonwebtoken');
 
-const payload = { sub: "cd939e51-29c7-4140-9a6a-301bf65c5fa7" };
+const payload = { sub: "7f47fe77-f3e0-412a-8c41-f6a624f10f57" };
 
 const token = jwt.sign(payload, process.env.JWT_SECRET, {
     issuer: process.env.JWT_ISSUER,
