@@ -70,9 +70,8 @@ export function MembersPage() {
   if (requestStatus === "loading") {
     return (
       <>
-        <Skeleton className="h-8 w-48 mx-auto mb-6" />
         <div className="flex flex-col gap-2">
-          {Array.from({ length: 5 }).map((_, index) => (
+          {Array.from({ length: 6 }).map((_, index) => (
             <Skeleton key={index} className="h-16 w-full" />
           ))}
         </div>
