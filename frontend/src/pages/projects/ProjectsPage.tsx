@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Folder } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export function ProjectsPage() {
     const { organizationId } = useParams();
@@ -82,7 +83,16 @@ export function ProjectsPage() {
         return <p>{loadError}</p>;
     }
     if (isLoading) {
-        return <p>Loading...</p>;
+        return (
+            <>
+            <Skeleton className="h-8 w-48 mx-auto mb-6" />
+                <div className="flex flex-col gap-2 max-w-md mx-auto">
+                    {Array.from({ length: 5 }).map((_, index) => (
+                    <Skeleton key={index} className="h-16 w-full" />
+                    ))}
+                </div>
+            </>
+        );
     }
     return (
     <>
