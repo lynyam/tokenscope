@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { getOrganizationProject } from "../../api/projects.api";
 import type { Project } from "../../types/workspace.types";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CircleAlert } from "lucide-react";
 
 export function ProjectDetailPage() {
   const { organizationId, projectId } = useParams();
@@ -41,10 +42,26 @@ export function ProjectDetailPage() {
     };
   }, [organizationId, projectId]);
   if (!organizationId) {
-    return <p>Missing organization.</p>;
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-1 text-center mb-6 ">
+        <CircleAlert className="h-12 w-12 text-muted-foreground" />
+        <p className="mt-4 text-xl font-semibold">Missing organization.</p>
+        <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+          Organization id not found.
+        </p>
+      </div>
+    );
   }
   if (!projectId) {
-    return <p>Missing project.</p>;
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-1 text-center mb-6 ">
+        <CircleAlert className="h-12 w-12 text-muted-foreground" />
+        <p className="mt-4 text-xl font-semibold">Missing project.</p>
+        <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+          Project id not found.
+        </p>
+      </div>
+    );
   }
   if (isLoading) {
     return (
@@ -58,10 +75,26 @@ export function ProjectDetailPage() {
     );
   }
   if (error) {
-    return <p>{error}</p>;
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-1 text-center mb-6 ">
+        <CircleAlert className="h-12 w-12 text-muted-foreground" />
+        <p className="mt-4 text-xl font-semibold">
+          An unexpected error occurred
+        </p>
+        <p className="mt-2 max-w-sm text-sm text-muted-foreground">{error}</p>
+      </div>
+    );
   }
   if (!project) {
-    return <p>Project not found.</p>;
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-1 text-center mb-6 ">
+        <CircleAlert className="h-12 w-12 text-muted-foreground" />
+        <p className="mt-4 text-xl font-semibold">Project not found</p>
+        <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+          This project doesn't exist or you don't have access to it.
+        </p>
+      </div>
+    );
   }
   return (
     <div className="p-6 space-y-6 max-w-md mx-auto">
