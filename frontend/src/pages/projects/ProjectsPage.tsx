@@ -11,6 +11,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Folder } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CircleAlert } from "lucide-react";
+import { toast } from "sonner";
 
 export function ProjectsPage() {
   const { organizationId } = useParams();
@@ -76,8 +77,8 @@ export function ProjectsPage() {
         setNewProjectName("");
       })
       .catch((err) => {
-        setCreateError(
-          err instanceof Error ? err.message : "Failed to create project.",
+        toast.error(
+          err instanceof Error ? err.message : "Failed to create organization.",
         );
       });
   }
