@@ -141,7 +141,7 @@ export function ProjectsPage() {
           No projects yet.
         </p>
       ) : (
-        <div className="flex flex-col gap-2 max-w-md mx-auto">
+        <div className="flex flex-col gap-2 max-w-md mx-auto grid grid-cols-2">
           {projects.map((project) => (
             <Link
               key={project.id}
