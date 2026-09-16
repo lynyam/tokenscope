@@ -4,6 +4,11 @@ import { useParams, Link } from "react-router-dom";
 import { getOrganizationProjects, createProject } from "../../api/projects.api";
 import { getOrganization } from "../../api/organizations.api";
 import type { MembershipRole } from "../../types/workspace.types";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Folder } from "lucide-react";
 
 export function ProjectsPage() {
     const { organizationId } = useParams();
@@ -80,36 +85,50 @@ export function ProjectsPage() {
         return <p>Loading...</p>;
     }
     return (
-        <div>
-            <h1>Projects</h1>
-            {(currentUserRole === "OWNER" || currentUserRole === "ADMIN") && (
-                <form onSubmit={handleCreate}>
-                <label htmlFor="project-name">Project name </label>
-                <input
-                    id="project-name"
-                    value={newProjectName}
-                    onChange={(e) => {
-                        setNewProjectName(e.target.value);
-                        setCreateError(null);
-            }}
-            />
-            <button type="submit">Create</button>
-        </form>
+    <>
+    <h1 className="mb-6 text-2xl font-bold max-w-md mx-auto">Projects</h1>
+
+    {(currentUserRole === "OWNER" || currentUserRole === "ADMIN") && (
+      <Card className="mb-6 max-w-md mx-auto rounded-lg">
+        <CardHeader>
+          <CardTitle>Create a project</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleCreate} className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="project-name">Project name</Label>
+              <Input
+                id="project-name"
+                value={newProjectName}
+                onChange={(e) => {
+                  setNewProjectName(e.target.value);
+                  setCreateError(null);
+                }}
+              />
+            </div>
+            <Button className="rounded-lg" type="submit">Create</Button>
+            {createError && <p className="text-sm text-destructive">{createError}</p>}
+          </form>
+        </CardContent>
+      </Card>
     )}
-    {createError && <p>{createError}</p>}
+
     {projects.length === 0 ? (
-        <p>No projects yet.</p>
+      <p className="text-muted-foreground max-w-md mx-auto">No projects yet.</p>
     ) : (
-        <ul>
-            {projects.map((project) => (
-                <li key={project.id}>
-                    <Link to={`/organizations/${organizationId}/projects/${project.id}`}>
-                        {project.name}
-                    </Link>
-                </li>
-                ))}
-        </ul>
-        )}
-        </div>
-    );
+      <div className="flex flex-col gap-2 max-w-md mx-auto">
+        {projects.map((project) => (
+          <Link
+            key={project.id}
+            to={`/organizations/${organizationId}/projects/${project.id}`}
+            className="flex items-center gap-3 rounded-lg border p-4 hover:bg-muted transition-colors"
+          >
+            <Folder className="h-4 w-4 text-muted-foreground" />
+            <span className="font-medium">{project.name}</span>
+          </Link>
+        ))}
+      </div>
+    )}
+  </>
+);
 }
