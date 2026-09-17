@@ -1,8 +1,6 @@
 import { mockMemberships, mockOrganizations, } from "../mocks/workspace.mock";
-import type { Membership, Organization, OrganizationSummary, CreateOrganizationInput } from "../types/workspace.types";
+import type { Membership, Organization, OrganizationSummary, CreateOrganizationInput, UpdateOrganizationInput } from "../types/workspace.types";
 import { cloneMockValue, MockApiError, requireAuthenticatedUserId, waitForMockApi, } from "./mock-api.utils";
-
-
 
 function createOrganizationSummary(
   organization: Organization,
@@ -59,7 +57,6 @@ export async function getOrganization(organizationId: string,): Promise<Organiza
   );
 }
 
-
 //crée à la fois une nouvelle Organization ET son Membership OWNER
 export async function createOrganization(
   input: CreateOrganizationInput,
@@ -96,4 +93,39 @@ export async function createOrganization(
   mockMemberships.push(membership);
 
   return cloneMockValue(createOrganizationSummary(organization, membership));
+}
+// TODO(TSE-43): Replace mock logic with a real PATCH /api/v1/organizations/:organizationId
+// call through the shared HTTP client once TSE-43 
+// Signature and error contract (404/403/400) should stay the same.
+export async function updateOrganization(
+  organizationId: string,
+  input: UpdateOrganizationInput,
+): Promise<OrganizationSummary> {
+  await waitForMockApi();
+  const currentUserId = requireAuthenticatedUserId();
+
+  const organization = mockOrganizations.find(({ id }) => id === organizationId);
+  if (!organization) {
+    throw new MockApiError(404, "Organization not found.");
+  }
+  const currentMembership = mockMemberships.find((membership) =>
+    membership.organizationId === organizationId &&
+    membership.userId === currentUserId,
+  );
+  if (!currentMembership) {
+    throw new MockApiError(403, "You are not allowed to access this organization.");
+  }
+  if (currentMembership.role !== "OWNER") {
+    throw new MockApiError(403, "Only the OWNER can rename this organization.");
+  }
+
+  if (input.name !== undefined) {
+    const name = input.name.trim();
+    if (!name) {
+      throw new MockApiError(400, "Organization name is required.");
+    }
+    organization.name = name;
+  }
+
+  return cloneMockValue(createOrganizationSummary(organization, currentMembership));
 }
