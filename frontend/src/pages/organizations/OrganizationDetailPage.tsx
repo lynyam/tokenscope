@@ -1,6 +1,7 @@
 import { useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { getOrganization } from "../../api/organizations.api";
+import type { FormEvent } from "react";
+import { getOrganization, updateOrganization } from "../../api/organizations.api";
 import type { OrganizationSummary } from "../../types/workspace.types";
 import { Link } from "react-router-dom"
 
@@ -10,6 +11,11 @@ export function OrganizationDetailPage() {
     const [organization, setOrganization] = useState<OrganizationSummary | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+
+    const [isEditing, setIsEditing] = useState(false);
+    const [nameDraft, setNameDraft] = useState("");
+    const [isSaving, setIsSaving] = useState(false);
+    const [saveError, setSaveError] = useState<string | null>(null);
 
     useEffect(() => {
         if (!organizationId) {
@@ -25,6 +31,7 @@ export function OrganizationDetailPage() {
                     return;
                 }
                 setOrganization(data);
+                setNameDraft(data.name);
                 setIsLoading(false);
             })
             .catch((err) => {
@@ -38,6 +45,26 @@ export function OrganizationDetailPage() {
                 isStale = true;
             };
     }, [organizationId]);
+
+    function handleRenameSubmit(event: FormEvent) {
+        event.preventDefault();
+        if (!organizationId || isSaving) {
+            return;
+        }
+        setSaveError(null);
+        setIsSaving(true);
+        updateOrganization(organizationId, { name: nameDraft })
+            .then((updated) => {
+                setOrganization(updated);
+                setIsEditing(false);
+                setIsSaving(false);
+            })
+            .catch((err) => {
+                setSaveError(err instanceof Error ? err.message : "Failed to rename organization.");
+                setIsSaving(false);
+            });
+    }
+
     if (!organizationId) {
         return <p>Missing organization.</p>
     }
@@ -59,7 +86,41 @@ export function OrganizationDetailPage() {
             <p>
                 <Link to={`/organizations/${organizationId}/members`}>Members</Link>
             </p>
-            <p>Name: {organization.name}</p>
+
+            {isEditing ? (
+                <form onSubmit={handleRenameSubmit}>
+                    <label htmlFor="org-name">Name</label>
+                    <input
+                        id="org-name"
+                        value={nameDraft}
+                        onChange={(e) => setNameDraft(e.target.value)}
+                        disabled={isSaving}
+                    />
+                    <button type="submit" disabled={isSaving}>
+                        {isSaving ? "Saving..." : "Save"}
+                    </button>
+                    <button
+                        type="button"
+                        disabled={isSaving}
+                        onClick={() => {
+                            setIsEditing(false);
+                            setNameDraft(organization.name);
+                            setSaveError(null);
+                        }}
+                    >
+                        Cancel
+                    </button>
+                    {saveError && <p>{saveError}</p>}
+                </form>
+            ) : (
+                <p>
+                    Name: {organization.name}
+                    {organization.currentUserRole === "OWNER" && (
+                        <button onClick={() => setIsEditing(true)}>Rename</button>
+                    )}
+                </p>
+            )}
+
             <p>Slug: {organization.slug}</p>
             <p>Your role: {organization.currentUserRole}</p>
         </div>
