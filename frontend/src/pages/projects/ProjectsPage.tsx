@@ -20,6 +20,7 @@ export function ProjectsPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [newProjectName, setNewProjectName] = useState("");
+  const [newProjectDescription, setNewProjectDescription] = useState("");
   const [currentUserRole, setCurrentUserRole] = useState<MembershipRole | null>(
     null,
   );
@@ -33,6 +34,7 @@ export function ProjectsPage() {
     setLoadError(null);
     setCreateError(null);
     setNewProjectName("");
+    setNewProjectDescription("");
     setIsLoading(true);
     let isStale = false;
     Promise.all([
@@ -68,20 +70,22 @@ export function ProjectsPage() {
   function handleCreate(event: FormEvent) {
     event.preventDefault();
     if (!organizationId || newProjectName.trim() === "") {
-      return;
+        return;
     }
     setCreateError(null);
-    createProject(organizationId, { name: newProjectName })
-      .then((newProject) => {
-        setProjects((currentProjects) => [...currentProjects, newProject]);
-        setNewProjectName("");
-      })
-      .catch((err) => {
-        toast.error(
-          err instanceof Error ? err.message : "Failed to create organization.",
-        );
-      });
-  }
+    createProject(organizationId, {
+        name: newProjectName,
+        description: newProjectDescription || undefined,
+    })
+        .then((newProject) => {
+            setProjects((currentProjects) => [...currentProjects, newProject]);
+            setNewProjectName("");
+            setNewProjectDescription("");
+        })
+        .catch((err) => {
+            setCreateError(err instanceof Error ? err.message : "Failed to create project.");
+        });
+}
   if (loadError) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-1 text-center mb-6 ">
@@ -125,6 +129,14 @@ export function ProjectsPage() {
                     setCreateError(null);
                   }}
                 />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="project-description">Description (optional)</Label>
+                <Input
+                  id="project-description"
+                  value={newProjectDescription}
+                  onChange={(e) => setNewProjectDescription(e.target.value)}
+                  />
               </div>
               <Button className="rounded-lg" type="submit">
                 Create
