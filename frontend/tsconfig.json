@@ -10,8 +10,6 @@
 		"skipLibCheck": true,
 		"isolatedModules": true,
 		"types": ["vite/client"],
-		// required root for "paths" below to resolve relative to
-		"baseUrl": ".", 
 		// tells TypeScript "@" means src/, matching the Vite alias
 		"paths": {
 			"@/*": ["./src/*"] 
