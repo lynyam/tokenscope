@@ -6,7 +6,6 @@ import { Toaster } from "../components/ui/sonner"
 export function AppLayout({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-screen flex-col">
-      <Topbar />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />
         <Toaster position="top-right"/>
