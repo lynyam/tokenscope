@@ -5,7 +5,19 @@
  */
 import { toSafeUser } from "../../src/users/user.mapper";
 
+
+/**
+ * describe: Groups related tests together into a test suite. 
+ *           It helps organize test output in logs and creates 
+ *           a shared block scope for set-up or tear-down logic.
+ */
+
 describe("toSafeUser", () => {
+  /**
+   * it: (Alias for test) Defines an individual test case. 
+   *     It accepts a descriptive string detailing what behavior 
+   *     is being tested and an executable function containing the test logic
+   */
   it("keeps only id, email and displayName", () => {
     const rawUser = {
       id: "user-1",
@@ -15,7 +27,12 @@ describe("toSafeUser", () => {
       createdAt: new Date(),
       updatedAt: new Date(),
     } as never;
-
+    /**
+     * expect: Used every time you want to test a value. 
+     *         You call expect with the actual value returned 
+     *         by your code and pair it with a matcher (like .toEqual()) 
+     *         to assert whether it meets your expectations.
+     */
     expect(toSafeUser(rawUser)).toEqual({
       id: "user-1",
       email: "alice@example.com",
