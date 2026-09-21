@@ -42,8 +42,9 @@
   "homepage": "https://github.com/lynyam/tokenscope#readme",
   "dependencies": {
     "@nestjs/common": "11.2.3",
-    "@nestjs/config": "^12.0.0",
+    "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.1.28",
+    "@nestjs/jwt": "^11.0.2",
     "@nestjs/platform-express": "^11.1.28",
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
