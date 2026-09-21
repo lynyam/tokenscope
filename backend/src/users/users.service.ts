@@ -17,8 +17,8 @@ export class UsersService {
    * Looks up a user by an ALREADY-NORMALIZED email.
    *
    * This service deliberately does not trim/lowercase itself, so
-   * normalization lives in exactly one place (the DTOs' @Transform). 
-   * If two layers both normalized, a future change to one
+   * normalization lives in exactly one place (the DTOs' @Transform,
+   * STEP 5). If two layers both normalized, a future change to one
    * could silently diverge from the other.
    */
   findByEmail(normalizedEmail: string): Promise<User | null> {
