@@ -22,7 +22,10 @@ export function Sidebar() {
 
   return (
     <aside className="flex h-full w-56 flex-col border-r p-4">
-      <span className="text-lg font-semibold">TokenScope</span>
+      <div className="flex items-center gap-2">
+        <img src="/logo/logo.svg" alt="TokenScope logo" className="h-7 w-7" />
+        <span className="text-lg font-semibold">TokenScope</span>
+      </div>
       <Separator className="mt-2 mb-2" />
       <nav className="flex flex-1 flex-col gap-1">
         {organizationId && (
