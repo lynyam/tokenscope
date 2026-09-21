@@ -1,6 +1,10 @@
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useEffect, useState, type FormEvent } from "react";
-import { getOrganizationProject, updateProject, archiveProject } from "../../api/projects.api";
+import {
+  getOrganizationProject,
+  updateProject,
+  archiveProject,
+} from "../../api/projects.api";
 import { getOrganization } from "../../api/organizations.api";
 import type { Project, MembershipRole } from "../../types/workspace.types";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -8,13 +12,22 @@ import { CircleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { EditProjectForm } from "./EditProjectForm";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export function ProjectDetailPage() {
   const { organizationId, projectId } = useParams();
   const navigate = useNavigate();
 
   const [project, setProject] = useState<Project | null>(null);
-  const [currentUserRole, setCurrentUserRole] = useState<MembershipRole | null>(null);
+  const [currentUserRole, setCurrentUserRole] = useState<MembershipRole | null>(
+    null,
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,7 +67,9 @@ export function ProjectDetailPage() {
         if (isStale) {
           return;
         }
-        setError(err instanceof Error ? err.message : "Failed to load project.");
+        setError(
+          err instanceof Error ? err.message : "Failed to load project.",
+        );
         setIsLoading(false);
       });
     return () => {
@@ -77,7 +92,11 @@ export function ProjectDetailPage() {
     setIsSaving(true);
     updateProject(organizationId, projectId, {
       name: nameChanged ? nameDraft : undefined,
-      description: descriptionChanged ? (descriptionDraft.trim() === "" ? null : descriptionDraft) : undefined,
+      description: descriptionChanged
+        ? descriptionDraft.trim() === ""
+          ? null
+          : descriptionDraft
+        : undefined,
     })
       .then((updated) => {
         setProject(updated);
@@ -87,7 +106,9 @@ export function ProjectDetailPage() {
         setIsSaving(false);
       })
       .catch((err) => {
-        setSaveError(err instanceof Error ? err.message : "Failed to update project.");
+        setSaveError(
+          err instanceof Error ? err.message : "Failed to update project.",
+        );
         setIsSaving(false);
       });
   }
@@ -96,7 +117,9 @@ export function ProjectDetailPage() {
     if (!organizationId || !projectId || isArchiving) {
       return;
     }
-    const confirmed = window.confirm("Archive this project? It will no longer appear in the active project list.");
+    const confirmed = window.confirm(
+      "Archive this project? It will no longer appear in the active project list.",
+    );
     if (!confirmed) {
       return;
     }
@@ -107,7 +130,9 @@ export function ProjectDetailPage() {
         navigate(`/organizations/${organizationId}/projects`);
       })
       .catch((err) => {
-        setArchiveError(err instanceof Error ? err.message : "Failed to archive project.");
+        setArchiveError(
+          err instanceof Error ? err.message : "Failed to archive project.",
+        );
         setIsArchiving(false);
       });
   }
@@ -117,7 +142,9 @@ export function ProjectDetailPage() {
       <div className="flex h-full flex-col items-center justify-center gap-1 text-center mb-6 ">
         <CircleAlert className="h-12 w-12 text-muted-foreground" />
         <p className="mt-4 text-xl font-semibold">Missing organization.</p>
-        <p className="mt-2 max-w-sm text-sm text-muted-foreground">Organization id not found.</p>
+        <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+          Organization id not found.
+        </p>
       </div>
     );
   }
@@ -126,7 +153,9 @@ export function ProjectDetailPage() {
       <div className="flex h-full flex-col items-center justify-center gap-1 text-center mb-6 ">
         <CircleAlert className="h-12 w-12 text-muted-foreground" />
         <p className="mt-4 text-xl font-semibold">Missing project.</p>
-        <p className="mt-2 max-w-sm text-sm text-muted-foreground">Project id not found.</p>
+        <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+          Project id not found.
+        </p>
       </div>
     );
   }
@@ -143,7 +172,9 @@ export function ProjectDetailPage() {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-1 text-center mb-6 ">
         <CircleAlert className="h-12 w-12 text-muted-foreground" />
-        <p className="mt-4 text-xl font-semibold">An unexpected error occurred</p>
+        <p className="mt-4 text-xl font-semibold">
+          An unexpected error occurred
+        </p>
         <p className="mt-2 max-w-sm text-sm text-muted-foreground">{error}</p>
       </div>
     );
@@ -165,62 +196,38 @@ export function ProjectDetailPage() {
   return (
     <div className="p-6 space-y-6 max-w-md mx-auto">
       <p>
-        <Link to={`/organizations/${organizationId}/projects`}>← Back to projects</Link>
+        <Link to={`/organizations/${organizationId}/projects`}>
+          ← Back to projects
+        </Link>
       </p>
 
-      {isEditing ? (
-        <form onSubmit={handleUpdateSubmit} className="space-y-3">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="edit-name">Name</Label>
-            <Input
-              id="edit-name"
-              value={nameDraft}
-              onChange={(e) => setNameDraft(e.target.value)}
-              disabled={isSaving}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="edit-description">Description</Label>
-            <Input
-              id="edit-description"
-              value={descriptionDraft}
-              onChange={(e) => setDescriptionDraft(e.target.value)}
-              disabled={isSaving}
-            />
-          </div>
-          <div className="flex gap-2">
-            <Button type="submit" disabled={isSaving}>
-              {isSaving ? "Saving..." : "Save"}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={isSaving}
-              onClick={() => {
-                setIsEditing(false);
-                setNameDraft(project.name);
-                setDescriptionDraft(project.description ?? "");
-                setSaveError(null);
-              }}
-            >
-              Cancel
-            </Button>
-          </div>
-          {saveError && <p className="text-sm text-destructive">{saveError}</p>}
-        </form>
-      ) : (
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-semibold">{project.name}</h1>
-            {canManage && (
-              <Button size="sm" variant="outline" onClick={() => setIsEditing(true)}>
-                Edit
-              </Button>
-            )}
-          </div>
-          <p className="text-sm text-muted-foreground">{project.slug}</p>
-        </div>
-      )}
+      <div className="flex items-center gap-2">
+        <h1 className="text-2xl font-semibold">{project.name}</h1>
+      </div>
+      <p className="text-sm text-muted-foreground">{project.slug}</p>
+
+      <Dialog open={isEditing} onOpenChange={setIsEditing}>
+        <DialogContent className="rounded-lg">
+          <DialogHeader>
+            <DialogTitle>Edit project</DialogTitle>
+          </DialogHeader>
+          <EditProjectForm
+            nameDraft={nameDraft}
+            setNameDraft={setNameDraft}
+            descriptionDraft={descriptionDraft}
+            setDescriptionDraft={setDescriptionDraft}
+            isSaving={isSaving}
+            saveError={saveError}
+            onSubmit={handleUpdateSubmit}
+            onCancel={() => {
+              setIsEditing(false);
+              setNameDraft(project.name);
+              setDescriptionDraft(project.description ?? "");
+              setSaveError(null);
+            }}
+          />
+        </DialogContent>
+      </Dialog>
 
       <div className="rounded-lg border border-border p-4 space-y-2 text-sm">
         <p>
@@ -238,21 +245,40 @@ export function ProjectDetailPage() {
           <span className="font-medium">Updated at:</span> {project.updatedAt}
         </p>
       </div>
-
-      {canManage && (
-        <div className="space-y-2">
-          <Button variant="destructive" onClick={handleArchive} disabled={isArchiving}>
-            {isArchiving ? "Archiving..." : "Archive project"}
-          </Button>
-          {archiveError && <p className="text-sm text-destructive">{archiveError}</p>}
-        </div>
-      )}
-
       <div className="rounded-lg border border-border p-4 space-y-1">
         <h2 className="text-lg font-semibold">Coming soon</h2>
         <p className="text-sm text-muted-foreground">API keys coming in M2.</p>
         <p className="text-sm text-muted-foreground">Traces coming in M2.</p>
-        <p className="text-sm text-muted-foreground">Cost dashboard coming later.</p>
+        <p className="text-sm text-muted-foreground">
+          Cost dashboard coming later.
+        </p>
+      </div>
+      <div className="flex items-center gap-2">
+        {canManage && (
+          <Button
+            className="rounded-lg"
+            size="sm"
+            variant="outline"
+            onClick={() => setIsEditing(true)}
+          >
+            Edit
+          </Button>
+        )}
+        {canManage && (
+          <div className="space-y-2">
+            <Button
+              className="rounded-lg"
+              variant="destructive"
+              onClick={handleArchive}
+              disabled={isArchiving}
+            >
+              {isArchiving ? "Archiving..." : "Archive project"}
+            </Button>
+            {archiveError && (
+              <p className="text-sm text-destructive">{archiveError}</p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
