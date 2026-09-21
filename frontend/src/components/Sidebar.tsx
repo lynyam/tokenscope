@@ -27,6 +27,12 @@ export function Sidebar() {
       <nav className="flex flex-1 flex-col gap-1">
         {organizationId && (
           <>
+            <Link
+              to={`/organizations/${organizationId}/members`}
+              className="rounded-md px-3 py-2 text-sm font-medium hover:bg-muted transition-colors"
+            >
+              Members
+            </Link>
             <CollapsibleNavItem
               label="Projects"
               items={projects.map((project) => ({
