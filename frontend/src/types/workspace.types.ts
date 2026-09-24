@@ -114,6 +114,3 @@ export interface UpdateProjectInput {
     description?: string | null;
 }
 
-export interface UpdateOrganizationInput {
-    name?: string;
-}
