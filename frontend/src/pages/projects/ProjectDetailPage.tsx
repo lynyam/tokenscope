@@ -160,7 +160,8 @@ export function ProjectDetailPage() {
     );
   }
 
-  const canManage = currentUserRole === "OWNER" || currentUserRole === "ADMIN";
+  const canManage = 
+    (currentUserRole === "OWNER" || currentUserRole === "ADMIN") && !project.archivedAt;
 
   return (
     <div className="p-6 space-y-6 max-w-md mx-auto">
