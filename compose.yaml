@@ -32,8 +32,6 @@ services:
         target: /app/node_modules
     expose:
       - "${BACKEND_PORT}"
-    ports:
-     - "51212:${BACKEND_PORT}"
     environment:
       BACKEND_PORT: "${BACKEND_PORT}"
       DATABASE_URL: "${DATABASE_URL}"

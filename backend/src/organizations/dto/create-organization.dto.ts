@@ -1,8 +1,9 @@
-import {IsString, MinLength, MaxLength} from 'class-validator';
+import {IsString, Length} from 'class-validator';
+import { Transform } from "class-transformer";
 
 export class CreateOrganizationDto {
+    @Transform(({ value }) => typeof value === "string" ? value.trim() : value)
     @IsString()
-    @MinLength(1)
-    @MaxLength(100)
+    @Length(1, 100)
     name!: string;
 }

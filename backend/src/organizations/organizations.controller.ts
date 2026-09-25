@@ -1,30 +1,40 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Patch, Post, UseGuards } from "@nestjs/common";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
-import { AuthenticatedUser } from "../common/types/authenticated-user";
+import type { AuthenticatedUser } from "../common/types/authenticated-user";
 import { CreateOrganizationDto } from "./dto/create-organization.dto";
+import { RenameOrganizationDto } from "./dto/rename-organization.dto";
+import { UuidParam } from "../common/decorators/uuid-param.decorators";
 import { OrganizationsService } from "./organizations.service";
 
 @Controller("organizations")
 @UseGuards(JwtAuthGuard)
 export class OrganizationsController {
-    constructor(private readonly organizationsService: OrganizationsService) {}
+	constructor(private readonly organizationsService: OrganizationsService) {}
+	@Post()
+	create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateOrganizationDto) {
+		return this.organizationsService.create(user.id, dto);
+	}
 
-    @Post()
-    create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateOrganizationDto) {
-        return this.organizationsService.create(user.userId, dto);
-    }
+	@Get()
+	findAll(@CurrentUser() user: AuthenticatedUser) {
+		return this.organizationsService.findAllForUser(user.id);
+	}
 
-    @Get()
-    findAll(@CurrentUser() user: AuthenticatedUser) {
-        return this.organizationsService.findAllForUser(user.userId);
-    }
+	@Get(":organizationId")
+	findOne(
+		@CurrentUser() user: AuthenticatedUser,
+		@UuidParam("organizationId") organizationId: string,
+	) {
+		return this.organizationsService.findOneForUser(user.id, organizationId);
+	}
 
-    @Get(":organizationId")
-    findOne(
-        @CurrentUser() user: AuthenticatedUser,
-        @Param("organizationId") organizationId: string,
-    ) {
-        return this.organizationsService.findOneForUser(user.userId, organizationId);
-    }
+	@Patch(":organizationId")
+	rename(
+		@CurrentUser() user: AuthenticatedUser,
+		@UuidParam("organizationId") organizationId: string,
+		@Body() dto: RenameOrganizationDto,
+	) {
+		return this.organizationsService.rename(user.id, organizationId, dto);
+	}
 }

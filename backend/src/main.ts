@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import { AppModule } from "./app.module"
 import { NestFactory } from "@nestjs/core"
 import type { EnvironmentVariables } from "./config/env.validation";
