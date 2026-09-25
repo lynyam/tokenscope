@@ -6,6 +6,7 @@ import { TokenService } from "./token.service";
 import { toSafeUser, SafeUser } from "../users/user.mapper";
 import { SignUpDto } from "./dto/sign-up.dto";
 import { SignInDto } from "./dto/sign-in.dto";
+import { Prisma, type User } from "../generated/prisma/client";
 
 /** The exact AuthResponse shape documented in API.md. */
 export interface AuthResponse {
@@ -14,7 +15,22 @@ export interface AuthResponse {
   tokenType: "Bearer";
   expiresIn: number;
 }
+// This is a valid verifier for a discarded random value.
+// It is never assigned to an account.
+//
+// Unknown emails still perform Argon2 verification, avoiding the obvious
+// fast-failure path that previously distinguished them from existing users.
+const DUMMY_PASSWORD_HASH =
+  "$argon2id$v=19$m=65536,p=4,t=3$PWGbYr6/w10JvKMxTGqBKQ$btxj8qjva5iUElvooJpfp3AwOe0uZNS8kxSpJLpIdRo";
 
+  // Configure password hashing in this auth-owned provider.
+// These costs match the dummy verifier above.
+const PASSWORD_OPTIONS = {
+  type: argon2.argon2id,
+  memoryCost: 65536,
+  timeCost: 3,
+  parallelism: 4,
+} as const;
 /**
  * Orchestrates sign-up / sign-in / current-user.
  *
@@ -45,25 +61,33 @@ export class AuthService {
     // dto.email is already trimmed + lowercased by SignUpDto's @Transform.
     const existing = await this.usersService.findByEmail(dto.email);
     if (existing) {
-      throw new ApiException(
-        HttpStatus.CONFLICT,
-        "EMAIL_ALREADY_EXISTS",
-        "An account with this email already exists.",
-      );
+      throw this.emailAlreadyExists();
     }
 
     // argon2id specifically — NOT argon2i or argon2d. The `id` variant
     // resists both GPU brute force and side-channel attacks, and is
     // exactly what SECURITY.md and this ticket require.
-    const passwordHash = await argon2.hash(dto.password, {
-      type: argon2.argon2id,
-    });
+    const passwordHash = await argon2.hash(dto.password, PASSWORD_OPTIONS,
+    );
+    let user: User;
 
-    const user = await this.usersService.create({
-      email: dto.email,
-      passwordHash,
-      displayName: dto.displayName,
-    });
+    try {
+      user = await this.usersService.create({
+        email: dto.email,
+        passwordHash,
+        displayName: dto.displayName,
+      });
+    } catch (error) {
+      // Two requests may both pass the lookup above before either inserts.
+      // PostgreSQL's unique constraint is the final authority.
+      if (this.isEmailConflict(error)) {
+        throw this.emailAlreadyExists();
+      }
+
+      // Preserve unrelated failures so the shared filter returns a safe 500.
+      // Do not mislabel every database error as a duplicate email.
+      throw error;
+    }
 
     // After this line the plaintext password is never referenced again:
     // never logged, never persisted, never returned.
@@ -85,9 +109,13 @@ export class AuthService {
   async signIn(dto: SignInDto): Promise<AuthResponse> {
     const user = await this.usersService.findByEmail(dto.email);
 
-    const passwordMatches = user
-      ? await argon2.verify(user.passwordHash, dto.password)
-      : false;
+    // Both existing and unknown accounts perform password verification.
+    // This performs comparable expensive work; it does not promise that
+    // the entire HTTP request has perfectly identical execution time.
+    const passwordMatches = await argon2.verify(
+      user?.passwordHash ?? DUMMY_PASSWORD_HASH,
+      dto.password,
+    );
 
     if (!user || !passwordMatches) {
       throw new ApiException(
@@ -118,5 +146,55 @@ export class AuthService {
       );
     }
     return toSafeUser(user);
+  }
+  private emailAlreadyExists(): ApiException {
+    return new ApiException(
+      HttpStatus.CONFLICT,
+      "EMAIL_ALREADY_EXISTS",
+      "An account with this email already exists.",
+    );
+  }
+
+  private isEmailConflict(error: unknown): boolean {
+    if (
+      !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+      error.code !== "P2002"
+    ) {
+      return false;
+    }
+
+    const meta = error.meta as {
+      modelName?: string;
+      target?: unknown;
+      driverAdapterError?: {
+        cause?: {
+          kind?: string;
+          constraint?: { fields?: unknown };
+        };
+      };
+    } | undefined;
+
+    if (meta?.modelName && meta.modelName !== "User") {
+      return false;
+    }
+
+    // Some Prisma versions expose the unique constraint's name.
+    if (meta?.target === "User_email_key") {
+      return true;
+    }
+
+    // Support both Prisma field metadata and the PostgreSQL adapter shape.
+    const cause = meta?.driverAdapterError?.cause;
+    const fields = Array.isArray(meta?.target)
+      ? meta.target
+      : cause?.kind === "UniqueConstraintViolation"
+        ? cause.constraint?.fields
+        : undefined;
+
+    return (
+      Array.isArray(fields) &&
+      fields.length === 1 &&
+      fields[0] === "email"
+    );
   }
 }

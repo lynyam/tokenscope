@@ -15,11 +15,15 @@
  */
 import { Test, TestingModule } from "@nestjs/testing";
 import { INestApplication } from "@nestjs/common";
-import request from "supertest";
 import { AppModule } from "../../src/app.module";
 import { configureApp } from "../../src/configure-app";
 import { PrismaService } from "../../src/database/prisma.service";
 import { REQUEST_ID_HEADER } from "../../src/common/constants/http.constants";
+import request = require("supertest");
+import { randomUUID } from "node:crypto";
+import { sign } from "jsonwebtoken";
+import { ConfigService } from "@nestjs/config";
+import type { EnvironmentVariables } from "../../src/config/env.validation";
 
 describe("Auth (e2e)", () => {
   let app: INestApplication;
@@ -34,7 +38,8 @@ describe("Auth (e2e)", () => {
         return null;
       }),
       create: jest.fn(({ data }: { data: Record<string, unknown> }) => {
-        const user = { id: `user-${users.length + 1}`, ...data };
+        // Match the identity contract enforced by the real TokenService.
+        const user = { id: randomUUID(), ...data };
         users.push(user);
         return user;
       }),
@@ -42,6 +47,7 @@ describe("Auth (e2e)", () => {
     membership: { findFirst: jest.fn(), findMany: jest.fn() },
     organization: { findMany: jest.fn(), findFirst: jest.fn() },
     project: { findFirst: jest.fn(), findMany: jest.fn() },
+    $queryRaw: jest.fn().mockResolvedValue([{ result: 1 }]),
     $connect: jest.fn(),
     $disconnect: jest.fn(),
   };
@@ -60,7 +66,7 @@ describe("Auth (e2e)", () => {
       .useValue(prismaMock)
       .compile();
 
-    app = moduleFixture.createNestApplication();
+      app = moduleFixture.createNestApplication({ logger: false });
     configureApp(app);
     await app.init();
   });
@@ -226,5 +232,94 @@ describe("Auth (e2e)", () => {
 
       expect(response.status).toBe(200);
     });
+  });
+
+  it.each(["/api/v1/health", "/api/v1/health/db"])(
+    "keeps %s public with the real global guard",
+    async path => {
+      await request(app.getHttpServer())
+        .get(path)
+        .expect(200)
+        .expect({ status: "healthy" });
+    },
+  );
+
+  it.each([
+    ["get", "/api/v1/organizations"],
+    ["post", "/api/v1/organizations"],
+    ["get", "/api/v1/organizations/8e32b232-eeda-4c5e-bbf0-427e799ff076"],
+    ["patch", "/api/v1/organizations/8e32b232-eeda-4c5e-bbf0-427e799ff076"],
+  ] as const)("protects %s %s by default", async (method, path) => {
+    const response = await request(app.getHttpServer())[method](path)
+      .send(
+        method === "post" || method === "patch"
+          ? { name: "Protected" }
+          : undefined,
+      )
+      .expect(401);
+
+    expect(response.body.code).toBe("AUTHENTICATION_REQUIRED");
+    expect(prismaMock.membership.findMany).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "missing subject",
+    "invalid subject",
+    "missing expiration",
+    "expired",
+    "wrong issuer",
+    "wrong audience",
+    "wrong signature",
+    "wrong algorithm",
+  ])("rejects a token with %s before database lookup", async kind => {
+    const config = app.get(ConfigService<EnvironmentVariables>);
+
+    const payload: { sub?: string; exp?: number } = {
+      sub: randomUUID(),
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    };
+
+    if (kind === "missing subject") delete payload.sub;
+    if (kind === "invalid subject") payload.sub = "user-123";
+    if (kind === "missing expiration") delete payload.exp;
+    if (kind === "expired") payload.exp = 1;
+
+    // Change one property at a time so each failure has a clear cause.
+    const token = sign(
+      payload,
+      kind === "wrong signature"
+        ? "a-different-test-secret-at-least-32-bytes"
+        : config.getOrThrow("JWT_SECRET", { infer: true }),
+      {
+        issuer: kind === "wrong issuer"
+          ? "another-issuer"
+          : config.getOrThrow("JWT_ISSUER", { infer: true }),
+        audience: kind === "wrong audience"
+          ? "another-audience"
+          : config.getOrThrow("JWT_AUDIENCE", { infer: true }),
+        algorithm: kind === "wrong algorithm" ? "HS384" : "HS256",
+      },
+    );
+
+    // Cover both the auth consumer and the organization consumer.
+    for (const path of ["/api/v1/auth/me", "/api/v1/organizations"]) {
+      const response = await request(app.getHttpServer())
+        .get(path)
+        .set("Authorization", "Bearer " + token)
+        .expect(401);
+
+      expect(response.body.code).toBe(
+        kind === "expired"
+          ? "ACCESS_TOKEN_EXPIRED"
+          : "INVALID_ACCESS_TOKEN",
+      );
+
+      expect(response.body.requestId).toBe(
+        response.headers["x-request-id"],
+      );
+    }
+
+    expect(prismaMock.user.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.membership.findMany).not.toHaveBeenCalled();
   });
 });

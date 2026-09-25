@@ -8,11 +8,13 @@
  */
 import { Test, TestingModule } from "@nestjs/testing";
 import { HttpStatus } from "@nestjs/common";
-import * as argon2 from "argon2";
 import { AuthService } from "../../src/auth/auth.service";
 import { UsersService } from "../../src/users/users.service";
 import { TokenService } from "../../src/auth/token.service";
 import { ApiException } from "../../src/common/errors/api.exception";
+import argon2 = require("argon2");
+
+import { Prisma } from "../../src/generated/prisma/client";
 
 describe("AuthService", () => {
   let authService: AuthService;
@@ -187,5 +189,88 @@ describe("AuthService", () => {
       expect(error).toBeInstanceOf(ApiException);
       expect(error.code).toBe("AUTHENTICATION_REQUIRED");
     });
+  });
+
+  it.each([
+    { modelName: "User", target: ["email"] },
+    { modelName: "User", target: "User_email_key" },
+    {
+      modelName: "User",
+      driverAdapterError: {
+        cause: {
+          kind: "UniqueConstraintViolation",
+          constraint: { fields: ["email"] },
+        },
+      },
+    },
+  ])("maps a raced database email conflict to 409", async meta => {
+    // Simulate a request that passed the preliminary lookup but lost the insert.
+    usersService.findByEmail.mockResolvedValue(null);
+    usersService.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError(
+        "PRIVATE_DATABASE_DETAIL",
+        { code: "P2002", clientVersion: "7.9.1", meta },
+      ),
+    );
+
+    const error = await authService.signUp(signUpDto).catch(error => error);
+
+    expect(error).toBeInstanceOf(ApiException);
+    expect(error.getStatus()).toBe(409);
+    expect(error.code).toBe("EMAIL_ALREADY_EXISTS");
+    expect(error.publicMessage).toBe(
+      "An account with this email already exists.",
+    );
+    expect(tokenService.signAccessToken).not.toHaveBeenCalled();
+  });
+
+  it("preserves unexpected persistence errors", async () => {
+    // An ID conflict is not an email conflict.
+    const error = new Prisma.PrismaClientKnownRequestError(
+      "PRIVATE_DATABASE_DETAIL",
+      {
+        code: "P2002",
+        clientVersion: "7.9.1",
+        meta: { modelName: "User", target: ["id"] },
+      },
+    );
+
+    usersService.findByEmail.mockResolvedValue(null);
+    usersService.create.mockRejectedValue(error);
+
+    await expect(authService.signUp(signUpDto)).rejects.toBe(error);
+    expect(tokenService.signAccessToken).not.toHaveBeenCalled();
+  });
+
+  it("performs Argon2 verification for an unknown email", async () => {
+    usersService.findByEmail.mockResolvedValue(null);
+
+    // Observe the real verification call; do not replace its implementation.
+    const verify = jest.spyOn(argon2, "verify");
+
+    try {
+      await expect(
+        authService.signIn({
+          email: "ghost@example.com",
+          password: "incorrect",
+        }),
+      ).rejects.toMatchObject({ code: "INVALID_CREDENTIALS" });
+
+      expect(verify).toHaveBeenCalledTimes(1);
+
+      const [hash, password] = verify.mock.calls[0];
+      expect(hash.startsWith("$argon2id$v=19$")).toBe(true);
+
+      // Parameter ordering in the encoded hash is not significant.
+      expect(hash.split("$")[3].split(",").sort()).toEqual([
+        "m=65536",
+        "p=4",
+        "t=3",
+      ]);
+
+      expect(password).toBe("incorrect");
+    } finally {
+      verify.mockRestore();
+    }
   });
 });

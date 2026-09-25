@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { ConfigService } from "@nestjs/config";
 import type { EnvironmentVariables } from "../config/env.validation";
+import { isUUID } from "class-validator";
 
 export interface IssuedToken {
   accessToken: string;
@@ -11,7 +12,7 @@ export interface IssuedToken {
 /**
  * JWT: string made of three base64url-encoded parts, joined by dots:
  * e.g. eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyLTEyMyJ9.4f8a
- * 
+ *
  */
 
 /**
@@ -32,9 +33,7 @@ export class TokenService {
     // TTL comes from JWT_ACCESS_TTL_SECONDS (validated at startup by
     // config/env.validation.ts, per LOCAL_DEVELOPMENT.md). getOrThrow
     // means a missing value fails fast instead of silently defaulting.
-    this.ttlSeconds = Number(
-      this.configService.getOrThrow("JWT_ACCESS_TTL_SECONDS", { infer: true }),
-    );
+    this.ttlSeconds = this.configService.getOrThrow("JWT_ACCESS_TTL_SECONDS", { infer: true });
   }
 
   /**
@@ -64,7 +63,35 @@ export class TokenService {
    * catching the error and mapping it to the correct API.md 401 code —
    * this service deliberately knows nothing about HTTP status codes.
    */
-  verifyAccessToken(token: string): { sub: string } {
-    return this.jwtService.verify(token);
-  }
+	/*
+	This closes the gap where a correctly signed token with
+	missing sub or missing exp could previously pass verification.
+	*/
+	verifyAccessToken(token: string): { sub: string } {
+		// AuthModule supplies signature algorithm, issuer, and audience checks.
+		// Existing expiration claims are also checked by the JWT library.
+		const payload: unknown = this.jwtService.verify(token);
+
+		// TypeScript types do not validate a decoded token at runtime.
+		// Require a UUID before passing the identity into database queries.
+		// The JWT library permits tokens without exp unless we explicitly
+		// require that claim. The M1 access-token contract requires expiration.
+		if (
+			typeof payload !== "object" ||
+			payload === null ||
+			Array.isArray(payload) ||
+			!("sub" in payload) ||
+			typeof payload.sub !== "string" ||
+			!isUUID(payload.sub) ||
+			!("exp" in payload) ||
+			typeof payload.exp !== "number" ||
+			!Number.isFinite(payload.exp)
+		) {
+			// JwtAuthGuard converts this into the shared INVALID_ACCESS_TOKEN 401.
+			throw new Error("Invalid access token claims.");
+		}
+
+		// Return only the identity consumed by the guard.
+		return { sub: payload.sub };
+	}
 }

@@ -33,6 +33,7 @@ import type { EnvironmentVariables } from "../config/env.validation";
       useFactory: (config: ConfigService<EnvironmentVariables>) => ({
         secret: config.getOrThrow("JWT_SECRET", { infer: true }),
         signOptions: {
+          algorithm: "HS256",
           issuer: config.getOrThrow("JWT_ISSUER", { infer: true }),
           audience: config.getOrThrow("JWT_AUDIENCE", { infer: true }),
         },
@@ -40,6 +41,7 @@ import type { EnvironmentVariables } from "../config/env.validation";
         // audience would be signed into tokens but never actually
         // checked. SECURITY.md requires verifying both.
         verifyOptions: {
+          algorithms: ["HS256"],
           issuer: config.getOrThrow("JWT_ISSUER", { infer: true }),
           audience: config.getOrThrow("JWT_AUDIENCE", { infer: true }),
         },
