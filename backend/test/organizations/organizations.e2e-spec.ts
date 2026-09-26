@@ -4,7 +4,6 @@ import type { ExecutionContext, INestApplication } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
 import { Test } from "@nestjs/testing";
 import request = require("supertest");
-import { JwtAuthGuard } from "../../src/auth/guards/jwt-auth.guard";
 import { configureApp } from "../../src/configure-app";
 import { PrismaService } from "../../src/database/prisma.service";
 import { Prisma } from "../../src/generated/prisma/client";
@@ -54,7 +53,7 @@ describe("Organization HTTP contract with a test-only actor", () => {
 				{ provide: APP_GUARD, useValue: actorFixture },
 				{ provide: PrismaService, useValue: prisma },
 			],
-		}).overrideGuard(JwtAuthGuard).useValue(actorFixture).compile();
+		}).compile();
 		app = context.createNestApplication({ logger: false });
 		configureApp(app);
 		await app.init();

@@ -1,5 +1,4 @@
-import { Body, Controller, Get, Patch, Post, UseGuards } from "@nestjs/common";
-import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { Body, Controller, Get, Patch, Post, } from "@nestjs/common";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import type { AuthenticatedUser } from "../common/types/authenticated-user";
 import { CreateOrganizationDto } from "./dto/create-organization.dto";
@@ -8,7 +7,6 @@ import { UuidParam } from "../common/decorators/uuid-param.decorators";
 import { OrganizationsService } from "./organizations.service";
 
 @Controller("organizations")
-@UseGuards(JwtAuthGuard)
 export class OrganizationsController {
 	constructor(private readonly organizationsService: OrganizationsService) {}
 	@Post()
