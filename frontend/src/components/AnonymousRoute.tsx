@@ -7,7 +7,7 @@ export function AnonymousRoute({ children }: { children: ReactNode }) {
   const { user, isLoading } = useCurrentUser();
 
   if (isLoading) {
-    return <div>Loading...</div>;
+    return <div></div>;
   }
   
   if (user) {
