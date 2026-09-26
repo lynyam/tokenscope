@@ -4,6 +4,7 @@ node_modules/
 dist/
 
 .DS_Store
+.vscode/
 
 #tools caches
 .eslintcache

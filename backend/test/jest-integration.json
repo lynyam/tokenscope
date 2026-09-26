@@ -3,7 +3,15 @@
   "rootDir": "..",
   "testEnvironment": "node",
   "testRegex": "test/database/.*\\.integration\\.spec\\.ts$",
+  "setupFiles": [
+    "<rootDir>/test/support/require-test-database.ts"
+  ],
   "transform": {
-    "^.+\\.ts$": "ts-jest"
+    "^.+\\.ts$": [
+      "ts-jest",
+      {
+        "tsconfig": "tsconfig.test.json"
+      }
+    ]
   }
 }

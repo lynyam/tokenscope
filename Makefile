@@ -69,7 +69,7 @@ db-setup: db-generate db-migrate db-seed
 frontendcheck:
 	$(COMPOSE) exec $(FRONTEND) npm run check
 
-backeNDcheck:
+backendcheck:
 	$(COMPOSE) exec $(BACKEND) npm run check
 
 #CLEANUP
@@ -92,6 +92,19 @@ test-db-clean:
 	$(TEST_COMPOSE) down -v --remove-orphans
 
 test-db-fresh: test-db-clean test-db
+
+test-backend:
+	@set -eu; \
+	trap '$(TEST_COMPOSE) down --remove-orphans' 0; \
+	$(TEST_COMPOSE) run --rm -T backend-test sh -c '\
+		npm ci && \
+		npm run check && \
+		npm run check:tests && \
+		npm run build && \
+		npx prisma migrate deploy && \
+		npm run test:unit && \
+		npm run test:e2e && \
+		npm run test:integration'
 #HELP
 
 help:
@@ -124,9 +137,10 @@ help:
 	@echo "Cleanup:"
 	@echo "  make clean                         Remove project containers/network"
 	@echo "  make fullclean                     Also remove volumes/local images"
+	@echo "  make test-backend                  Check, build, unit, E2E and isolated database tests"
 	@echo ""
 
 .PHONY: \
 	start stop restart logs ps shell \
 	db-shell db-generate db-migrate db-migration db-seed db-status db-studio db-setup \
-	clean fullclean help test-db test-db-clean test-db-fresh
+	clean fullclean help test-db test-db-clean test-db-fresh test-backend

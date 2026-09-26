@@ -29,19 +29,31 @@ Create the local environment file:
 ```bash
 cp .env.example .env
 ```
+Generate a local JWT signing secret:
+
+```bash
+docker run --rm node:24-alpine \
+  node -e 'console.log(require("node:crypto").randomBytes(32).toString("hex"))'
+```
+Copy the generated value into:
+JWT_SECRET=<generated-value>
+in your local .env. Never commit .env.
 
 Start the application:
 
 ```bash
 make up
-```
-```bash
 make db-setup
 ```
+
 The frontend is available at:
 
 ```text
 http://localhost:5173
+```
+Backend endpoints are exposed to the browser through the Vite proxy under:
+```bash
+/api/v1
 ```
 
 ---
@@ -168,30 +180,51 @@ The backend waits for PostgreSQL to become healthy before starting.
 
 ## Environment variables
 
-`.env.example` contains the environment variables required to run the project locally.
+`.env.example` is the committed environment template.
 
 It is committed to Git and must not contain secrets.
 
-Each developer creates their own local file:
+Each developer creates the local environment from it:
 
 ```bash
 cp .env.example .env
 ```
 
-`.env` is ignored by Git.
+`.env` is ignored by Git and may contain local secrets.
 
-Current variables include:
+Current development variables include:
 
+| Variable                 | Purpose                                              |
+| ------------------------ | ---------------------------------------------------- |
+| `POSTGRES_USER`          | Local PostgreSQL user                                |
+| `POSTGRES_PASSWORD`      | Local PostgreSQL password                            |
+| `POSTGRES_DB`            | Local PostgreSQL database                            |
+| `DATABASE_URL`           | Prisma/PostgreSQL connection URL                     |
+| `FRONTEND_PORT`          | Host port for Vite                                   |
+| `BACKEND_PORT`           | NestJS listening port inside the development network |
+| `JWT_SECRET`             | Local JWT signing secret; must be generated locally  |
+| `JWT_ISSUER`             | Expected JWT issuer                                  |
+| `JWT_AUDIENCE`           | Expected JWT audience                                |
+| `JWT_ACCESS_TTL_SECONDS` | Access-token lifetime in seconds                     |
+
+The backend validates its required configuration before startup.
+
+The required backend values are:
 ```text
-POSTGRES_USER
-POSTGRES_PASSWORD
-POSTGRES_DB
-DATABASE_URL
-FRONTEND_PORT
 BACKEND_PORT
+DATABASE_URL
+JWT_SECRET
+JWT_ISSUER
+JWT_AUDIENCE
+JWT_ACCESS_TTL_SECONDS
 ```
+Invalid configuration causes startup to fail rather than allowing the
+application to run with unsafe defaults.
 
-Docker Compose automatically loads the root `.env` file when resolving variables used in `compose.yaml`.
+Docker Compose loads the root .env and explicitly passes the required backend
+configuration into the backend container.
+
+Real secrets must never be committed.
 
 ---
 

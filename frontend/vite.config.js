@@ -7,7 +7,6 @@ import { fileURLToPath } from 'url'
 import tailwindcss from '@tailwindcss/vite' 
 
 const backenUrl = process.env.BACKEND_URL;
-console.log(backenUrl);
 
 // recreate __dirname in ESM context
 const __dirname = path.dirname(fileURLToPath(import.meta.url)); 
@@ -26,7 +25,6 @@ export default defineConfig({
 			'/api': {
 				target: backenUrl,
 				changeOrigin: true,
-				rewrite: (path) => path.replace(/^\/api/, ''),
 			},
 		},
 	},
