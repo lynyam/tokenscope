@@ -7,9 +7,9 @@ export function AnonymousRoute({ children }: { children: ReactNode }) {
   const { user, isLoading } = useCurrentUser();
 
   if (isLoading) {
-    return <div></div>;
+    return <div role="status" className="flex min-h-screen items-center justify-center">Loading…</div>;
   }
-  
+
   if (user) {
     return <Navigate to="/organizations" replace />;
   }

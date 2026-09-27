@@ -1,6 +1,5 @@
 import { ReactNode } from "react";
 import { Sidebar } from "../components/Sidebar";
-import { Topbar } from "../components/Topbar";
 import { Toaster } from "../components/ui/sonner"
 
 export function AppLayout({ children }: { children: ReactNode }) {

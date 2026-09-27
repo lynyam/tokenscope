@@ -1,5 +1,11 @@
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { useEffect, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import {
   getOrganizationProject,
   updateProject,
@@ -10,8 +16,6 @@ import type { Project, MembershipRole } from "../../types/workspace.types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CircleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { EditProjectForm } from "./EditProjectForm";
 import {
   Dialog,
@@ -22,7 +26,32 @@ import {
 
 export function ProjectDetailPage() {
   const { organizationId, projectId } = useParams();
+
+  // A different URL gets fresh state, including editor drafts and pending flags.
+  return (
+    <ProjectDetail
+      key={`${organizationId}/${projectId}`}
+      organizationId={organizationId}
+      projectId={projectId}
+    />
+  );
+}
+
+function ProjectDetail({ organizationId, projectId }: {
+  organizationId?: string;
+  projectId?: string;
+}) {
   const navigate = useNavigate();
+  const active = useRef(false);
+  const mutationPending = useRef(false);
+
+  useLayoutEffect(() => {
+    active.current = true;
+    return () => {
+      // Updating local state is not the only risk: an old archive must not redirect.
+      active.current = false;
+    };
+  }, []);
 
   const [project, setProject] = useState<Project | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<MembershipRole | null>(
@@ -39,6 +68,11 @@ export function ProjectDetailPage() {
 
   const [isArchiving, setIsArchiving] = useState(false);
   const [archiveError, setArchiveError] = useState<string | null>(null);
+
+  const canManage =
+    project !== null && project.archivedAt === null &&
+    (currentUserRole === "OWNER" || currentUserRole === "ADMIN");
+  const isMutating = isSaving || isArchiving;
 
   useEffect(() => {
     if (!organizationId || !projectId) {
@@ -67,19 +101,21 @@ export function ProjectDetailPage() {
         if (isStale) {
           return;
         }
-        setError(
-          err instanceof Error ? err.message : "Failed to load project.",
-        );
+        // Read the HTTP status without depending on the mock error class.
+        // A future API error should expose the same documented statusCode.
+        const notFound = typeof err === "object" && err !== null &&
+          "statusCode" in err && err.statusCode === 404;
+        if (!notFound) {
+          setError(err instanceof Error ? err.message : "Failed to load project.");
+        }
         setIsLoading(false);
       });
-    return () => {
-      isStale = true;
-    };
   }, [organizationId, projectId]);
 
-  function handleUpdateSubmit(event: FormEvent) {
+  async function handleUpdateSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!organizationId || !projectId || !project || isSaving) {
+    if (!active.current || mutationPending.current || !canManage ||
+        !organizationId || !projectId || !project) {
       return;
     }
     const nameChanged = nameDraft.trim() !== project.name;
@@ -89,32 +125,39 @@ export function ProjectDetailPage() {
       return;
     }
     setSaveError(null);
+    // The ref blocks a second event immediately, before React rerenders.
+    // Save and archive share the lock so they cannot run together.
+    mutationPending.current = true;
     setIsSaving(true);
-    updateProject(organizationId, projectId, {
+    try {
+      const updated = await updateProject(organizationId, projectId, {
       name: nameChanged ? nameDraft : undefined,
       description: descriptionChanged
         ? descriptionDraft.trim() === ""
           ? null
           : descriptionDraft
         : undefined,
-    })
-      .then((updated) => {
+      });
+      if (!active.current) return;
         setProject(updated);
         setNameDraft(updated.name);
         setDescriptionDraft(updated.description ?? "");
         setIsEditing(false);
-        setIsSaving(false);
-      })
-      .catch((err) => {
+      } catch (err) {
+      if (active.current) {
         setSaveError(
           err instanceof Error ? err.message : "Failed to update project.",
         );
-        setIsSaving(false);
-      });
+      }
+    } finally {
+      mutationPending.current = false;
+      if (active.current) setIsSaving(false);
+    }
   }
 
-  function handleArchive() {
-    if (!organizationId || !projectId || isArchiving) {
+  async function handleArchive() {
+    if (!active.current || mutationPending.current || !canManage ||
+        !organizationId || !projectId) {
       return;
     }
     const confirmed = window.confirm(
@@ -124,17 +167,34 @@ export function ProjectDetailPage() {
       return;
     }
     setArchiveError(null);
+    mutationPending.current = true;
     setIsArchiving(true);
-    archiveProject(organizationId, projectId)
-      .then(() => {
+
+    try {
+      await archiveProject(organizationId, projectId);
+      if (active.current) {
         navigate(`/organizations/${organizationId}/projects`);
-      })
-      .catch((err) => {
+      }
+    } catch (err) {
+      if (active.current) {
         setArchiveError(
           err instanceof Error ? err.message : "Failed to archive project.",
         );
-        setIsArchiving(false);
-      });
+      }
+    } finally {
+      mutationPending.current = false;
+      if (active.current) setIsArchiving(false);
+    }
+  }
+
+  function handleEditingChange(open: boolean) {
+    if (mutationPending.current) return;
+    setIsEditing(open);
+    if (!open && project) {
+      setNameDraft(project.name);
+      setDescriptionDraft(project.description ?? "");
+      setSaveError(null);
+    }
   }
 
   if (!organizationId) {
@@ -191,8 +251,6 @@ export function ProjectDetailPage() {
     );
   }
 
-  const canManage = currentUserRole === "OWNER" || currentUserRole === "ADMIN";
-
   return (
     <div className="p-6 space-y-6 max-w-md mx-auto">
       <p>
@@ -206,7 +264,7 @@ export function ProjectDetailPage() {
       </div>
       <p className="text-sm text-muted-foreground">{project.slug}</p>
 
-      <Dialog open={isEditing} onOpenChange={setIsEditing}>
+      <Dialog open={isEditing} onOpenChange={handleEditingChange}>
         <DialogContent className="rounded-lg">
           <DialogHeader>
             <DialogTitle>Edit project</DialogTitle>
@@ -219,12 +277,7 @@ export function ProjectDetailPage() {
             isSaving={isSaving}
             saveError={saveError}
             onSubmit={handleUpdateSubmit}
-            onCancel={() => {
-              setIsEditing(false);
-              setNameDraft(project.name);
-              setDescriptionDraft(project.description ?? "");
-              setSaveError(null);
-            }}
+            onCancel={() => handleEditingChange(false)}
           />
         </DialogContent>
       </Dialog>
@@ -259,7 +312,8 @@ export function ProjectDetailPage() {
             className="rounded-lg"
             size="sm"
             variant="outline"
-            onClick={() => setIsEditing(true)}
+            onClick={() => handleEditingChange(true)}
+            disabled={isMutating}
           >
             Edit
           </Button>
@@ -270,7 +324,7 @@ export function ProjectDetailPage() {
               className="rounded-lg"
               variant="destructive"
               onClick={handleArchive}
-              disabled={isArchiving}
+              disabled={isMutating}
             >
               {isArchiving ? "Archiving..." : "Archive project"}
             </Button>

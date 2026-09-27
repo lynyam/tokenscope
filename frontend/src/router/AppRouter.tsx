@@ -20,7 +20,7 @@ import { ProjectDetailPage } from "../pages/projects/ProjectDetailPage";
 function RootRedirect() {
   const { user, isLoading } = useCurrentUser();
 
-  if (isLoading) return <div></div>;
+  if (isLoading) return <div role="status" className="flex min-h-screen items-center justify-center">Loading…</div>;
   if (user) return <Navigate to="/organizations" replace />;
   return <Navigate to="/signup" replace />;
 }

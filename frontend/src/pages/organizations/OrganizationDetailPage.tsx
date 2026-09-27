@@ -71,6 +71,9 @@ export function OrganizationDetailPage() {
             </>
         );
     }
+    if (error) {
+        return <p role="alert">{error}</p>;
+    }
     if (!organization) {
         return (
             <div className="flex h-full flex-col items-center justify-center gap-1 text-center mb-6 ">
@@ -88,9 +91,6 @@ export function OrganizationDetailPage() {
                 </Link>
             </div>
         );
-    }
-    if (error) {
-        return <p>{error}</p>;
     }
     return (
         <div>

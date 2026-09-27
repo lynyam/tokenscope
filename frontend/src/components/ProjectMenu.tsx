@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, NavLink, useLocation } from "react-router-dom";
 import { ChevronRight, Plus } from "lucide-react";
 
 type CollapsibleNavItemProps = {
@@ -9,12 +9,19 @@ type CollapsibleNavItemProps = {
 };
 
 export function CollapsibleNavItem({ label, items, organizationId }: CollapsibleNavItemProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const { pathname } = useLocation();
+  const hasActiveProject = items.some((item) => item.to === pathname);
+  const [isOpen, setIsOpen] = useState(hasActiveProject);
+
+  useEffect(() => {
+    if (hasActiveProject) setIsOpen(true);
+  }, [pathname, hasActiveProject]);
 
   return (
     <div className="flex flex-col">
       <button
         type="button"
+        aria-expanded={isOpen}
         onClick={() => setIsOpen((prev) => !prev)}
         className="flex items-center justify-between rounded-md px-3 py-2 text-sm font-medium hover:bg-muted transition-colors"
       >
@@ -29,13 +36,14 @@ export function CollapsibleNavItem({ label, items, organizationId }: Collapsible
       {isOpen && (
         <div className="flex flex-col gap-1 border-l ml-3 pl-3 mt-1">
           {items.map((item) => (
-            <Link
+            <NavLink
+              end
               key={item.id}
               to={item.to}
-              className="rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              className={({ isActive }) => `rounded-md px-3 py-1.5 text-sm transition-colors ${isActive ? "bg-muted font-semibold text-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
             >
               {item.name}
-            </Link>
+            </NavLink>
           ))}
 
           <Link

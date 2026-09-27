@@ -1,7 +1,12 @@
-import { useState, useEffect, type FormEvent } from "react";
-import type { Project, CreateProjectInput } from "../../types/workspace.types";
+import {
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  type FormEvent,
+} from "react";
 import { useParams, Link } from "react-router-dom";
-import { getOrganizationProjects, createProject } from "../../api/projects.api";
+import { createProject } from "../../api/projects.api";
 import { getOrganization } from "../../api/organizations.api";
 import type { MembershipRole } from "../../types/workspace.types";
 import { Button } from "@/components/ui/button";
@@ -11,81 +16,96 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Folder } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CircleAlert } from "lucide-react";
-import { toast } from "sonner";
+import { useOrganizationProjects } from "../../hooks/useOrganizationProjects";
 
 export function ProjectsPage() {
   const { organizationId } = useParams();
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  if (!organizationId) return <p>Missing organization.</p>;
+  return <OrganizationProjects key={organizationId} organizationId={organizationId} />;
+}
+
+function OrganizationProjects({ organizationId }: { organizationId: string }) {
+  const { projects, isLoading: projectsLoading, error: projectsError } =
+    useOrganizationProjects(organizationId);
+  const [roleLoading, setRoleLoading] = useState(true);
+  const [roleError, setRoleError] = useState<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const createPending = useRef(false);
+  const active = useRef(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectDescription, setNewProjectDescription] = useState("");
   const [currentUserRole, setCurrentUserRole] = useState<MembershipRole | null>(
     null,
   );
 
+  useLayoutEffect(() => {
+    active.current = true;
+    return () => { active.current = false; };
+  }, []);
+
   useEffect(() => {
-    if (!organizationId) {
-      return;
-    }
-    setProjects([]);
     setCurrentUserRole(null);
-    setLoadError(null);
-    setCreateError(null);
-    setNewProjectName("");
-    setNewProjectDescription("");
-    setIsLoading(true);
+    setRoleError(null);
+    setRoleLoading(true);
     let isStale = false;
-    Promise.all([
-      getOrganization(organizationId),
-      getOrganizationProjects(organizationId),
-    ])
-      .then(([organization, projects]) => {
+    getOrganization(organizationId)
+      .then((organization) => {
         if (isStale) {
           return;
         }
         setCurrentUserRole(organization.currentUserRole);
-        setProjects(projects);
       })
       .catch((error) => {
         if (isStale) {
           return;
         }
         if (error instanceof Error) {
-          setLoadError(error.message);
+          setRoleError(error.message);
         } else {
-          setLoadError("Failed to load projects.");
+          setRoleError("Failed to load organization.");
         }
       })
       .finally(() => {
         if (!isStale) {
-          setIsLoading(false);
+          setRoleLoading(false);
         }
       });
     return () => {
       isStale = true;
     };
   }, [organizationId]);
-  function handleCreate(event: FormEvent) {
+  const isLoading = roleLoading || projectsLoading;
+  const loadError = roleError ?? projectsError;
+
+  async function handleCreate(event: FormEvent) {
     event.preventDefault();
-    if (!organizationId || newProjectName.trim() === "") {
-        return;
+    if (!active.current || createPending.current || newProjectName.trim() === "" ||
+        (currentUserRole !== "OWNER" && currentUserRole !== "ADMIN")) {
+      return;
     }
     setCreateError(null);
-    createProject(organizationId, {
+    createPending.current = true;
+    setIsCreating(true);
+    try {
+      await createProject(organizationId, {
         name: newProjectName,
         description: newProjectDescription || undefined,
-    })
-        .then((newProject) => {
-            setProjects((currentProjects) => [...currentProjects, newProject]);
-            setNewProjectName("");
-            setNewProjectDescription("");
-        })
-        .catch((err) => {
-            setCreateError(err instanceof Error ? err.message : "Failed to create project.");
-        });
-}
+      });
+      // The successful API write refreshes both the page and sidebar.
+      // Do not append here as well: the refreshed list already includes the item.
+      if (!active.current) return;
+      setNewProjectName("");
+      setNewProjectDescription("");
+    } catch (err) {
+      if (active.current) {
+        setCreateError(err instanceof Error ? err.message : "Failed to create project.");
+      }
+    } finally {
+      createPending.current = false;
+      if (active.current) setIsCreating(false);
+    }
+  }
   if (loadError) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-1 text-center mb-6 ">
@@ -138,8 +158,8 @@ export function ProjectsPage() {
                   onChange={(e) => setNewProjectDescription(e.target.value)}
                   />
               </div>
-              <Button className="rounded-lg" type="submit">
-                Create
+              <Button className="rounded-lg" type="submit" disabled={isCreating}>
+                {isCreating ? "Creating..." : "Create"}
               </Button>
               {createError && (
                 <p className="text-sm text-destructive">{createError}</p>

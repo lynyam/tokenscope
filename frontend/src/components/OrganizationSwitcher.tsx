@@ -17,16 +17,20 @@ export function OrganizationSwitcher() {
   const navigate = useNavigate();
   const [organizations, setOrganizations] = useState<OrganizationSummary[]>([]);
 
-  useEffect(() => {
+  const refreshOrganizations = () => {
     getOrganizations()
       .then(setOrganizations)
       .catch(() => setOrganizations([]));
+  };
+
+  useEffect(() => {
+    refreshOrganizations();
   }, []);
 
   const currentOrganization = organizations.find((org) => org.id === organizationId);
 
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={(open) => { if (open) refreshOrganizations(); }}>
       <DropdownMenuTrigger className="flex w-full items-center gap-2 rounded-lg border p-2 text-left hover:bg-muted transition-colors">
         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted">
           <Building2 className="h-4 w-4 text-muted-foreground" />

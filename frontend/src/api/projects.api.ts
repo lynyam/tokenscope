@@ -1,6 +1,7 @@
 import { mockMemberships, mockOrganizations, mockProjects, } from "../mocks/workspace.mock";
 import type { CreateProjectInput, Project, UpdateProjectInput } from "../types/workspace.types";
 import { cloneMockValue, MockApiError, requireAuthenticatedUserId, waitForMockApi, } from "./mock-api.utils";
+import { notifyProjectsChanged } from "./project-events";
 
 function assertOrganizationAccess(organizationId: string, currentUserId: string,): void {
   const organizationExists = mockOrganizations.some(
@@ -21,28 +22,47 @@ function assertOrganizationAccess(organizationId: string, currentUserId: string,
   }
 }
 
-export async function getOrganizationProjects(organizationId: string,): Promise<Project[]> {
+export async function getOrganizationProjects(
+  organizationId: string,
+): Promise<Project[]> {
   await waitForMockApi();
+
   const currentUserId = requireAuthenticatedUserId();
   assertOrganizationAccess(organizationId, currentUserId);
+
   const projects = mockProjects.filter(
-    (project) => project.organizationId === organizationId,);
-    return cloneMockValue(projects);
+    (project) =>
+      project.organizationId === organizationId &&
+      project.archivedAt === null,
+  );
+
+  return cloneMockValue(projects);
 }
 
-export async function getOrganizationProject(organizationId: string, projectId: string,): Promise<Project> {
+export async function getOrganizationProject(
+  organizationId: string,
+  projectId: string,
+): Promise<Project> {
   await waitForMockApi();
+
   const currentUserId = requireAuthenticatedUserId();
   assertOrganizationAccess(organizationId, currentUserId);
-  const project = mockProjects.find((candidate) =>
-    candidate.organizationId === organizationId &&
-    candidate.id === projectId,
+
+  const project = mockProjects.find(
+    (candidate) =>
+      candidate.organizationId === organizationId &&
+      candidate.id === projectId &&
+      candidate.archivedAt === null,
   );
+
+  // Archived projects have the same normal-read behavior as missing ones.
   if (!project) {
     throw new MockApiError(404, "Project not found.");
   }
+
   return cloneMockValue(project);
 }
+
 export async function createProject(
   organizationId: string,
   input: CreateProjectInput,
@@ -90,6 +110,7 @@ export async function createProject(
       updatedAt: now,
     };
     mockProjects.push(project);
+    notifyProjectsChanged(organizationId);
     return cloneMockValue(project);
 }
 // TODO(TSE-43): Replace mock logic with a real PATCH call once TSE-43 is delivered.
@@ -132,7 +153,7 @@ export async function updateProject(
     project.description = input.description === null ? null : (input.description.trim() || null);
   }
   project.updatedAt = new Date().toISOString();
-
+  notifyProjectsChanged(organizationId);
   return cloneMockValue(project);
 }
 
@@ -165,4 +186,5 @@ export async function archiveProject(
 
   project.archivedAt = new Date().toISOString();
   project.updatedAt = project.archivedAt;
+  notifyProjectsChanged(organizationId);
 }
