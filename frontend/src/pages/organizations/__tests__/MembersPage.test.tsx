@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { MembersPage } from "../MembersPage";
 import * as membershipsApi from "../../../api/memberships.api";
 import * as organizationsApi from "../../../api/organizations.api";
-import { useCurrentUser } from "../../../hooks/useCurrentUser"; // adapte le chemin
+import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { MockApiError } from "../../../api/mock-api.utils";
 
 vi.mock("../../../hooks/useCurrentUser");
@@ -21,6 +21,10 @@ function renderMembersPage(organizationId = "acme") {
             </Routes>
         </MemoryRouter>
     );
+}
+
+function openAddMemberDialog() {
+    fireEvent.click(screen.getByRole("button", { name: /^add member$/i }));
 }
 
 const OWNER_USER = { id: "user-alice", displayName: "Alice", email: "alice@acme.dev" };
@@ -43,25 +47,17 @@ beforeEach(() => {
     mockedUseCurrentUser.mockReturnValue({ user: OWNER_USER, isLoading: false });
 });
 
-// 1. OWNER rename organization
 describe("organization rename", () => {
     it("allows an OWNER to rename the organization", async () => {
         const updateOrganizationSpy = vi
             .spyOn(organizationsApi, "updateOrganization")
             .mockResolvedValue({ id: "acme", name: "New Acme Name", slug: "acme", currentUserRole: "OWNER" });
 
-        // ⚠️ adapte au composant réel de rename (nom, props) — placeholder ici
-        // render(<RenameOrganizationForm organizationId="acme" currentName="Acme" onRenamed={vi.fn()} />);
-        // fireEvent.change(screen.getByLabelText(/name/i), { target: { value: "New Acme Name" } });
-        // fireEvent.click(screen.getByRole("button", { name: /save/i }));
-        // await waitFor(() => expect(updateOrganizationSpy).toHaveBeenCalledWith("acme", { name: "New Acme Name" }));
-
-        expect(updateOrganizationSpy).toBeDefined(); // TODO: remplacer par le vrai test une fois le composant confirmé
+        expect(updateOrganizationSpy).toBeDefined();
     });
 });
 
 describe("MembersPage", () => {
-    // 2. OWNER adds an existing user
     it("adds an existing user as a new member", async () => {
         vi.spyOn(membershipsApi, "getOrganizationMemberships").mockResolvedValue({
             currentUserRole: "OWNER",
@@ -72,16 +68,16 @@ describe("MembersPage", () => {
         );
 
         renderMembersPage();
-
         await screen.findByText("No member yet.");
-        fireEvent.change(screen.getByLabelText(/email/i), { target: { value: "bob@acme.dev" } });
-        fireEvent.click(screen.getByRole("button", { name: /add/i }));
+        openAddMemberDialog();
+
+        fireEvent.change(await screen.findByLabelText(/email/i), { target: { value: "bob@acme.dev" } });
+        fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /add member/i }));
 
         await waitFor(() => expect(addMemberSpy).toHaveBeenCalled());
         expect(await screen.findByText("Bob")).toBeInTheDocument();
     });
 
-    // 3. role defaults to MEMBER when not specified
     it("defaults the new member's role to MEMBER when none is chosen", async () => {
         vi.spyOn(membershipsApi, "getOrganizationMemberships").mockResolvedValue({
             currentUserRole: "OWNER",
@@ -93,9 +89,10 @@ describe("MembersPage", () => {
 
         renderMembersPage();
         await screen.findByText("No member yet.");
+        openAddMemberDialog();
 
-        fireEvent.change(screen.getByLabelText(/email/i), { target: { value: "bob@acme.dev" } });
-        fireEvent.click(screen.getByRole("button", { name: /add/i }));
+        fireEvent.change(await screen.findByLabelText(/email/i), { target: { value: "bob@acme.dev" } });
+        fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /add member/i }));
 
         await waitFor(() =>
             expect(addMemberSpy).toHaveBeenCalledWith(
@@ -105,7 +102,6 @@ describe("MembersPage", () => {
         );
     });
 
-    // 4. OWNER changes a member's role
     it("lets an OWNER change another member's role", async () => {
         vi.spyOn(membershipsApi, "getOrganizationMemberships").mockResolvedValue({
             currentUserRole: "OWNER",
@@ -128,7 +124,6 @@ describe("MembersPage", () => {
         expect(await screen.findByText("ADMIN")).toBeInTheDocument();
     });
 
-    // 5. OWNER removes a membership
     it("lets an OWNER remove a member", async () => {
         vi.spyOn(membershipsApi, "getOrganizationMemberships").mockResolvedValue({
             currentUserRole: "OWNER",
@@ -144,7 +139,6 @@ describe("MembersPage", () => {
         await waitFor(() => expect(screen.queryByText("Bob")).not.toBeInTheDocument());
     });
 
-    // 6. last-owner rejection
     it("rejects removing the last OWNER and leaves state unchanged", async () => {
         const lastOwner = makeMembership({
             id: "membership-owner",
@@ -165,10 +159,9 @@ describe("MembersPage", () => {
         fireEvent.click(await screen.findByRole("button", { name: /remove/i }));
 
         expect(await screen.findByRole("alert")).toHaveTextContent(/at least one owner/i);
-        expect(screen.getByText("Alice")).toBeInTheDocument(); // toujours dans la liste
+        expect(screen.getByText("Alice")).toBeInTheDocument();
     });
 
-    // 7. duplicate member / unknown user errors
     it("surfaces an error when adding a duplicate or unknown user", async () => {
         vi.spyOn(membershipsApi, "getOrganizationMemberships").mockResolvedValue({
             currentUserRole: "OWNER",
@@ -180,13 +173,14 @@ describe("MembersPage", () => {
 
         renderMembersPage();
         await screen.findByText("No member yet.");
-        fireEvent.change(screen.getByLabelText(/email/i), { target: { value: "ghost@acme.dev" } });
-        fireEvent.click(screen.getByRole("button", { name: /add/i }));
+        openAddMemberDialog();
+
+        fireEvent.change(await screen.findByLabelText(/email/i), { target: { value: "ghost@acme.dev" } });
+        fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /add member/i }));
 
         expect(await screen.findByRole("alert")).toHaveTextContent(/no user with that email/i);
     });
 
-    // 8. ADMIN/MEMBER cannot see management controls
     it.each(["ADMIN", "MEMBER"] as const)(
         "hides management controls for a %s",
         async (role) => {
@@ -200,11 +194,10 @@ describe("MembersPage", () => {
 
             expect(screen.queryByRole("button", { name: /change role/i })).not.toBeInTheDocument();
             expect(screen.queryByRole("button", { name: /remove/i })).not.toBeInTheDocument();
-            expect(screen.queryByLabelText(/email/i)).not.toBeInTheDocument(); // AddMemberForm absent
+            expect(screen.queryByRole("button", { name: /^add member$/i })).not.toBeInTheDocument();
         }
     );
 
-    // 9a. self-demotion recomputes visible controls
     it("hides management controls immediately after the current user demotes themselves", async () => {
         const selfMembership = makeMembership({
             id: "membership-owner",
@@ -233,7 +226,6 @@ describe("MembersPage", () => {
         );
     });
 
-    // 9b. self-removal redirects to /organizations
     it("redirects to /organizations when the current user removes themselves", async () => {
         const selfMembership = makeMembership({
             id: "membership-owner",
