@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
-import { User } from "../generated/prisma/client";
+import { Prisma, User } from "../generated/prisma/client";
 import { PrismaService } from "../database/prisma.service";
+import type { SafeUser } from "./user.mapper";
 
 /**
  * User persistence, owned exclusively by the `users` module.
@@ -41,5 +42,19 @@ export class UsersService {
     displayName: string;
   }): Promise<User> {
     return this.prisma.user.create({ data });
+  }
+
+  findSafeByEmail(
+    normalizedEmail: string,
+    client: Prisma.TransactionClient = this.prisma,
+  ): Promise<SafeUser | null> {
+    return client.user.findUnique({
+      where: { email: normalizedEmail },
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+      },
+    });
   }
 }
