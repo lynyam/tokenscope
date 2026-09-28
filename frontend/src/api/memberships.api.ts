@@ -57,7 +57,8 @@ export async function addOrganizationMember(organizationId: string,
     throw new MockApiError(403, "You must be an OWNER to add a member.")
   }
   // 5-Chercher l'utilisateur cible par email dans mockUsers → si introuvable, quel code erreur exact (regarde la liste dans le contrat) ?
-  const targetuser = mockUsers.find(({email}) => email === input.email);
+  const normalizedEmail = input.email.trim().toLowerCase();
+  const targetuser = mockUsers.find(({ email }) => email.toLowerCase() === normalizedEmail);
   if (!targetuser)
   {
     throw new MockApiError(404, "User not found.");
@@ -73,7 +74,7 @@ export async function addOrganizationMember(organizationId: string,
   }
   // 7-Construire la nouvelle membership (avec le rôle par défaut si non fourni — lequel ?)
   const membership: Membership = {
-    id: `membership-${mockMemberships.length + 1}`,
+    id: `membership-${crypto.randomUUID()}`,
     userId: targetuser.id,
     organizationId,
     role: input.role ?? "MEMBER",

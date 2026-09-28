@@ -129,6 +129,7 @@ export function OrganizationDetailPage() {
                         <form onSubmit={handleRenameSubmit} className="flex flex-col gap-2 items-end">
                             <input
                                 id="org-name"
+                                aria-label="Organization name"
                                 value={nameDraft}
                                 onChange={(e) => setNameDraft(e.target.value)}
                                 disabled={isSaving}
