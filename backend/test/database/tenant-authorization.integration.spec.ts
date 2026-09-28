@@ -209,4 +209,46 @@ describe("Tenant authorization with PostgreSQL", () => {
     );
     expect(JSON.stringify({ membership, project })).not.toContain("authorization-test-hash");
   });
+
+  it("uses the supplied transaction for membership and role checks", async () => {
+  const rollback = new Error("Intentional rollback for transaction test");
+
+  await expect(
+    prisma.$transaction(async (tx) => {
+      // Alice starts as OWNER; this change is not yet committed.
+      await tx.membership.update({
+        where: aliceInA(),
+        data: { role: MembershipRole.MEMBER },
+      });
+
+      await expect(
+        organizations.assertOrganizationMember(ids.alice, ids.orgA, tx),
+      ).resolves.toMatchObject({
+        userId: ids.alice,
+        organizationId: ids.orgA,
+        role: MembershipRole.MEMBER,
+      });
+
+      await expect(
+        organizations.assertOrganizationRole(
+          ids.alice,
+          ids.orgA,
+          [MembershipRole.OWNER],
+          tx,
+        ),
+      ).rejects.toMatchObject(FORBIDDEN);
+
+      throw rollback;
+    }),
+  ).rejects.toBe(rollback);
+
+  // Rollback restores OWNER. Existing calls still work without a client.
+  await expect(
+    organizations.assertOrganizationRole(
+      ids.alice,
+      ids.orgA,
+      [MembershipRole.OWNER],
+    ),
+  ).resolves.toMatchObject({ role: MembershipRole.OWNER });
+});
 });

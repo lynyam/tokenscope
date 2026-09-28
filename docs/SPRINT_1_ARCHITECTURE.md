@@ -62,7 +62,7 @@ on the M1 rule that every project is owned by exactly one organization and is
 accessible only through organization membership.
 
 
-## Current baseline
+## Initial backend baseline (historical)
 
 At the start of backend M1 implementation:
 
@@ -142,6 +142,7 @@ src/
     memberships.controller.ts
     memberships.module.ts
     memberships.service.ts
+    membership.mapper.ts
     organization-access.service.ts
     dto/
       add-member.dto.ts
@@ -206,10 +207,12 @@ handling, or exception contracts.
 Exact filenames may change during implementation, but module ownership and
 dependency direction must remain stable.
 
-### Authorization services after TSE-42
+### Authorization and membership services
 
-`MembershipsModule` imports `DatabaseModule` and exports
-`OrganizationAccessService`. `ProjectsModule` imports `DatabaseModule` and
+`MembershipsModule` imports `DatabaseModule` and `UsersModule`, registers
+`MembershipsController`, `MembershipsService`, and `OrganizationAccessService`,
+and exports `OrganizationAccessService`.
+`ProjectsModule` imports `DatabaseModule` and
 `MembershipsModule`, then exports `ProjectAccessService`. `AppModule` imports
 both domain modules.
 
@@ -218,8 +221,10 @@ redeclare the helper provider. For example, `OrganizationsModule` imports
 `MembershipsModule` so `OrganizationsService` can inject
 `OrganizationAccessService`.
 
-TSE-39, TSE-40, and TSE-41 must adopt these helpers in their business services
-and verify real endpoints with TSE-38's authenticated caller context.
+Domain services use these helpers with the acting user ID from TSE-38's verified
+authentication context. Membership endpoints inherit the global JWT guard.
+`UsersService.findSafeByEmail(email, tx)` resolves registered users for member
+addition using the same transaction and selecting only safe user fields.
 See the [implemented helper contract](./SECURITY.md#implemented-helper-contract)
 for trusted inputs, role policy, error order, and mutation requirements.
 
@@ -343,17 +348,25 @@ committed operations.
 
 ### Manage membership
 
-```text
-membership request
-→ authenticate current user
-→ assert OWNER role in organization
-→ resolve the target registered user
-→ apply add/change/remove operation
-→ preserve at least one OWNER
-→ return safe membership data
-```
+`MembershipsController` takes the actor from `@CurrentUser()`, validates route
+UUIDs and body DTOs, and delegates to `MembershipsService`.
 
-Owner removal/demotion and the last-owner check execute within one transaction.
+`list()` permits every organization member. It checks membership and loads the
+ordered membership list in one `RepeatableRead` transaction, so the returned
+`currentUserRole` and memberships use the same database snapshot.
+
+`add()`, `updateRole()`, and `remove()` each use a `Serializable` transaction:
+
+1. check the actor's OWNER role using that transaction client;
+2. for addition, resolve the registered user by normalized email; for updates
+   and removal, load the target by `(organizationId, userId)`;
+3. for role changes, return unchanged data if the role is identical; before
+   demoting/removing an owner, enforce the last-owner rule;
+4. perform the mutation and map safe response fields; removal returns no body.
+
+Serialization retries rerun the complete transaction, including authorization.
+The retry policy and ownership guarantees are defined in
+[SECURITY.md](./SECURITY.md#last-owner).
 
 ### Access project
 
