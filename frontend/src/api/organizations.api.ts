@@ -89,6 +89,8 @@ export async function createOrganization(
     userId: currentUserId,
     organizationId: organization.id,
     role: "OWNER",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   };
   mockMemberships.push(membership);
 

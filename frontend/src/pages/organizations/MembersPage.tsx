@@ -2,16 +2,20 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { getOrganizationMemberships } from "../../api/memberships.api";
-import type { OrganizationMembershipsResponse } from "../../types/workspace.types";
+import type { OrganizationMembershipsResponse, MembershipWithUser } from "../../types/workspace.types";
 import { MockApiError } from "../../api/mock-api.utils";
 
 import { AddMemberForm } from "./AddMemberForm";
 import { MembersTable } from "./MembersTable";
+import { useNavigate } from "react-router-dom";
+import { useCurrentUser } from "../../hooks/useCurrentUser";
 
 type RequestStatus = "loading" | "success"| "error";
 
 export function MembersPage() {
 	const { organizationId } = useParams();
+	const navigate = useNavigate();
+    const { user: currentUser } = useCurrentUser();
 	const [membershipData, setMembershipData] = useState<OrganizationMembershipsResponse | null>(null);
 	const [requestStatus, setRequestStatus] = useState<RequestStatus>("loading");
 	const [loadError, setLoadError] = useState<MockApiError | null>(null);
@@ -70,14 +74,57 @@ export function MembersPage() {
 		);
 	}
 	const canManageMembers = membershipData.currentUserRole === "OWNER";
+	function handleMemberAdded(newMembership: MembershipWithUser) {
+    	setMembershipData((previous) => {
+        	if (!previous) return previous;
+        	return {
+            	...previous,
+            	memberships: [...previous.memberships, newMembership],
+        	};
+    	});
+	}
+	function handleRoleChanged(updatedMembership: MembershipWithUser) {
+		setMembershipData((previous) => {
+        	if (!previous) return previous;
+			const isSelf = currentUser && updatedMembership.userId === currentUser.id
+			return {
+				...previous,
+				currentUserRole: isSelf ? updatedMembership.role : previous.currentUserRole,
+				memberships: previous.memberships.map((membership) =>
+            		membership.id === updatedMembership.id ? updatedMembership : membership
+        		),
+			};
+		});
+	}
+	function handleMemberRemoved(removedMembership: MembershipWithUser) {
+    	if (currentUser && removedMembership.userId === currentUser.id) {
+        	navigate("/organizations");
+        	return;
+    	}
+    	setMembershipData((previous) => {
+        	if (!previous) return previous;
+        	return {
+            	...previous,
+            	memberships: previous.memberships.filter(
+                	(membership) => membership.id !== removedMembership.id
+            	),
+        	};
+    	});
+	}
 	return (
 		<section aria-labelledby="organization-members-heading">
 			<h1 id="organization-members-heading">Organization members</h1>
-			{canManageMembers && <AddMemberForm />}
+			{canManageMembers && (
+    		<AddMemberForm organizationId={organizationId} onMemberAdded={handleMemberAdded} />)}
 			{membershipData.memberships.length === 0 ? (
 				<p>No member yet.</p>
-			): (<MembersTable memberships={membershipData.memberships}
-				canManageMembers={canManageMembers}/>
+			): (<MembersTable
+				organizationId={organizationId}
+				memberships={membershipData.memberships}
+				canManageMembers={canManageMembers}
+				onChangeRole={handleRoleChanged}
+				onMemberRemoved={handleMemberRemoved}
+				/>
 			)}
 		</section>
 	);

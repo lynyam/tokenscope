@@ -1,37 +1,3 @@
-// // interface user
-// export interface User {
-//     id: string;
-//     email: string;
-//     name: string;
-// }
-
-// export type MembershipRole = "OWNER" | "ADMIN" | "MEMBER";
-
-// export interface Organization {
-//     id: string;
-//     name: string;
-//     slug: string;
-//     role: MembershipRole;
-// }
-
-// export interface Member extends User {
-//     role: MembershipRole;
-// }
-
-// export interface Project {
-//     id: string;
-//     organizationId: string;
-//     name: string;
-//     slug: string;
-//     description?: string;
-//     archivedAt?: Date;
-// }
-
-/**
- * Leon's mock types
- */
-
-
 // interface user
 export interface User {
     id: string;
@@ -77,7 +43,9 @@ export interface Membership {
     id: string;
     userId: string;
     organizationId: string;
-    role: MembershipRole;
+    role: MembershipRole; 
+    createdAt: string;
+    updatedAt: string;
 }
 
 /** Membership enriched with the safe user data required by TSE-35. */
@@ -110,4 +78,13 @@ export interface UpdateOrganizationInput {
 
 export interface CreateProjectInput {
     name: string;
+}
+
+export interface AddOrganizationMemberInput {
+    email: string,
+    role?: MembershipRole;
+}
+
+export interface UpdateMemberRoleInput {
+    role: MembershipRole;
 }
