@@ -70,7 +70,7 @@ export async function addOrganizationMember(organizationId: string,
   );
   if (existingMembership)
   {
-    throw new MockApiError(409, "Membership already exists");
+    throw new MockApiError(409, "Membership already exists.");
   }
   // 7-Construire la nouvelle membership (avec le rôle par défaut si non fourni — lequel ?)
   const membership: Membership = {
