@@ -78,10 +78,16 @@ export interface UpdateOrganizationInput {
 
 export interface CreateProjectInput {
     name: string;
+    description?: string;
+}
+
+export interface UpdateProjectInput {
+    name?: string;
+    description?: string | null;
 }
 
 export interface AddOrganizationMemberInput {
-    email: string,
+    email: string;
     role?: MembershipRole;
 }
 

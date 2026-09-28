@@ -5,6 +5,7 @@ import { ConfigService } from "@nestjs/config";
 import { Logger } from "@nestjs/common";
 import { configureApp } from "./configure-app";
 
+
 async function bootstrap() {
 	const app = await NestFactory.create(AppModule);
 	configureApp(app);

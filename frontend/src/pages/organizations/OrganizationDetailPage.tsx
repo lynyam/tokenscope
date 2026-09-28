@@ -4,6 +4,9 @@ import type { FormEvent } from "react";
 import { getOrganization, updateOrganization } from "../../api/organizations.api";
 import type { OrganizationSummary } from "../../types/workspace.types";
 import { Link } from "react-router-dom"
+import { Card } from "@/components/ui/card";
+import { Folder, Users, FolderX, ArrowLeft } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export function OrganizationDetailPage() {
     const { organizationId } = useParams();
@@ -66,63 +69,133 @@ export function OrganizationDetailPage() {
     }
 
     if (!organizationId) {
-        return <p>Missing organization.</p>
+        return (
+            <div className="flex h-full flex-col items-center justify-center gap-1 text-center mb-6 ">
+                <FolderX className="h-12 w-12 text-muted-foreground" />
+                <p className="mt-4 text-xl font-semibold">Organization not found</p>
+                <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+                    This organization doesn't exist or you don't have access to it.
+                </p>
+                <Link
+                    to="/organizations"
+                    className="mt-5 inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-transparent hover:bg-muted h-10 px-6 text-sm font-medium normal-case transition-all"
+                >
+                <ArrowLeft className="h-4 w-4" />
+                    Back to organizations
+                </Link>
+            </div>
+        );
     }
     if (isLoading) {
-        return <p>Loading...</p>;
+        return (
+            <>
+            <Skeleton className="h-8 w-48 mx-auto mb-6" />
+                <div className="flex flex-col gap-2 max-w-md mx-auto">
+                    {Array.from({ length: 5 }).map((_, index) => (
+                    <Skeleton key={index} className="h-16 w-full" />
+                    ))}
+                </div>
+            </>
+        );
     }
     if (error) {
-        return <p>{error}</p>;
+        return <p role="alert">{error}</p>;
     }
     if (!organization) {
-        return <p>Organization not found.</p>;
+        return (
+            <div className="flex h-full flex-col items-center justify-center gap-1 text-center mb-6 ">
+                <FolderX className="h-12 w-12 text-muted-foreground" />
+                <p className="mt-4 text-xl font-semibold">Organization not found</p>
+                <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+                    This organization doesn't exist or you don't have access to it.
+                </p>
+                <Link
+                    to="/organizations"
+                    className="mt-5 inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-transparent hover:bg-muted h-10 px-6 text-sm font-medium normal-case transition-all"
+                >
+                <ArrowLeft className="h-4 w-4" />
+                    Back to organizations
+                </Link>
+            </div>
+        );
     }
     return (
         <div>
-            <h1>Detail of {organizationId}</h1>
-            <p>
-                <Link to={`/organizations/${organizationId}/projects`}>Projects</Link>
-            </p>
-            <p>
-                <Link to={`/organizations/${organizationId}/members`}>Members</Link>
-            </p>
-
-            {isEditing ? (
-                <form onSubmit={handleRenameSubmit}>
-                    <label htmlFor="org-name">Name</label>
-                    <input
-                        id="org-name"
-                        value={nameDraft}
-                        onChange={(e) => setNameDraft(e.target.value)}
-                        disabled={isSaving}
-                    />
-                    <button type="submit" disabled={isSaving}>
-                        {isSaving ? "Saving..." : "Save"}
-                    </button>
-                    <button
-                        type="button"
-                        disabled={isSaving}
-                        onClick={() => {
-                            setIsEditing(false);
-                            setNameDraft(organization.name);
-                            setSaveError(null);
-                        }}
-                    >
-                        Cancel
-                    </button>
-                    {saveError && <p>{saveError}</p>}
-                </form>
-            ) : (
-                <p>
-                    Name: {organization.name}
-                    {organization.currentUserRole === "OWNER" && (
-                        <button onClick={() => setIsEditing(true)}>Rename</button>
+            <h1 className="mb-6 text-2xl font-bold max-w-md mx-auto">Detail of {organizationId}</h1>
+            <Card className="mb-6 max-w-md mx-auto rounded-lg px-8">
+                <div className="flex justify-between items-center py-2 border-b">
+                    <span className="text-sm text-muted-foreground">Name</span>
+                    {isEditing ? (
+                        <form onSubmit={handleRenameSubmit} className="flex flex-col gap-2 items-end">
+                            <input
+                                id="org-name"
+                                value={nameDraft}
+                                onChange={(e) => setNameDraft(e.target.value)}
+                                disabled={isSaving}
+                                className="rounded-lg border border-border bg-transparent h-9 px-2 text-sm"
+                            />
+                            <div className="flex gap-2">
+                                <button
+                                    type="submit"
+                                    disabled={isSaving}
+                                    className="text-sm font-medium text-primary"
+                                >
+                                    {isSaving ? "Saving..." : "Save"}
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={isSaving}
+                                    onClick={() => {
+                                        setIsEditing(false);
+                                        setNameDraft(organization.name);
+                                        setSaveError(null);
+                                    }}
+                                    className="text-sm text-muted-foreground"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                            {saveError && <p className="text-sm text-destructive">{saveError}</p>}
+                        </form>
+                    ) : (
+                        <span className="text-sm font-medium flex items-center gap-2">
+                            {organization.name}
+                            {organization.currentUserRole === "OWNER" && (
+                                <button
+                                    onClick={() => setIsEditing(true)}
+                                    className="text-xs text-primary underline"
+                                >
+                                    Rename
+                                </button>
+                            )}
+                        </span>
                     )}
-                </p>
-            )}
-
-            <p>Slug: {organization.slug}</p>
-            <p>Your role: {organization.currentUserRole}</p>
+                </div>
+                <div className="flex justify-between py-2 border-b">
+                    <span className="text-sm text-muted-foreground">Slug</span>
+                    <span className="text-sm font-medium">{organization.slug}</span>
+                </div>
+                <div className="flex justify-between py-2 border-b">
+                    <span className="text-sm text-muted-foreground">Your role</span>
+                    <span className="text-sm font-medium">{organization.currentUserRole}</span>
+                </div>
+            </Card>
+            <div className="grid grid-cols-2 gap-3 mb-6 max-w-md mx-auto">
+                <Link
+                    to={`/organizations/${organizationId}/projects`}
+                    className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/80 h-10 px-6 text-sm font-medium normal-case transition-all"
+                >
+                    <Folder className="h-4 w-4" />
+                    Projects
+                </Link>
+                <Link
+                    to={`/organizations/${organizationId}/members`}
+                    className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/80 h-10 px-6 text-sm font-medium normal-case transition-all"
+                >
+                    <Users className="h-4 w-4" />
+                    Members
+                </Link>
+            </div>
         </div>
     );
 }

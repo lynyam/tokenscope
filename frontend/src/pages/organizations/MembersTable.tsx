@@ -1,11 +1,17 @@
 import { useState } from "react";
+import {
+    Table,
+    TableHeader,
+    TableBody,
+    TableRow,
+    TableHead,
+    TableCell,
+} from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
 import { RoleBadge } from "../../components/RoleBadge";
 import type { MembershipWithUser, MembershipRole } from "../../types/workspace.types";
 import { updateOrganizationMemberRole, removeOrganizationMember } from "../../api/memberships.api";
 import { MockApiError } from "../../api/mock-api.utils";
-import { useNavigate } from "react-router-dom";
-import { useCurrentUser } from "../../hooks/useCurrentUser";
-
 
 type EditingRoleState = {
     membershipId: string;
@@ -43,16 +49,19 @@ export function MembersTable({
             isSubmitting: false,
         });
     }
+
     function handleCancelEditRole() {
         setEditingRole(null);
         setRoleError(null);
     }
+
     function handleRoleSelectChange(newRole: MembershipRole) {
         setEditingRole((previous) => {
             if (!previous) return previous;
             return { ...previous, role: newRole };
         });
     }
+
     async function handleConfirmRoleChange(membership: MembershipWithUser) {
         if (!editingRole) return;
 
@@ -91,28 +100,31 @@ export function MembersTable({
             setRemovingMembershipId(null);
         }
     }
+
     return (
-        <>
-            <table>
-                <thead>
-                    <tr>
-                        <th scope="col">Name</th>
-                        <th scope="col">Email</th>
-                        <th scope="col">Role</th>
-                        {canManageMembers && <th scope="col">Actions</th>}
-                    </tr>
-                </thead>
-                <tbody>
+        <div className="border rounded-lg mt-6">
+            <Table>
+                <TableHeader>
+                    <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Role</TableHead>
+                        {canManageMembers && <TableHead className="text-right">Actions</TableHead>}
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
                     {memberships.map((membership) => {
                         const isEditingThisRow = editingRole?.membershipId === membership.id;
                         const isRemovingThisRow = removingMembershipId === membership.id;
-                        const isRowBusy = isRemovingThisRow || (editingRole?.membershipId === membership.id && editingRole.isSubmitting);
+                        const isRowBusy =
+                            isRemovingThisRow ||
+                            (editingRole?.membershipId === membership.id && editingRole.isSubmitting);
 
                         return (
-                            <tr key={membership.id}>
-                                <th scope="row">{membership.user.displayName}</th>
-                                <td>{membership.user.email}</td>
-                                <td>
+                            <TableRow key={membership.id}>
+                                <TableCell className="font-medium">{membership.user.displayName}</TableCell>
+                                <TableCell className="text-muted-foreground">{membership.user.email}</TableCell>
+                                <TableCell>
                                     {isEditingThisRow ? (
                                         <select
                                             value={editingRole.role}
@@ -120,6 +132,7 @@ export function MembersTable({
                                             onChange={(event) =>
                                                 handleRoleSelectChange(event.target.value as MembershipRole)
                                             }
+                                            className="rounded-lg border border-border bg-transparent h-9 px-2 text-sm"
                                         >
                                             {ROLE_OPTIONS.map((roleOption) => (
                                                 <option key={roleOption} value={roleOption}>
@@ -130,51 +143,57 @@ export function MembersTable({
                                     ) : (
                                         <RoleBadge role={membership.role} />
                                     )}
-                                </td>
+                                </TableCell>
                                 {canManageMembers && (
-                                    <td>
-                                        {isEditingThisRow ? (
-                                            <>
-                                                <button
-                                                    type="button"
-                                                    disabled={editingRole.isSubmitting}
-                                                    onClick={() => handleConfirmRoleChange(membership)}
+                                    <TableCell className="text-right">
+                                        <div className="flex justify-end gap-2">
+                                            {isEditingThisRow ? (
+                                                <>
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        disabled={editingRole.isSubmitting}
+                                                        onClick={() => handleConfirmRoleChange(membership)}
+                                                    >
+                                                        {editingRole.isSubmitting ? "En cours..." : "Confirmer"}
+                                                    </Button>
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        disabled={editingRole.isSubmitting}
+                                                        onClick={handleCancelEditRole}
+                                                    >
+                                                        Annuler
+                                                    </Button>
+                                                </>
+                                            ) : (
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    disabled={editingRole !== null || isRowBusy}
+                                                    onClick={() => handleStartEditRole(membership)}
                                                 >
-                                                    {editingRole.isSubmitting ? "En cours..." : "Confirmer"}
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    disabled={editingRole.isSubmitting}
-                                                    onClick={handleCancelEditRole}
-                                                >
-                                                    Annuler
-                                                </button>
-                                            </>
-                                        ) : (
-                                            <button
-                                                type="button"
-                                                disabled={editingRole !== null || isRowBusy}
-                                                onClick={() => handleStartEditRole(membership)}
+                                                    Change role
+                                                </Button>
+                                            )}
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                disabled={isRowBusy || editingRole !== null}
+                                                onClick={() => handleRemoveMember(membership)}
                                             >
-                                                Change role
-                                            </button>
-                                        )}
-                                        <button
-                                            type="button"
-                                            disabled={isRowBusy || editingRole !== null}
-                                            onClick={() => handleRemoveMember(membership)}
-                                        >
-                                            {isRemovingThisRow ? "En cours..." : "Remove"}
-                                        </button>
-                                    </td>
+                                                {isRemovingThisRow ? "En cours..." : "Remove"}
+                                            </Button>
+                                        </div>
+                                    </TableCell>
                                 )}
-                            </tr>
+                            </TableRow>
                         );
                     })}
-                </tbody>
-            </table>
-            {roleError && <p role="alert">{roleError}</p>}
-            {removeError && <p role="alert">{removeError}</p>}
-        </>
+                </TableBody>
+            </Table>
+            {roleError && <p role="alert" className="p-3 text-sm text-destructive">{roleError}</p>}
+            {removeError && <p role="alert" className="p-3 text-sm text-destructive">{removeError}</p>}
+        </div>
     );
 }
