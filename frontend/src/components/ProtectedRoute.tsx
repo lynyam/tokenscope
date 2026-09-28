@@ -6,7 +6,7 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, isLoading } = useCurrentUser();
 
   if (isLoading) {
-    return <div>Loading...</div>;
+    return <div role="status" className="flex min-h-screen items-center justify-center">Loading…</div>;
   }
 
   if (!user) {
