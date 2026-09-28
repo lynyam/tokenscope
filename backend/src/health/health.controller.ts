@@ -1,8 +1,6 @@
-import { Controller, Get, UseGuards } from "@nestjs/common"
+import { Controller, Get, } from "@nestjs/common"
 import { HealthService } from "./health.service"
-import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard"
-import { CurrentUser } from "../common/decorators/current-user.decorator"
-import { AuthenticatedUser } from "../common/types/authenticated-user"
+import { Public } from "../common/decorators/public.decorator";
 
 @Controller("health")
 export class HealthController {
@@ -10,18 +8,15 @@ export class HealthController {
 		private readonly healthService: HealthService
 	) {}
 
+	@Public()
 	@Get()
 	getHealth() {
 		return this.healthService.getHealth();
 	}
 
+	@Public()
 	@Get("db")
 	async checkDatabase() {
 		return this.healthService.checkDatabase();
-	}
-	@Get("whoami")
-	@UseGuards(JwtAuthGuard)
-	whoAmI(@CurrentUser() user: AuthenticatedUser) {
-		return { userId: user.userId };
 	}
 }

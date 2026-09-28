@@ -42,7 +42,7 @@ services:
         npm ci &&
         npx prisma generate &&
         npx prisma migrate deploy &&
-        npx jest --config test/jest-integration.json --runInBand
+        npm run test:integration
       "
 
 volumes:

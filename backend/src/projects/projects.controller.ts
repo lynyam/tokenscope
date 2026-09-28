@@ -1,55 +1,55 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
-import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Patch, Post, } from "@nestjs/common";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
-import { AuthenticatedUser } from "../common/types/authenticated-user";
+import type { AuthenticatedUser } from "../common/types/authenticated-user";
 import { CreateProjectDto } from "./dto/create-project.dto";
 import { UpdateProjectDto } from "./dto/update-project.dto";
 import { ProjectsService } from "./projects.service";
+import { UuidParam } from "../common/decorators/uuid-param.decorators";
 
 @Controller("organizations/:organizationId/projects")
-@UseGuards(JwtAuthGuard)
 export class ProjectsController {
     constructor(private readonly projectsService: ProjectsService) {}
 
     @Get()
-    findAll(@CurrentUser() user: AuthenticatedUser, @Param("organizationId") organizationId: string) {
-        return this.projectsService.findAllForOrganization(user.userId, organizationId);
+    findAll(@CurrentUser() user: AuthenticatedUser, @UuidParam("organizationId") organizationId: string) {
+        return this.projectsService.findAllForOrganization(user.id, organizationId);
     }
 
     @Post()
     create(
         @CurrentUser() user: AuthenticatedUser,
-        @Param("organizationId") organizationId: string,
+        @UuidParam("organizationId") organizationId: string,
         @Body() dto: CreateProjectDto,
     ) {
-        return this.projectsService.create(user.userId, organizationId, dto);
+        return this.projectsService.create(user.id, organizationId, dto);
     }
 
     @Get(":projectId")
     findOne(
         @CurrentUser() user: AuthenticatedUser,
-        @Param("organizationId") organizationId: string,
-        @Param("projectId") projectId: string,
+        @UuidParam("organizationId") organizationId: string,
+        @UuidParam("projectId") projectId: string,
     ) {
-        return this.projectsService.findOneForOrganization(user.userId, organizationId, projectId);
+        return this.projectsService.findOneForOrganization(user.id, organizationId, projectId);
     }
 
     @Patch(":projectId")
     update(
         @CurrentUser() user: AuthenticatedUser,
-        @Param("organizationId") organizationId: string,
-        @Param("projectId") projectId: string,
+        @UuidParam("organizationId") organizationId: string,
+        @UuidParam("projectId") projectId: string,
         @Body() dto: UpdateProjectDto,
     ) {
-        return this.projectsService.update(user.userId, organizationId, projectId, dto);
+        return this.projectsService.update(user.id, organizationId, projectId, dto);
     }
 
     @Delete(":projectId")
-    archive(
+    @HttpCode(HttpStatus.NO_CONTENT)
+    async archive(
         @CurrentUser() user: AuthenticatedUser,
-        @Param("organizationId") organizationId: string,
-        @Param("projectId") projectId: string,
-    ) {
-        return this.projectsService.archive(user.userId, organizationId, projectId);
+        @UuidParam("organizationId") organizationId: string,
+        @UuidParam("projectId") projectId: string,
+    ): Promise<void> {
+        await this.projectsService.archive(user.id, organizationId, projectId);
     }
 }
