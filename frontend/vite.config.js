@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url'
 // Tailwind's Vite plugin, does the CSS scanning/build
 import tailwindcss from '@tailwindcss/vite' 
 
+
 const backenUrl = process.env.BACKEND_URL;
 
 // recreate __dirname in ESM context
@@ -28,22 +29,11 @@ export default defineConfig({
 			},
 		},
 	},
+	test: {
+		environment: 'jsdom',
+		globals: true,
+		setupFiles: './src/test/setup.ts',
+	},
 })
 
 
-/**
- * TODO:
- * Do I need @thingy?
- * prompt to explain more completely the role of Vite
- *  + Both are instructions read by tools before your code ever ships — one 
- *    by the bundler, one by the type checker/editor.
- *  + vite.config.js: Tells Vite how to build and serve your app.
- * 		> which plugins to run (React, Tailwind)
- * 		> how to resolve import shortcuts like @/, 
- * 		> how to proxy /api calls to your NestJS backend during local dev.
- *  + tsconfig.json: Tells TypeScript how to type-check your app. For type checking time.
- * 		> what JS features are allowed (target)
- * 		> how strict to be about types (strict)
- * 		>@/ shortcut — how to resolve it so your editor doesn't flag imports as errors.
- * Vite configuration: makes the @ path actually work at build time (bundler resolves the import)
- */
