@@ -69,6 +69,9 @@ db-setup: db-generate db-migrate db-seed
 frontendcheck:
 	$(COMPOSE) exec $(FRONTEND) npm run check
 
+frontendtest:
+	$(COMPOSE) exec $(FRONTEND) npm run test
+
 backendcheck:
 	$(COMPOSE) exec $(BACKEND) npm run check
 
@@ -138,6 +141,7 @@ help:
 	@echo "  make clean                         Remove project containers/network"
 	@echo "  make fullclean                     Also remove volumes/local images"
 	@echo "  make test-backend                  Check, build, unit, E2E and isolated database tests"
+	@echo "  make frontendtest                  Run frontend Vitest suite"
 	@echo ""
 
 .PHONY: \
