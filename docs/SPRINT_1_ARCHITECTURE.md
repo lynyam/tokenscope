@@ -456,6 +456,102 @@ src/
 ```
 ## Single M1 implementation sequence
 
+### Frontend integration reference (TSE-61)
+
+The implementation in `frontend/src/api/http-client.ts` is shared by the M1
+domain adapters. `API.md`, `SECURITY.md`, and `DATA_MODEL.md` retain their
+contract responsibilities; examples here explain how to consume the client.
+
+| Shared code | Concrete consumers and reason |
+|---|---|
+| `http-client.ts` | Auth, organization, membership, and project adapters share `/api/v1`, JSON, bearer headers, and `204` handling. Pages continue calling their domain adapter. |
+| `ApiError` in `http-client.ts` | Forms and pages need the backend code, status, validation details, and request ID. Keeping one error type prevents domain adapters from interpreting failures differently. |
+| `auth-session.ts` | `AuthContext` owns token lifecycle and user state; the HTTP client needs to read the same token and invalidate the current session on a protected `401`. |
+| `workspace.types.ts` | The four adapters and their consumers share the documented HTTP resource shapes. Dates are required ISO strings where specified by `API.md`. |
+
+The token helper stores only the access token under `tokenscope.accessToken`.
+Use `saveAccessToken`, `getAccessToken`, and `clearAuthSession` rather than
+reading or writing the storage key in domain adapters. User state belongs in
+`AuthContext`. Organization roles come from API responses, not JWT decoding.
+
+The client exports:
+
+```ts
+apiGet<T>(path, options?)
+apiPost<T>(path, body, options?)
+apiPatch<T>(path, body, options?)
+apiDelete(path, options?) // Promise<void>; expects the M1 204 response
+
+// Options: { auth?: "required" | "none"; signal?: AbortSignal }
+```
+
+Paths are relative to `/api/v1`, starting with `/`. Authentication is required
+by default. Public signup/signin calls explicitly use `auth: "none"`:
+
+```ts
+// Inside auth.api.ts: return the backend result to AuthContext.
+return apiPost<AuthResponse>("/auth/signin", input, { auth: "none" });
+
+// Inside organizations.api.ts:
+return apiGet<OrganizationSummary[]>("/organizations", { signal });
+```
+
+For TSE-59, adapt `AuthContext` to accept `AuthResponse`: after confirming the
+sign-in attempt is still current, save `result.accessToken` and set the safe
+user to `result.user`. Startup uses `apiGet<User>("/auth/me")` when a token
+exists. Preserve token storage on connection/server failures and provide a
+retry for failed startup verification. Remove mock account/session storage
+when switching that adapter. Sign-out clears token and user locally. Keep the
+existing subscription to `subscribeToAuthInvalidation`; it also stops an old
+startup response from restoring a signed-out user.
+
+On protected `401`, the client invalidates the request's session and
+`AuthContext` clears its user. The request snapshot ensures a late response
+from an earlier login cannot invalidate a newer login. `ProtectedRoute` owns
+the redirect. Public signin failures and protected `403`, `404`, and `409`
+remain errors for the caller to display.
+
+`ApiError.statusCode` is the actual HTTP status and is undefined for connection
+failures (`NETWORK_ERROR`). Malformed successful resource responses produce
+`INVALID_API_RESPONSE`. Non-JSON error pages use a safe fallback message;
+structured errors preserve `code`, `details`, and `requestId`. The generic
+return type does not validate a domain resource at runtime. Adapter tests
+cover the contract; cancellation remains `AbortError`, not a user-visible
+connection error. The client never automatically retries mutations.
+
+TSE-61's member adapter uses the four `/organizations/:organizationId/members`
+routes. PATCH and DELETE target the member's **user ID**. Page state is keyed
+by organization and current user; reads and mutations are cancelled on
+unmount. Successful writes use server-returned memberships, keep the documented
+ordering, hide management controls on self-demotion, and navigate away on
+self-removal. Failed writes retain the visible rows and form input. The
+backend enforces roles and the last-owner rule.
+
+The existing page callbacks and route reloads cover these changes. There is
+no additional organization event system, generic data cache, or alternate
+demo procedure. Use `DEMO.md` for full-stack acceptance.
+
+#### Delivery boundaries
+
+TSE-61 supplies the shared foundation and real membership adapter/UI. TSE-59
+still supplies the real auth adapter/startup flow; TSE-60 and TSE-62 supply
+real organization and project adapters. The remaining mock fixture timestamp
+updates only keep those adapters compatible with the shared types during
+migration. Production membership code does not import mock utilities/data.
+
+The shared helpers, types, auth invalidation wiring, test setup, and their
+tests can form the first reviewable commit. Membership adapter/UI/tests form
+the next. Consumers should base their branches on the agreed shared commit
+and preserve that history when integrating the domain work.
+
+Frontend tests use the real client and membership adapter with HTTP responses
+stubbed at `fetch`; they do not prove PostgreSQL persistence or a real browser
+login. Run the complete two-browser demo after combining TSE-59/60/61/62 and
+before declaring TSE-43 complete. A valid token alone is insufficient while
+`AuthContext` still obtains its user from mock authentication.
+
+### Backend and frontend delivery order
+
 This is dependency order inside one M1 delivery, not a set of partial product
 milestones:
 

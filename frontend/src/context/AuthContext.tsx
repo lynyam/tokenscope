@@ -1,11 +1,12 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { User, SignInInput, SignUpInput } from "../types/workspace.types";
 import { getCurrentUser, signIn as apiSignIn, signOut as apiSignOut, signUp as apiSignUp } from "../api/auth.api";
+import { clearAuthSession, subscribeToAuthInvalidation } from "../api/auth-session";
 
 
 /**
  * AuthContextValue interface, creates an entire publicAPI
- * Any component can use,if it taps into AuthContext. 
+ * Any component can use,if it taps into AuthContext.
  */
 
 interface AuthContextValue {
@@ -29,37 +30,56 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const authAttempt = useRef(0);
 
   /* Section 1 */
   useEffect(() => {
+    let active = true;
+    const attempt = ++authAttempt.current;
+    const unsubscribe = subscribeToAuthInvalidation(() => {
+      // A late startup response must not restore a user after a protected 401.
+      authAttempt.current += 1;
+      setUser(null);
+      setIsLoading(false);
+    });
     async function initializeSession() {
       try {
         const currentUser = await getCurrentUser();
-        setUser(currentUser);
+        if (active && attempt === authAttempt.current) setUser(currentUser);
       } catch (err) {
-        setUser(null);
+        if (active && attempt === authAttempt.current) setUser(null);
       } finally {
-        setIsLoading(false);
+        if (active && attempt === authAttempt.current) setIsLoading(false);
       }
     }
 
-    initializeSession();
+    void initializeSession();
+    return () => { active = false; unsubscribe(); };
   }, []);
 
   /* Section 2 */
   async function signIn(input: SignInInput) {
+    const attempt = ++authAttempt.current;
     const loggedInUser = await apiSignIn(input);
-    setUser(loggedInUser);
+    if (attempt === authAttempt.current) {
+      setUser(loggedInUser);
+      setIsLoading(false);
+    }
   }
 
   async function signOut() {
+    // Token/user cleanup is local in M1.
+    clearAuthSession();
     await apiSignOut();
-    setUser(null);
   }
 
   async function signUp(input: SignUpInput) {
-  const loggedInUser = await apiSignUp(input);
-  setUser(loggedInUser);
+    const attempt = ++authAttempt.current;
+    const loggedInUser = await apiSignUp(input);
+    if (attempt === authAttempt.current) {
+      setUser(loggedInUser);
+      setIsLoading(false);
+    }
   }
 
   /* Section 3 */
