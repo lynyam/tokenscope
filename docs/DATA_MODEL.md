@@ -18,8 +18,7 @@ before those records exist.
 
 ## Entity relationship
 
-```mermaid
-erDiagram
+```mermaiderDiagram
     User ||--o{ Membership : has
     Organization ||--o{ Membership : has
     Organization ||--o{ Project : owns
