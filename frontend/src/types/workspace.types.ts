@@ -104,6 +104,14 @@ export interface CreateOrganizationInput {
     name: string;
 }
 
+export interface CreateOrganizationInput {
+    name: string;
+}
+
+export interface UpdateOrganizationInput {
+    name: string;
+}
+
 export interface CreateProjectInput {
     name: string;
     description?: string;
