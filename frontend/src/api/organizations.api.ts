@@ -10,7 +10,7 @@ export async function getOrganizations(): Promise<OrganizationSummary[]> {
 }
 
 export async function getOrganization(organizationId: string): Promise<OrganizationSummary> {
-    return apiGet<OrganizationSummary>(`/organizations/${organizationId}`);
+    return apiGet<OrganizationSummary>(`/organizations/${encodeURIComponent(organizationId)}`);
 }
 
 export async function createOrganization(input: CreateOrganizationInput): Promise<OrganizationSummary> {
@@ -21,5 +21,5 @@ export async function updateOrganization(
     organizationId: string,
     input: UpdateOrganizationInput,
 ): Promise<OrganizationSummary> {
-    return apiPatch<OrganizationSummary>(`/organizations/${organizationId}`, input);
+    return apiPatch<OrganizationSummary>(`/organizations/${encodeURIComponent(organizationId)}`, input);
 }
