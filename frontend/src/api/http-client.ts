@@ -39,10 +39,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     if (response.status === 204) {
         return undefined as T;
     }
-
-    const body = await response.json().catch(() => null);
-
     if (!response.ok) {
+        const body = await response.json().catch(() => null);
         throw new ApiError(
             body?.statusCode ?? response.status,
             body?.code ?? "HTTP_ERROR",
@@ -52,7 +50,15 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
         );
     }
 
-    return body as T;
+    try {
+        return (await response.json()) as T;
+    } catch {
+        throw new ApiError(
+            response.status,
+            "INVALID_RESPONSE_BODY",
+            "The server returned an invalid response body.",
+        );
+    }
 }
 
 export function apiGet<T>(path: string): Promise<T> {
