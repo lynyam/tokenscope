@@ -1,11 +1,139 @@
 import { Link } from "react-router-dom";
 import { buttonVariants } from "../components/ui/button";
 import { ProductPreview } from "../components/ProductPreview";
+import { useCurrentUser } from "../hooks/useCurrentUser";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  CardDescription,
+} from "../components/ui/card";
 
 const signupFocusClasses =
   "focus-visible:outline-solid! focus-visible:outline-4! focus-visible:outline-offset-4! focus-visible:outline-amber-400! focus-visible:ring-0!";
 
+const sectionLinkClasses =
+  "rounded-sm text-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring";
+
+const productBenefits = [
+  {
+    title: "Understand your spending",
+    description:
+      "See how estimated costs are distributed across projects, models, and workflows.",
+  },
+  {
+    title: "Investigate expensive requests",
+    description:
+      "Examine token usage, response times, and request status to understand which requests deserve attention.",
+  },
+  {
+    title: "Make decisions together",
+    description:
+      "Give your team a shared view of the evidence behind its AI spending.",
+  },
+];
+
+const audiences = [
+  {
+    title: "SaaS teams and technical founders",
+    description:
+      "Understand the cost of AI features such as customer support and document summarisation.",
+  },
+  {
+    title: "Engineering teams",
+    description:
+      "Investigate usage across chatbots, document-processing workflows, assistants, and agents.",
+  },
+  {
+    title: "AI agencies",
+    description:
+      "Organise visibility across the AI projects you manage for different clients.",
+  },
+];
+
+function InfoCard({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>
+          <h3>{title}</h3>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <CardDescription>{description}</CardDescription>
+      </CardContent>
+    </Card>
+  );
+}
+
+function LandingActions({
+  isLoading,
+  isLoggedIn,
+  size,
+  showLogin = true,
+}: {
+  isLoading: boolean;
+  isLoggedIn: boolean;
+  size: "sm" | "lg";
+  showLogin?: boolean;
+}) {
+  if (isLoading) {
+    return (
+      <span role="status" className="text-sm text-muted-foreground">
+        Loading…
+      </span>
+    );
+  }
+
+  if (isLoggedIn) {
+    return (
+      <Link
+        to="/organizations"
+        className={buttonVariants({
+          size,
+          className: signupFocusClasses,
+        })}
+      >
+        Dashboard
+      </Link>
+    );
+  }
+
+  return (
+    <>
+      {showLogin && (
+        <Link
+          to="/signin"
+          className={buttonVariants({ variant: "outline", size })}
+        >
+          Log in
+        </Link>
+      )}
+
+      <Link
+        to="/signup"
+        className={buttonVariants({
+          size,
+          className: signupFocusClasses,
+        })}
+      >
+        Try TokenScope
+      </Link>
+    </>
+  );
+}
+
 export function LandingPage() {
+  const { user, isLoading } = useCurrentUser();
+  const isLoggedIn = Boolean(user);
+
   return (
     <div className="dark min-h-screen bg-background text-foreground">
       <header className="border-b border-border">
@@ -19,43 +147,23 @@ export function LandingPage() {
             TokenScope
           </Link>
 
-          <a
-            href="#product"
-            className="rounded-sm text-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
-          >
+          <a href="#product" className={sectionLinkClasses}>
             Product
           </a>
 
-          <a
-            href="#audience"
-            className="rounded-sm text-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
-          >
+          <a href="#audience" className={sectionLinkClasses}>
             Who it’s for
           </a>
 
-          <a
-            href="#how-it-works"
-            className="rounded-sm text-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
-          >
+          <a href="#how-it-works" className={sectionLinkClasses}>
             How it works
           </a>
 
-          <Link
-            to="/signin"
-            className={buttonVariants({ variant: "outline", size: "sm" })}
-          >
-            Log in
-          </Link>
-
-          <Link
-            to="/signup"
-            className={buttonVariants({
-              size: "sm",
-              className: signupFocusClasses,
-            })}
-          >
-            Try TokenScope
-          </Link>
+          <LandingActions
+            isLoading={isLoading}
+            isLoggedIn={isLoggedIn}
+            size="sm"
+          />
         </div>
       </header>
 
@@ -77,15 +185,12 @@ export function LandingPage() {
         </p>
 
         <div className="mt-10 flex flex-wrap items-center gap-4">
-          <Link
-            to="/signup"
-            className={buttonVariants({
-              size: "lg",
-              className: signupFocusClasses,
-            })}
-          >
-            Try TokenScope
-          </Link>
+          <LandingActions
+            isLoading={isLoading}
+            isLoggedIn={isLoggedIn}
+            size="lg"
+            showLogin={false}
+          />
 
           <a
             href="#how-it-works"
@@ -117,35 +222,13 @@ export function LandingPage() {
           </p>
 
           <div className="mt-10 grid gap-8 md:grid-cols-3">
-            <article>
-              <h3 className="text-lg font-semibold">
-                Understand your spending
-              </h3>
-              <p className="mt-3 leading-relaxed text-muted-foreground">
-                See how estimated costs are distributed across projects,
-                models, and workflows.
-              </p>
-            </article>
-
-            <article>
-              <h3 className="text-lg font-semibold">
-                Investigate expensive requests
-              </h3>
-              <p className="mt-3 leading-relaxed text-muted-foreground">
-                Examine token usage, response times, and request status
-                to understand which requests deserve attention.
-              </p>
-            </article>
-
-            <article>
-              <h3 className="text-lg font-semibold">
-                Make decisions together
-              </h3>
-              <p className="mt-3 leading-relaxed text-muted-foreground">
-                Give your team a shared view of the evidence behind
-                its AI spending.
-              </p>
-            </article>
+            {productBenefits.map((benefit) => (
+              <InfoCard
+                key={benefit.title}
+                title={benefit.title}
+                description={benefit.description}
+              />
+            ))}
           </div>
 
           <ProductPreview />
@@ -164,35 +247,13 @@ export function LandingPage() {
           </h2>
 
           <div className="mt-10 grid gap-8 md:grid-cols-3">
-            <article>
-              <h3 className="text-lg font-semibold">
-                SaaS teams and technical founders
-              </h3>
-              <p className="mt-3 leading-relaxed text-muted-foreground">
-                Understand the cost of AI features such as customer support
-                and document summarisation.
-              </p>
-            </article>
-
-            <article>
-              <h3 className="text-lg font-semibold">
-                Engineering teams
-              </h3>
-              <p className="mt-3 leading-relaxed text-muted-foreground">
-                Investigate usage across chatbots, document-processing
-                workflows, assistants, and agents.
-              </p>
-            </article>
-
-            <article>
-              <h3 className="text-lg font-semibold">
-                AI agencies
-              </h3>
-              <p className="mt-3 leading-relaxed text-muted-foreground">
-                Organise visibility across the AI projects you manage
-                for different clients.
-              </p>
-            </article>
+            {audiences.map((audience) => (
+              <InfoCard
+                key={audience.title}
+                title={audience.title}
+                description={audience.description}
+              />
+            ))}
           </div>
         </section>
 
@@ -271,22 +332,11 @@ export function LandingPage() {
           </p>
 
           <div className="mt-8 flex flex-wrap items-center gap-4">
-            <Link
-              to="/signup"
-              className={buttonVariants({
-                size: "lg",
-                className: signupFocusClasses,
-              })}
-            >
-              Try TokenScope
-            </Link>
-
-            <Link
-              to="/signin"
-              className={buttonVariants({ variant: "outline", size: "lg" })}
-            >
-              Log in
-            </Link>
+            <LandingActions
+              isLoading={isLoading}
+              isLoggedIn={isLoggedIn}
+              size="lg"
+            />
           </div>
         </section>
 
@@ -294,14 +344,17 @@ export function LandingPage() {
           <div className="flex flex-col gap-4 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
             <p>TokenScope — collaborative LLM cost observability.</p>
 
-            <nav aria-label="Footer navigation" className="flex gap-4">
-              <a href="#product" className="hover:text-foreground">
+            <nav
+              aria-label="Footer navigation"
+              className="flex flex-wrap gap-4"
+            >
+              <a href="#product" className={sectionLinkClasses}>
                 Product
               </a>
-              <a href="#audience" className="hover:text-foreground">
+              <a href="#audience" className={sectionLinkClasses}>
                 Who it’s for
               </a>
-              <a href="#how-it-works" className="hover:text-foreground">
+              <a href="#how-it-works" className={sectionLinkClasses}>
                 How it works
               </a>
             </nav>
