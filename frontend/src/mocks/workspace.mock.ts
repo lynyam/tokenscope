@@ -24,13 +24,7 @@ export const mockUsers: User[] = [
     },
 ];
 
-/** Add credentials only inside the mock; they are not User data. */
-export const mockAccounts = [
-    { userId: "user-alice", password: "password123" },
-    { userId: "user-bob", password: "password123" },
-    { userId: "user-charlie", password: "password123" },
-    { userId: "user-dina", password: "password123" },
-];
+
 
 export const mockOrganizations: Organization[] = [
     {

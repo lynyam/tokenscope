@@ -496,14 +496,19 @@ return apiPost<AuthResponse>("/auth/signin", input, { auth: "none" });
 return apiGet<OrganizationSummary[]>("/organizations", { signal });
 ```
 
-For TSE-59, adapt `AuthContext` to accept `AuthResponse`: after confirming the
-sign-in attempt is still current, save `result.accessToken` and set the safe
-user to `result.user`. Startup uses `apiGet<User>("/auth/me")` when a token
-exists. Preserve token storage on connection/server failures and provide a
-retry for failed startup verification. Remove mock account/session storage
-when switching that adapter. Sign-out clears token and user locally. Keep the
-existing subscription to `subscribeToAuthInvalidation`; it also stops an old
-startup response from restoring a signed-out user.
+The authentication adapter returns AuthResponse without persisting it.
+AuthContext confirms that the authentication attempt is still current,
+then saves result.accessToken and sets the safe user to result.user.
+
+Startup calls /auth/me only when an access token exists. Network and
+server failures preserve the token and display a session-verification
+retry screen. Protected 401 responses invalidate the session through
+the shared HTTP client and auth-session subscription.
+
+Sign-out clears the local token and user without an HTTP request.
+The user remains in React state; browser persistence contains only
+the access token. Obsolete mock credential and session keys are removed
+during initialization.
 
 On protected `401`, the client invalidates the request's session and
 `AuthContext` clears its user. The request snapshot ensures a late response
@@ -547,8 +552,7 @@ and preserve that history when integrating the domain work.
 Frontend tests use the real client and membership adapter with HTTP responses
 stubbed at `fetch`; they do not prove PostgreSQL persistence or a real browser
 login. Run the complete two-browser demo after combining TSE-59/60/61/62 and
-before declaring TSE-43 complete. A valid token alone is insufficient while
-`AuthContext` still obtains its user from mock authentication.
+before declaring TSE-43 complete.
 
 ### Backend and frontend delivery order
 
