@@ -361,12 +361,53 @@ From `frontend/`:
 
 ```bash
 npm run check
+npm run test
 npm run build
 ```
 
 `check` runs TypeScript validation without producing JavaScript output.
 
 `build` creates the frontend production assets with Vite.
+
+`test` runs the frontend HTTP-client, auth-invalidation, membership-adapter,
+and membership-page tests with Vitest. The shared test setup uses jsdom and
+Testing Library to exercise React interactions. These are development-only
+dependencies: Vitest runs assertions, jsdom supplies browser APIs, and Testing
+Library exercises controls and accessible output. They do not replace the
+real backend/two-browser acceptance flow in `DEMO.md`.
+
+The frontend suite covers the shared HTTP client, authentication adapter and
+context, authentication forms, organization adapter and screens, and
+membership adapter and screens. Tests live under frontend/test/ and exercise
+the API adapters with network responses stubbed at fetch.
+`test/setup.ts` registers DOM assertions and cleans up React, mocks,
+and browser storage after each test. `vite.config.js` discovers only
+`test/**/*.test.{ts,tsx}` and loads that setup file; `tsconfig.json` includes
+both `src` and `test` so `npm run check` validates test code too. Tests import
+application code through the existing `@/` alias and import Vitest APIs
+explicitly; no additional test aliases or global Vitest types are needed.
+
+The test workers disable Node's native Web Storage through
+`execArgv: ['--no-experimental-webstorage']` in the Vite test configuration.
+Vitest 4 can otherwise retain Node's `localStorage` instead of jsdom's, causing
+storage-method errors or an invalid `--localstorage-file` error before test
+assertions run. The flag lets jsdom provide isolated browser storage; no
+disk-backed storage file or custom storage mock is needed. Local checks use
+Node 24, matching the development containers.
+
+While implementing the shared foundation before the membership adapter and
+page, install only its two test files and run this checkpoint from `frontend/`:
+
+```bash
+npm run test -- test/api/http-client.test.ts test/context/AuthContext.test.tsx
+```
+
+Add `test/api/memberships.api.test.ts` and
+`test/pages/organizations/MembersPage.test.tsx` once their production code is
+implemented, then run the full suite above.
+
+The TSE-61 shared-client usage and remaining adapter responsibilities are
+documented in `SPRINT_1_ARCHITECTURE.md` under "Frontend integration reference".
 
 ---
 
@@ -406,4 +447,3 @@ For system architecture, see:
 ```text
 docs/ARCHITECTURE.md
 ```
-
