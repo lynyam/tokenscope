@@ -544,7 +544,10 @@ TSE-60 provides real organization list, detail, create, and rename API calls,
 plus loading, cancellation, pending, and error handling for the existing
 organization screens.
 
-The organization rename control remains part of TSE-47.
+TSE-47 provides the OWNER-only organization rename form through the existing
+organization adapter. Successful renames use the server response; failed
+renames preserve the organization and draft. The backend owns authorization
+and preserves the slug.
 TSE-62 supplies the real project adapter. Remaining mock fixtures must be
 removed once their remaining project consumers have migrated.
 

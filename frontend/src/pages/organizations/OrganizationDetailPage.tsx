@@ -1,13 +1,18 @@
 import { useParams } from "react-router-dom";
-import { useEffect, useState } from "react";
-import { getOrganization } from "../../api/organizations.api";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+    getOrganization,
+    updateOrganization,
+} from "../../api/organizations.api";
 import type { OrganizationSummary } from "../../types/workspace.types";
 import { Link } from "react-router-dom"
 import { Card } from "@/components/ui/card";
 import { Folder, Users, FolderX, ArrowLeft } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getApiErrorMessage, isAbortError } from "@/api/http-client";
+import { ApiError, getApiErrorMessage, isAbortError } from "@/api/http-client";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export function OrganizationDetailPage() {
     const { organizationId } = useParams();
@@ -37,9 +42,17 @@ function OrganizationDetail({ organizationId, }: {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [retry, setRetry] = useState(0);
+    const [isEditing, setIsEditing] = useState(false);
+    const [nameDraft, setNameDraft] = useState("");
+    const [isSaving, setIsSaving] = useState(false);
+    const [saveError, setSaveError] = useState<string | null>(null);
+
+    const requests = useRef<AbortController | null>(null);
+    const saving = useRef(false);
 
     useEffect(() => {
         const controller = new AbortController();
+        requests.current = controller;
         setOrganization(null);
         setError(null);
         setIsLoading(true);
@@ -58,10 +71,70 @@ function OrganizationDetail({ organizationId, }: {
             .finally(() => {
                 if (!controller.signal.aborted) setIsLoading(false);
             });
-
+        // Cancel reads and pending renames when leaving this organization.
+        // Aborting the browser request cannot undo a committed backend write.
         return () => controller.abort();
     }, [organizationId, retry]);
 
+    async function handleRenameSubmit(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+
+        // A ref prevents a second submission before React disables the form.
+        if (saving.current || organization?.currentUserRole !== "OWNER") return;
+
+        const signal = requests.current?.signal;
+        if (!signal || signal.aborted) return;
+
+        const name = nameDraft.trim();
+
+        // Native required validation accepts spaces; validate the trimmed name.
+        if (!name) {
+            setSaveError("Organization name is required.");
+            return;
+        }
+
+        if (name.length > 100) {
+            setSaveError("Organization name must not exceed 100 characters.");
+            return;
+        }
+
+        saving.current = true;
+        setIsSaving(true);
+        setSaveError(null);
+
+        try {
+            const updated = await updateOrganization(
+                organizationId,
+                { name },
+                signal,
+            );
+
+            if (signal.aborted) return;
+
+            // The backend owns the slug, timestamps, and effective role.
+            setOrganization(updated);
+            setNameDraft(updated.name);
+            setIsEditing(false);
+        } catch (failure) {
+            if (signal.aborted || isAbortError(failure)) return;
+
+            const nameError = failure instanceof ApiError
+                ? failure.details
+                    ?.filter(detail => detail.field === "name")
+                    .flatMap(detail => detail.messages)
+                    .join(" ")
+                : undefined;
+
+            // Keep the organization and draft. Only the shared client handles 401.
+            setSaveError(
+                nameError ||
+                getApiErrorMessage(failure, "Failed to rename organization."),
+            );
+        } finally {
+            saving.current = false;
+            if (!signal.aborted) setIsSaving(false);
+        }
+    }
     if (isLoading) {
         return (
             <>
@@ -107,9 +180,85 @@ function OrganizationDetail({ organizationId, }: {
         <div>
             <h1 className="mb-6 text-2xl font-bold max-w-md mx-auto" >Detail of {organizationId}</h1>
             <Card className="mb-6 max-w-md mx-auto rounded-lg px-8">
-                <div className="flex justify-between py-2 border-b">
+                <div className="flex flex-wrap items-start justify-between gap-3 py-2 border-b">
                     <span className="text-sm text-muted-foreground">Name</span>
-                    <span className="text-sm font-medium">{organization.name}</span>
+
+                    {isEditing && organization.currentUserRole === "OWNER" ? (
+                        <form
+                            onSubmit={handleRenameSubmit}
+                            aria-busy={isSaving}
+                            className="flex w-full flex-col gap-2"
+                        >
+                            <Label htmlFor="organization-rename-name">
+                                Organization name
+                            </Label>
+
+                            <Input
+                                id="organization-rename-name"
+                                value={nameDraft}
+                                required
+                                maxLength={100}
+                                disabled={isSaving}
+                                aria-invalid={Boolean(saveError)}
+                                aria-describedby={
+                                    saveError ? "organization-rename-error" : undefined
+                                }
+                                onChange={event => {
+                                    setNameDraft(event.target.value);
+                                    setSaveError(null);
+                                }}
+                            />
+
+                            <div className="flex gap-2">
+                                <Button type="submit" disabled={isSaving}>
+                                    {isSaving ? "Saving…" : "Save"}
+                                </Button>
+
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    disabled={isSaving}
+                                    onClick={() => {
+                                        setIsEditing(false);
+                                        setNameDraft(organization.name);
+                                        setSaveError(null);
+                                    }}
+                                >
+                                    Cancel
+                                </Button>
+                            </div>
+
+                            {saveError && (
+                                <p
+                                    id="organization-rename-error"
+                                    role="alert"
+                                    className="text-sm text-destructive"
+                                >
+                                    {saveError}
+                                </p>
+                            )}
+                        </form>
+                    ) : (
+                        <span className="flex items-center gap-2 text-sm font-medium">
+                            {organization.name}
+
+                            {organization.currentUserRole === "OWNER" && (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                        // Always start from the last server-confirmed name.
+                                        setNameDraft(organization.name);
+                                        setSaveError(null);
+                                        setIsEditing(true);
+                                    }}
+                                >
+                                    Rename
+                                </Button>
+                            )}
+                        </span>
+                    )}
                 </div>
                 <div className="flex justify-between py-2 border-b">
                     <span className="text-sm text-muted-foreground">Slug</span>

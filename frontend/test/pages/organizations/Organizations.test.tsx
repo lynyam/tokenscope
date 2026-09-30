@@ -300,3 +300,231 @@ describe("organization screens with the real HTTP adapter", () => {
     expect(screen.getByRole("button", { name: "Create" })).toBeEnabled();
   });
 });
+describe("organization rename with the real HTTP adapter", () => {
+  it("sends one PATCH, uses the server result, and resets cancelled edits", async () => {
+    let finish!: (response: Response) => void;
+    const updated = { ...organization, name: "New Acme" };
+
+    fetchMock
+      .mockResolvedValueOnce(json(organization))
+      .mockImplementationOnce(
+        () => new Promise(resolve => { finish = resolve; }),
+      );
+
+    const user = userEvent.setup();
+    renderPage(`/organizations/${organization.id}`);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Rename" }),
+    );
+
+    const input = screen.getByLabelText("Organization name");
+    expect(input).toHaveValue(organization.name);
+
+    fireEvent.change(input, { target: { value: "  New Acme  " } });
+
+    // Exercise two submissions within one React batch, before a rerender.
+    act(() => {
+      fireEvent.submit(input.closest("form")!);
+      fireEvent.submit(input.closest("form")!);
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2); // One GET and one PATCH.
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      `/api/v1/organizations/${organization.id}`,
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ name: "New Acme" }),
+      }),
+    );
+
+    expect(input).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Saving…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+
+    await act(async () => { finish(json(updated)); });
+
+    expect(await screen.findByText(updated.name)).toBeInTheDocument();
+    expect(screen.getByText(organization.slug)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Rename" }));
+    expect(screen.getByLabelText("Organization name"))
+      .toHaveValue(updated.name);
+
+    fireEvent.change(screen.getByLabelText("Organization name"), {
+      target: { value: "Discard this" },
+    });
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByRole("button", { name: "Rename" }));
+
+    expect(screen.getByLabelText("Organization name"))
+      .toHaveValue(updated.name);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["ADMIN", "MEMBER"] as const)(
+    "hides rename for %s",
+    async role => {
+      fetchMock.mockResolvedValueOnce(
+        json({ ...organization, currentUserRole: role }),
+      );
+
+      renderPage(`/organizations/${organization.id}`);
+
+      await screen.findByText(organization.name);
+      expect(screen.queryByRole("button", { name: "Rename" }))
+        .not.toBeInTheDocument();
+    },
+  );
+
+  it.each([
+    ["   ", "Organization name is required."],
+    ["x".repeat(101), "Organization name must not exceed 100 characters."],
+  ])("rejects invalid rename input %s", async (value, message) => {
+    fetchMock.mockResolvedValueOnce(json(organization));
+
+    const user = userEvent.setup();
+    renderPage(`/organizations/${organization.id}`);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Rename" }),
+    );
+
+    const input = screen.getByLabelText("Organization name");
+    fireEvent.change(input, { target: { value } });
+    fireEvent.submit(input.closest("form")!);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(message);
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    [400, "VALIDATION_ERROR", "Name was rejected."],
+    [
+      403,
+      "INSUFFICIENT_ORGANIZATION_ROLE",
+      "Only owners can rename this organization.",
+    ],
+    [404, "ORGANIZATION_NOT_FOUND", "Organization not found."],
+    [503, "SERVICE_UNAVAILABLE", "Service unavailable."],
+  ] as const)(
+    "preserves the draft, organization and session after %i",
+    async (status, code, message) => {
+      fetchMock
+        .mockResolvedValueOnce(json(organization))
+        .mockResolvedValueOnce(json({
+          code,
+          message: status === 400
+            ? "Request validation failed."
+            : message,
+          details: status === 400
+            ? [{ field: "name", messages: [message] }]
+            : undefined,
+        }, status));
+
+      const user = userEvent.setup();
+      renderPage(`/organizations/${organization.id}`);
+
+      await user.click(
+        await screen.findByRole("button", { name: "Rename" }),
+      );
+
+      const input = screen.getByLabelText("Organization name");
+      fireEvent.change(input, { target: { value: "Kept draft" } });
+      await user.click(screen.getByRole("button", { name: "Save" }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(message);
+      expect(input).toHaveValue("Kept draft");
+      expect(input).toBeEnabled();
+      expect(screen.getByText(organization.slug)).toBeInTheDocument();
+      expect(getAccessToken()).toBe("organization-ui-test-token");
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+
+      await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+      expect(screen.getByText(organization.name)).toBeInTheDocument();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    },
+  );
+
+  it("keeps the draft after a connection failure and allows a manual retry", async () => {
+    const updated = { ...organization, name: "Retried name" };
+
+    fetchMock
+      .mockResolvedValueOnce(json(organization))
+      .mockRejectedValueOnce(new TypeError("offline"))
+      .mockResolvedValueOnce(json(updated));
+
+    const user = userEvent.setup();
+    renderPage(`/organizations/${organization.id}`);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Rename" }),
+    );
+
+    const input = screen.getByLabelText("Organization name");
+    fireEvent.change(input, { target: { value: updated.name } });
+
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByRole("alert"))
+      .toHaveTextContent("Unable to reach the server");
+    expect(input).toHaveValue(updated.name);
+    expect(getAccessToken()).toBe("organization-ui-test-token");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText(updated.name)).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not apply a late rename response to another organization", async () => {
+    let finish!: (response: Response) => void;
+
+    fetchMock
+      .mockResolvedValueOnce(json(organization))
+      .mockImplementationOnce(
+        () => new Promise(resolve => { finish = resolve; }),
+      )
+      .mockResolvedValueOnce(json(otherOrganization));
+
+    const user = userEvent.setup();
+    renderPage(`/organizations/${organization.id}`);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Rename" }),
+    );
+
+    const input = screen.getByLabelText("Organization name");
+    fireEvent.change(input, {
+      target: { value: "Old organization renamed" },
+    });
+
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    const oldSignal = fetchMock.mock.calls[1][1]?.signal;
+
+    await user.click(
+      screen.getByRole("link", { name: "Open other organization" }),
+    );
+
+    await screen.findByText(otherOrganization.name);
+    expect(oldSignal?.aborted).toBe(true);
+
+    // The stub ignores cancellation so the page's stale-response guard is tested.
+    await act(async () => {
+      finish(json({
+        ...organization,
+        name: "Old organization renamed",
+      }));
+    });
+
+    expect(screen.getByText(otherOrganization.name)).toBeInTheDocument();
+    expect(screen.queryByText("Old organization renamed"))
+      .not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Organization name"))
+      .not.toBeInTheDocument();
+  });
+});
