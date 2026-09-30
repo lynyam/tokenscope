@@ -74,24 +74,14 @@ function InfoCard({
 }
 
 function LandingActions({
-  isLoading,
   isLoggedIn,
   size,
   showLogin = true,
 }: {
-  isLoading: boolean;
   isLoggedIn: boolean;
   size: "sm" | "lg";
   showLogin?: boolean;
 }) {
-  if (isLoading) {
-    return (
-      <span role="status" className="text-sm text-muted-foreground">
-        Loading…
-      </span>
-    );
-  }
-
   if (isLoggedIn) {
     return (
       <Link
@@ -131,7 +121,7 @@ function LandingActions({
 }
 
 export function LandingPage() {
-  const { user, isLoading } = useCurrentUser();
+  const { user } = useCurrentUser();
   const isLoggedIn = Boolean(user);
 
   return (
@@ -159,11 +149,7 @@ export function LandingPage() {
             How it works
           </a>
 
-          <LandingActions
-            isLoading={isLoading}
-            isLoggedIn={isLoggedIn}
-            size="sm"
-          />
+          <LandingActions isLoggedIn={isLoggedIn} size="sm" />
         </div>
       </header>
 
@@ -186,7 +172,6 @@ export function LandingPage() {
 
         <div className="mt-10 flex flex-wrap items-center gap-4">
           <LandingActions
-            isLoading={isLoading}
             isLoggedIn={isLoggedIn}
             size="lg"
             showLogin={false}
@@ -332,11 +317,7 @@ export function LandingPage() {
           </p>
 
           <div className="mt-8 flex flex-wrap items-center gap-4">
-            <LandingActions
-              isLoading={isLoading}
-              isLoggedIn={isLoggedIn}
-              size="lg"
-            />
+            <LandingActions isLoggedIn={isLoggedIn} size="lg" />
           </div>
         </section>
 
