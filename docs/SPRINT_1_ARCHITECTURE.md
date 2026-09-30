@@ -538,21 +538,19 @@ demo procedure. Use `DEMO.md` for full-stack acceptance.
 
 #### Delivery boundaries
 
-TSE-61 supplies the shared foundation and real membership adapter/UI. TSE-59
-still supplies the real auth adapter/startup flow; TSE-60 and TSE-62 supply
-real organization and project adapters. The remaining mock fixture timestamp
-updates only keep those adapters compatible with the shared types during
-migration. Production membership code does not import mock utilities/data.
+TSE-61 provides the shared frontend foundation and real membership adapter/UI.
+TSE-59 provides real authentication and session restoration.
+TSE-60 provides real organization list, detail, create, and rename API calls,
+plus loading, cancellation, pending, and error handling for the existing
+organization screens.
 
-The shared helpers, types, auth invalidation wiring, test setup, and their
-tests can form the first reviewable commit. Membership adapter/UI/tests form
-the next. Consumers should base their branches on the agreed shared commit
-and preserve that history when integrating the domain work.
+The organization rename control remains part of TSE-47.
+TSE-62 supplies the real project adapter. Remaining mock fixtures must be
+removed once their remaining project consumers have migrated.
 
-Frontend tests use the real client and membership adapter with HTTP responses
-stubbed at `fetch`; they do not prove PostgreSQL persistence or a real browser
-login. Run the complete two-browser demo after combining TSE-59/60/61/62 and
-before declaring TSE-43 complete.
+Organization adapters consume the shared HTTP client and never read token
+storage, create memberships locally, generate slugs, or interpret backend
+authorization rules.
 
 ### Backend and frontend delivery order
 

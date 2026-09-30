@@ -101,7 +101,9 @@ function OrganizationMembers({ organizationId, currentUserId }: { organizationId
         <h1 className="text-2xl font-semibold">Organization members</h1>
         {canManageMembers && <AddMemberForm onAdd={addMember} />}
       </div>
-      <p className="text-sm text-muted-foreground">{data.memberships.length} people have access to this organization</p>
+      <p className="text-sm text-muted-foreground">{data.memberships.length}{" "}
+        {data.memberships.length === 1 ? "person has" : "people have"} access
+        to this organization</p>
       {data.memberships.length === 0 ? <p>No member yet.</p> : (
         <MembersTable memberships={data.memberships} canManageMembers={canManageMembers}
           onChangeRole={changeRole} onRemove={removeMember} />

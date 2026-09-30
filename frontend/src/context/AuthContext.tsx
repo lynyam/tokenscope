@@ -63,6 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           "mockUsersData",
           "mockAccountsData",
           "tokenscope_access_token",
+          "access_token", // Legacy organization-integration token; no longer consumed.
         ]) {
           localStorage.removeItem(key);
         }

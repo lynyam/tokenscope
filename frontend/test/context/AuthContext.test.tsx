@@ -237,6 +237,7 @@ describe("AuthContext session lifecycle", () => {
       "mockUsersData",
       "mockAccountsData",
       "tokenscope_access_token",
+      "access_token",
     ];
 
     for (const key of obsoleteKeys) {

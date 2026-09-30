@@ -376,8 +376,11 @@ dependencies: Vitest runs assertions, jsdom supplies browser APIs, and Testing
 Library exercises controls and accessible output. They do not replace the
 real backend/two-browser acceptance flow in `DEMO.md`.
 
-All frontend tests live under `frontend/test/`, mirroring the relevant `src/`
-folders. `test/setup.ts` registers DOM assertions and cleans up React, mocks,
+The frontend suite covers the shared HTTP client, authentication adapter and
+context, authentication forms, organization adapter and screens, and
+membership adapter and screens. Tests live under frontend/test/ and exercise
+the API adapters with network responses stubbed at fetch.
+`test/setup.ts` registers DOM assertions and cleans up React, mocks,
 and browser storage after each test. `vite.config.js` discovers only
 `test/**/*.test.{ts,tsx}` and loads that setup file; `tsconfig.json` includes
 both `src` and `test` so `npm run check` validates test code too. Tests import
