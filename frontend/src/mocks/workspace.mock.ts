@@ -24,39 +24,43 @@ export const mockUsers: User[] = [
     },
 ];
 
-/** Add credentials only inside the mock; they are not User data. */
-export const mockAccounts = [
-    { userId: "user-alice", password: "password123" },
-    { userId: "user-bob", password: "password123" },
-    { userId: "user-charlie", password: "password123" },
-    { userId: "user-dina", password: "password123" },
-];
+
 
 export const mockOrganizations: Organization[] = [
     {
         id: "mockorganization",
         name: "MockOrg",
         slug: "mock-organization-test",
+        createdAt: "2026-01-20T00:00:00.000Z",
+        updatedAt: "2026-01-20T00:00:00.000Z",
     },
     {
         id: "fausseorg",
         name: "xlIton",
         slug: "xlitn-org-test",
+        createdAt: "2026-01-20T00:00:00.000Z",
+        updatedAt: "2026-01-20T00:00:00.000Z",
     },
     {
         id: "organization-acme",
         name: "Acme AI",
         slug: "acme-ai",
+        createdAt: "2026-01-20T00:00:00.000Z",
+        updatedAt: "2026-01-20T00:00:00.000Z",
     },
     {
         id: "organization-observability-lab",
         name: "Observability Lab",
         slug: "observability-lab",
+        createdAt: "2026-01-20T00:00:00.000Z",
+        updatedAt: "2026-01-20T00:00:00.000Z",
     },
     {
         id: "organization-private-research",
         name: "Private Research",
         slug: "private-research",
+        createdAt: "2026-01-20T00:00:00.000Z",
+        updatedAt: "2026-01-20T00:00:00.000Z",
     },
 ];
 
@@ -67,48 +71,48 @@ export const mockMemberships: Membership[] = [
       userId: "user-alice",
       organizationId: "organization-acme",
       role: "OWNER",
-      createdAt: new Date("2026-01-20").toISOString(),
-      updatedAt: new Date("2026-01-20").toISOString(),
+      createdAt: "2026-01-20T00:00:00.000Z",
+      updatedAt: "2026-01-20T00:00:00.000Z",
     },
     {
       id: "membership-acme-bob",
       userId: "user-bob",
       organizationId: "organization-acme",
       role: "ADMIN",
-      createdAt: new Date("2026-01-20").toISOString(),
-      updatedAt: new Date("2026-01-20").toISOString(),
+      createdAt: "2026-01-20T00:00:00.000Z",
+      updatedAt: "2026-01-20T00:00:00.000Z",
     },
     {
       id: "membership-acme-charlie",
       userId: "user-charlie",
       organizationId: "organization-acme",
       role: "MEMBER",
-      createdAt: new Date("2026-01-20").toISOString(),
-      updatedAt: new Date("2026-01-20").toISOString(),
+      createdAt: "2026-01-20T00:00:00.000Z",
+      updatedAt: "2026-01-20T00:00:00.000Z",
     },
     {
       id: "membership-observability-lab-diana",
       userId: "user-dina",
       organizationId: "organization-observability-lab",
       role: "OWNER",
-      createdAt: new Date("2026-01-20").toISOString(),
-      updatedAt: new Date("2026-01-20").toISOString(),
+      createdAt: "2026-01-20T00:00:00.000Z",
+      updatedAt: "2026-01-20T00:00:00.000Z",
     },
     {
       id: "membership-observability-lab-alice",
       userId: "user-alice",
       organizationId: "organization-observability-lab",
       role: "MEMBER",
-      createdAt: new Date("2026-01-20").toISOString(),
-      updatedAt: new Date("2026-01-20").toISOString(),
+      createdAt: "2026-01-20T00:00:00.000Z",
+      updatedAt: "2026-01-20T00:00:00.000Z",
     },
     {
       id: "membership-private-research-bob",
       userId: "user-bob",
       organizationId: "organization-private-research",
       role: "OWNER",
-      createdAt: new Date("2026-01-20").toISOString(),
-      updatedAt: new Date("2026-01-20").toISOString(),
+      createdAt: "2026-01-20T00:00:00.000Z",
+      updatedAt: "2026-01-20T00:00:00.000Z",
     },
 ];
 

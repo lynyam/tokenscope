@@ -1,133 +1,38 @@
-import { mockMemberships, mockOrganizations, } from "../mocks/workspace.mock";
-import type { Membership, Organization, OrganizationSummary, CreateOrganizationInput, UpdateOrganizationInput } from "../types/workspace.types";
-import { cloneMockValue, MockApiError, requireAuthenticatedUserId, waitForMockApi, } from "./mock-api.utils";
+import { apiGet, apiPost, apiPatch } from "./http-client";
+import type {
+    OrganizationSummary,
+    CreateOrganizationInput,
+    UpdateOrganizationInput,
+} from "../types/workspace.types";
 
-function createOrganizationSummary(
-  organization: Organization,
-  membership: Membership,
-): OrganizationSummary {
-  return {
-    ...organization,
-    currentUserRole: membership.role,
-  };
+// Authentication, /api/v1, JSON and errors belong to the shared client.
+// This adapter only describes the organization endpoints.
+export async function getOrganizations(signal?: AbortSignal, ): Promise<OrganizationSummary[]> {
+    return apiGet<OrganizationSummary[]>("/organizations", { signal });
 }
 
-export async function getOrganizations(): Promise<OrganizationSummary[]> {
-  await waitForMockApi();
-  const currentUserId = requireAuthenticatedUserId();
-
-  const summaries = mockMemberships
-    .filter(({ userId }) => userId === currentUserId)
-    .map((membership) => {
-      const organization = mockOrganizations.find(
-        ({ id }) => id === membership.organizationId,
-      );
-      if (!organization) {
-        throw new MockApiError(
-          500,
-          `Mock membership "${membership.id}" references an unknown organization.`,
-        );
-      }
-      return createOrganizationSummary(organization, membership);
-    });
-    return cloneMockValue(summaries);
+export async function getOrganization(organizationId: string, signal?: AbortSignal,): Promise<OrganizationSummary> {
+    return apiGet<OrganizationSummary>(`/organizations/${encodeURIComponent(organizationId)}`, { signal },);
 }
 
-export async function getOrganization(organizationId: string,): Promise<OrganizationSummary> {
-  await waitForMockApi();
-  const currentUserId = requireAuthenticatedUserId();
-  const organization = mockOrganizations.find(
-    ({ id }) => id === organizationId,
-  );
-  if (!organization) {
-    throw new MockApiError(404, "Organization not found.");
-  }
-  const currentMembership = mockMemberships.find((membership) =>
-    membership.organizationId === organizationId &&
-    membership.userId === currentUserId,
-  );
-  if (!currentMembership) {
-    throw new MockApiError(
-      403,
-      "You are not allowed to access this organization.",
+export async function createOrganization(input: CreateOrganizationInput, signal?: AbortSignal,): Promise<OrganizationSummary> {
+    return apiPost<OrganizationSummary>(
+      "/organizations",
+      // API.md accepts only name. IDs, slug and initial ownership are server-owned.
+      { name: input.name },
+      { signal },
     );
-  }
-  return cloneMockValue(
-    createOrganizationSummary(organization, currentMembership),
-  );
 }
 
-//crée à la fois une nouvelle Organization ET son Membership OWNER
-export async function createOrganization(
-  input: CreateOrganizationInput,
-): Promise<OrganizationSummary> {
-  await waitForMockApi();
-  const currentUserId = requireAuthenticatedUserId();
-
-  const name = input.name.trim();
-  if (!name) {
-    throw new MockApiError(400, "Organization name is required.");
-  }
-
-  const slug = name.toLowerCase().replace(/\s+/g, "-");
-  const slugAlreadyExists = mockOrganizations.some(
-    (organization) => organization.slug === slug,
-  );
-  if (slugAlreadyExists) {
-    throw new MockApiError(409, "An organization already uses this slug.");
-  }
-
-  const organization: Organization = {
-    id: `organization-${mockOrganizations.length + 1}`,
-    name,
-    slug,
-  };
-  mockOrganizations.push(organization);
-
-  const membership: Membership = {
-    id: `membership-${mockMemberships.length + 1}`,
-    userId: currentUserId,
-    organizationId: organization.id,
-    role: "OWNER",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-  mockMemberships.push(membership);
-
-  return cloneMockValue(createOrganizationSummary(organization, membership));
-}
-// TODO(TSE-43): Replace mock logic with a real PATCH /api/v1/organizations/:organizationId
-// call through the shared HTTP client once TSE-43 
-// Signature and error contract (404/403/400) should stay the same.
 export async function updateOrganization(
-  organizationId: string,
-  input: UpdateOrganizationInput,
+    organizationId: string,
+    input: UpdateOrganizationInput,
+    signal?: AbortSignal,
 ): Promise<OrganizationSummary> {
-  await waitForMockApi();
-  const currentUserId = requireAuthenticatedUserId();
-
-  const organization = mockOrganizations.find(({ id }) => id === organizationId);
-  if (!organization) {
-    throw new MockApiError(404, "Organization not found.");
-  }
-  const currentMembership = mockMemberships.find((membership) =>
-    membership.organizationId === organizationId &&
-    membership.userId === currentUserId,
-  );
-  if (!currentMembership) {
-    throw new MockApiError(403, "You are not allowed to access this organization.");
-  }
-  if (currentMembership.role !== "OWNER") {
-    throw new MockApiError(403, "Only the OWNER can rename this organization.");
-  }
-
-  if (input.name !== undefined) {
-    const name = input.name.trim();
-    if (!name) {
-      throw new MockApiError(400, "Organization name is required.");
-    }
-    organization.name = name;
-  }
-
-  return cloneMockValue(createOrganizationSummary(organization, currentMembership));
+    return apiPatch<OrganizationSummary>(
+      `/organizations/${encodeURIComponent(organizationId)}`,
+      // Renaming changes the name; the backend preserves the existing slug.
+      { name: input.name },
+      { signal },
+    );
 }

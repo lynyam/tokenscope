@@ -1,8 +1,14 @@
-// interface user
+/** M1 HTTP types. docs/API.md is the canonical contract, including nullability. */
 export interface User {
     id: string;
     email: string;
-    displayName: string;  //to met our data model field name
+    displayName: string;
+}
+export interface AuthResponse {
+  user: User;
+  accessToken: string;
+  tokenType: "Bearer";
+  expiresIn: number;
 }
 
 export type MembershipRole = "OWNER" | "ADMIN" | "MEMBER";
@@ -11,24 +17,18 @@ export interface Organization {
     id: string;
     name: string;
     slug: string;
-    //role: MembershipRole; -> link btw User and Orgnization is materialise by Membership
+    createdAt: string;
+    updatedAt: string;
 }
 
-/* this should not exist. It merges two different entities and
-loses membership identity and organization scope. I have introduced Membership
-and MembershipWithUser
-export interface Member extends User {
-    role: MembershipRole;
-}
-*/
 
 export interface Project {
     id: string;
     organizationId: string;
     name: string;
     slug: string;
-    description: string | null; //our Prisma model return nullable
-    archivedAt: string | null; //http serialise date as string
+    description: string | null;
+    archivedAt: string | null;
     createdAt: string;
     updatedAt: string;
 }
@@ -43,7 +43,7 @@ export interface Membership {
     id: string;
     userId: string;
     organizationId: string;
-    role: MembershipRole; 
+    role: MembershipRole;
     createdAt: string;
     updatedAt: string;
 }
@@ -73,7 +73,16 @@ export interface CreateOrganizationInput {
 }
 
 export interface UpdateOrganizationInput {
-    name?: string;
+  name: string;
+}
+
+export interface AddOrganizationMemberInput {
+  email: string;
+  role?: MembershipRole;
+}
+
+export interface UpdateMemberRoleInput {
+  role: MembershipRole;
 }
 
 export interface CreateProjectInput {
@@ -84,13 +93,4 @@ export interface CreateProjectInput {
 export interface UpdateProjectInput {
     name?: string;
     description?: string | null;
-}
-
-export interface AddOrganizationMemberInput {
-    email: string;
-    role?: MembershipRole;
-}
-
-export interface UpdateMemberRoleInput {
-    role: MembershipRole;
 }
