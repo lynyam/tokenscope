@@ -1,132 +1,112 @@
-import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
-
-import { getOrganizationMemberships } from "../../api/memberships.api";
-import type { OrganizationMembershipsResponse } from "../../types/workspace.types";
-import { MockApiError } from "../../api/mock-api.utils";
-
+import { useEffect, useRef, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { addOrganizationMember, getOrganizationMemberships, removeOrganizationMember, updateOrganizationMemberRole } from "../../api/memberships.api";
+import { getApiErrorMessage, isAbortError } from "../../api/http-client";
+import { useCurrentUser } from "../../hooks/useCurrentUser";
+import type { AddOrganizationMemberInput, MembershipRole, MembershipWithUser, OrganizationMembershipsResponse } from "../../types/workspace.types";
 import { AddMemberForm } from "./AddMemberForm";
 import { MembersTable } from "./MembersTable";
-import { FolderX, ArrowLeft } from "lucide-react";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Link } from "react-router-dom";
-import { CircleAlert } from "lucide-react";
-
-type RequestStatus = "loading" | "success" | "error";
 
 export function MembersPage() {
   const { organizationId } = useParams();
-  const [membershipData, setMembershipData] =
-    useState<OrganizationMembershipsResponse | null>(null);
-  const [requestStatus, setRequestStatus] = useState<RequestStatus>("loading");
-  const [loadError, setLoadError] = useState<MockApiError | null>(null);
+  const { user, isLoading } = useCurrentUser();
+  if (isLoading) return <p role="status">Loading…</p>;
+  if (!organizationId) return <p role="alert">No organization was specified in the URL.</p>;
+  if (!user) return null; // ProtectedRoute owns the sign-in redirect.
+
+  // Remount on tenant/identity changes so old rows never render under a new URL.
+  return <OrganizationMembers key={user.id + ":" + organizationId} organizationId={organizationId} currentUserId={user.id} />;
+}
+
+function OrganizationMembers({ organizationId, currentUserId }: { organizationId: string; currentUserId: string }) {
+  const navigate = useNavigate();
+  const [data, setData] = useState<OrganizationMembershipsResponse | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
+  const requests = useRef<AbortController | null>(null);
+
   useEffect(() => {
-    if (!organizationId) return;
-    let ignore = false;
-    async function loadMemberships(validOrganizationId: string) {
-      setMembershipData(null);
-      setLoadError(null);
-      setRequestStatus("loading");
-
-      try {
-        const response = await getOrganizationMemberships(validOrganizationId);
-        if (ignore) return;
-        setMembershipData(response);
-        setRequestStatus("success");
-      } catch (error: unknown) {
-        if (ignore) {
-          return;
+    const controller = new AbortController();
+    requests.current = controller;
+    setData(null);
+    setLoadError(null);
+    getOrganizationMemberships(organizationId, controller.signal)
+      .then(result => { if (!controller.signal.aborted) setData(result); })
+      .catch(error => {
+        if (!controller.signal.aborted && !isAbortError(error)) {
+          setLoadError(getApiErrorMessage(error, "Unable to load members. Please try again."));
         }
-        setMembershipData(null);
-        setLoadError(error instanceof MockApiError ? error : null);
-        setRequestStatus("error");
-      }
+      });
+    return () => { controller.abort(); };
+  }, [organizationId, retry]);
+
+  function applyMembership(member: MembershipWithUser) {
+    setData(previous => previous && ({
+      ...previous,
+      currentUserRole: member.userId === currentUserId ? member.role : previous.currentUserRole,
+      // Use server values and keep API.md's ordering after adding a member.
+      memberships: [...previous.memberships.filter(item => item.id !== member.id), member]
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)),
+    }));
+  }
+
+  async function addMember(input: AddOrganizationMemberInput) {
+    const signal = requests.current!.signal;
+    const member = await addOrganizationMember(organizationId, input, signal);
+    signal.throwIfAborted();
+    applyMembership(member);
+  }
+
+  async function changeRole(userId: string, role: MembershipRole) {
+    const signal = requests.current!.signal;
+    const member = await updateOrganizationMemberRole(organizationId, userId, { role }, signal);
+    signal.throwIfAborted();
+    // Also immediately updates management controls when the caller demotes themself.
+    applyMembership(member);
+  }
+
+  async function removeMember(userId: string) {
+    const signal = requests.current!.signal;
+    await removeOrganizationMember(organizationId, userId, signal);
+    signal.throwIfAborted();
+    if (userId === currentUserId) {
+      // The org list reloads on mount; the switcher reloads when opened.
+      navigate("/organizations", { replace: true });
+      return;
     }
-    loadMemberships(organizationId);
-    return () => {
-      ignore = true;
-    };
-  }, [organizationId]);
-
-  if (!organizationId) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-1 text-center mb-6">
-        <FolderX className="h-12 w-12 text-muted-foreground" />
-        <p className="mt-4 text-xl font-semibold">Missing organization</p>
-        <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-          No organization was specified in the URL.
-        </p>
-        <Link
-          to="/organizations"
-          className="mt-5 inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-transparent hover:bg-muted h-10 px-6 text-sm font-medium normal-case transition-all"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to organizations
-        </Link>
-      </div>
-    );
+    setData(previous => previous && ({ ...previous, memberships: previous.memberships.filter(member => member.userId !== userId) }));
   }
 
-  if (requestStatus === "loading") {
-    return (
-      <>
-        <div className="flex flex-col gap-2">
-          {Array.from({ length: 6 }).map((_, index) => (
-            <Skeleton key={index} className="h-16 w-full" />
-          ))}
-        </div>
-      </>
-    );
-  }
+  if (loadError) return (
+    <section className="flex flex-col items-start gap-3">
+      <h1 className="text-2xl font-semibold">Organization members</h1>
+      <p role="alert">{loadError}</p>
+      <Button onClick={() => setRetry(value => value + 1)}>Retry</Button>
+      <Link to="/organizations">Back to organizations</Link>
+    </section>
+  );
 
-  if (requestStatus === "error") {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-1 text-center mb-6">
-        <CircleAlert className="h-12 w-12 text-muted-foreground" />
-        <p className="mt-4 text-xl font-semibold">Something went wrong</p>
-        <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-          {loadError?.message ?? "Unable to load members."}
-        </p>
-        <Link
-          to="/organizations"
-          className="mt-5 inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-transparent hover:bg-muted h-10 px-6 text-sm font-medium normal-case transition-all"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to organizations
-        </Link>
-      </div>
-    );
-  }
+  if (!data) return (
+    <div role="status" aria-label="Loading members" className="flex flex-col gap-2">
+      {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-16 w-full" />)}
+    </div>
+  );
 
-  if (!membershipData) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-1 text-center mb-6">
-        <FolderX className="h-12 w-12 text-muted-foreground" />
-        <p className="mt-4 text-xl font-semibold">No data available</p>
-        <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-          Membership data is unavailable.
-        </p>
-      </div>
-    );
-  }
-  const canManageMembers = membershipData.currentUserRole === "OWNER";
+  const canManageMembers = data.currentUserRole === "OWNER";
   return (
     <section>
-      <div className="items-center flex justify-between">
+      <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Organization members</h1>
-        {canManageMembers && <AddMemberForm />}
+        {canManageMembers && <AddMemberForm onAdd={addMember} />}
       </div>
-      <p className="text-sm text-muted-foreground">
-        {membershipData.memberships.length} people have access to this
-        organization
-      </p>
-      {membershipData.memberships.length === 0 ? (
-        <p>No member yet.</p>
-      ) : (
-        <MembersTable
-          memberships={membershipData.memberships}
-          canManageMembers={canManageMembers}
-        />
+      <p className="text-sm text-muted-foreground">{data.memberships.length}{" "}
+        {data.memberships.length === 1 ? "person has" : "people have"} access
+        to this organization</p>
+      {data.memberships.length === 0 ? <p>No member yet.</p> : (
+        <MembersTable memberships={data.memberships} canManageMembers={canManageMembers}
+          onChangeRole={changeRole} onRemove={removeMember} />
       )}
     </section>
   );

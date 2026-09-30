@@ -1,37 +1,51 @@
-import { mockMemberships, mockOrganizations, mockUsers, } from "../mocks/workspace.mock";
-import type { MembershipWithUser, OrganizationMembershipsResponse, } from "../types/workspace.types";
-import { cloneMockValue, MockApiError, requireAuthenticatedUserId, waitForMockApi, } from "./mock-api.utils";
+import { apiDelete, apiGet, apiPatch, apiPost } from "./http-client";
+import type {
+  AddOrganizationMemberInput,
+  MembershipWithUser,
+  OrganizationMembershipsResponse,
+  UpdateMemberRoleInput,
+} from "../types/workspace.types";
 
-export async function getOrganizationMemberships(organizationId: string,
-  ): Promise<OrganizationMembershipsResponse> {
-  await waitForMockApi();
-  const currentUserId = requireAuthenticatedUserId();
-  const organizationExists = mockOrganizations.some(
-    ({ id }) => id === organizationId,
+// API.md: the path is /members; mutation targets are user IDs, not membership IDs.
+export function getOrganizationMemberships(
+  organizationId: string,
+  signal?: AbortSignal,
+): Promise<OrganizationMembershipsResponse> {
+  return apiGet<OrganizationMembershipsResponse>(
+    `/organizations/${encodeURIComponent(organizationId)}/members`, { signal },
   );
-  if (!organizationExists) {
-    throw new MockApiError(404, "Organization not found.");
-  }
-  const currentMembership = mockMemberships.find((membership) =>
-    membership.organizationId === organizationId &&
-    membership.userId === currentUserId,
+}
+
+export function addOrganizationMember(
+  organizationId: string,
+  input: AddOrganizationMemberInput,
+  signal?: AbortSignal,
+): Promise<MembershipWithUser> {
+  return apiPost<MembershipWithUser>(
+    `/organizations/${encodeURIComponent(organizationId)}/members`,
+    { email: input.email, ...(input.role === undefined ? {} : { role: input.role }) },
+    { signal },
   );
-  if (!currentMembership) {
-    throw new MockApiError(403,
-      "You are not allowed to access this organization's members.",
-    );
-  }
-  const memberships: MembershipWithUser[] = mockMemberships.filter(
-    (membership) => membership.organizationId === organizationId,).map((membership) => {
-      const user = mockUsers.find(({ id }) => id === membership.userId);
-      if (!user) {
-        throw new MockApiError(
-          500,
-          `Mock membership "${membership.id}" references an unknown user.`,
-        );
-      }
-      return {...membership, user,};
-    }
+}
+
+export function updateOrganizationMemberRole(
+  organizationId: string,
+  userId: string,
+  input: UpdateMemberRoleInput,
+  signal?: AbortSignal,
+): Promise<MembershipWithUser> {
+  return apiPatch<MembershipWithUser>(
+    `/organizations/${encodeURIComponent(organizationId)}/members/${encodeURIComponent(userId)}`,
+    { role: input.role }, { signal },
   );
-  return cloneMockValue({memberships, currentUserRole: currentMembership.role,});
+}
+
+export function removeOrganizationMember(
+  organizationId: string,
+  userId: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  return apiDelete(
+    `/organizations/${encodeURIComponent(organizationId)}/members/${encodeURIComponent(userId)}`, { signal },
+  );
 }
