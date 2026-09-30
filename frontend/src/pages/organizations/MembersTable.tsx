@@ -8,62 +8,110 @@ import {
 } from "@/components/ui/table";
 import { RoleBadge } from "../../components/RoleBadge";
 import { Button } from "@/components/ui/button";
-import type { MembershipWithUser } from "../../types/workspace.types";
+import type { MembershipWithUser, MembershipRole } from "../../types/workspace.types";
+import { useRef, useState } from "react";
+import { getApiErrorMessage, isAbortError } from "../../api/http-client";
 
-type MembersTableProps = {
+interface MembersTableProps {
   memberships: MembershipWithUser[];
   canManageMembers: boolean;
+  onChangeRole: (userId: string, role: MembershipRole) => Promise<void>;
+  onRemove: (userId: string) => Promise<void>;
 };
 
 export function MembersTable({
   memberships,
   canManageMembers,
+  onChangeRole,
+  onRemove,
 }: MembersTableProps) {
+  const [editing, setEditing] = useState<{ userId: string; role: MembershipRole } | null>(null);
+  const [pendingUserId, setPendingUserId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const submitting = useRef(false);
+
+  async function changeRole() {
+    if (!editing || submitting.current) return;
+    submitting.current = true;
+    setPendingUserId(editing.userId);
+    setError(null);
+    try {
+      await onChangeRole(editing.userId, editing.role);
+      setEditing(null);
+    } catch (failure) {
+      if (!isAbortError(failure)) setError(getApiErrorMessage(failure, "Unable to change the role. Please try again."));
+    } finally {
+      submitting.current = false;
+      setPendingUserId(null);
+    }
+  }
+
+  async function removeMember(member: MembershipWithUser) {
+    if (submitting.current || !window.confirm("Remove " + member.user.displayName + " from this organization?")) return;
+    submitting.current = true;
+    setPendingUserId(member.userId);
+    setError(null);
+    try {
+      await onRemove(member.userId);
+    } catch (failure) {
+      if (!isAbortError(failure)) setError(getApiErrorMessage(failure, "Unable to remove the member. Please try again."));
+    } finally {
+      submitting.current = false;
+      setPendingUserId(null);
+    }
+  }
+
   return (
     <div className="border rounded-lg mt-6">
       <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Name</TableHead>
-            <TableHead>Email</TableHead>
-            <TableHead>Role</TableHead>
-            {canManageMembers && (
-              <TableHead className="text-right">Actions</TableHead>
-            )}
-          </TableRow>
-        </TableHeader>
+        <TableHeader><TableRow>
+          <TableHead>Name</TableHead><TableHead>Email</TableHead><TableHead>Role</TableHead>
+          {canManageMembers && <TableHead className="text-right">Actions</TableHead>}
+        </TableRow></TableHeader>
         <TableBody>
-          {memberships.map((membership) => (
-            <TableRow key={membership.id}>
-              <TableCell className="font-medium">
-                {membership.user.displayName}
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {membership.user.email}
-              </TableCell>
-              <TableCell>
-                <RoleBadge role={membership.role} />
-              </TableCell>
-              {canManageMembers && (
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-2">
-                    <Button variant="outline" size="sm" disabled>
-                      Change role
-                    </Button>
-                    <Button variant="outline" size="sm" disabled>
-                      Remove
-                    </Button>
-                  </div>
+          {memberships.map(member => {
+            const isEditing = canManageMembers && editing?.userId === member.userId;
+            const isPending = pendingUserId === member.userId;
+            return (
+              <TableRow key={member.id}>
+                <TableCell className="font-medium">{member.user.displayName}</TableCell>
+                <TableCell className="text-muted-foreground">{member.user.email}</TableCell>
+                <TableCell>
+                  {isEditing ? (
+                    <select aria-label={"Role for " + member.user.displayName} value={editing.role}
+                      disabled={pendingUserId !== null}
+                      onChange={event => setEditing({ userId: member.userId, role: event.target.value as MembershipRole })}
+                      className="rounded-lg border border-border bg-transparent h-9 px-2">
+                      <option value="OWNER">Owner</option><option value="ADMIN">Admin</option><option value="MEMBER">Member</option>
+                    </select>
+                  ) : <RoleBadge role={member.role} />}
                 </TableCell>
-              )}
-            </TableRow>
-          ))}
+                {canManageMembers && (
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      {isEditing ? <>
+                        <Button variant="outline" size="sm" disabled={pendingUserId !== null} onClick={changeRole}>
+                          {isPending ? "Saving…" : "Confirm"}
+                        </Button>
+                        <Button variant="outline" size="sm" disabled={pendingUserId !== null}
+                          onClick={() => { setEditing(null); setError(null); }}>Cancel</Button>
+                      </> : (
+                        <Button variant="outline" size="sm" disabled={pendingUserId !== null || editing !== null}
+                          onClick={() => { setEditing({ userId: member.userId, role: member.role }); setError(null); }}>
+                          Change role
+                        </Button>
+                      )}
+                      <Button variant="outline" size="sm" disabled={pendingUserId !== null || editing !== null}
+                        onClick={() => removeMember(member)}>{isPending && !isEditing ? "Removing…" : "Remove"}</Button>
+                    </div>
+                  </TableCell>
+                )}
+              </TableRow>
+            );
+          })}
         </TableBody>
       </Table>
+      {error && <p role="alert" className="p-3 text-sm text-destructive">{error}</p>}
     </div>
   );
 }
-/* to do: button is disabled temporary, in the future I will delete it and change it
-with  handle it by click
-oneClick={handleRemove}
-*/

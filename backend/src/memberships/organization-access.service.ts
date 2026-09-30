@@ -1,14 +1,22 @@
 import { HttpStatus, Injectable } from "@nestjs/common";
-import type { Membership, MembershipRole, } from "../generated/prisma/client";
+import type { Membership, MembershipRole, Prisma, } from "../generated/prisma/client";
 import { ApiException } from "../common/errors/api.exception";
 import { PrismaService } from "../database/prisma.service";
 
 /*
-You can call it like this in each doamain
+You can call it like this in each domain
+- inside transaction
 await this.organizationAccess.assertOrganizationRole(
   authenticatedUserId,
   organizationId,
   [MembershipRole.OWNER],
+  tx,
+);
+- if no transaction
+await this.organizationAccess.assertOrganizationRole(
+	authenticatedUserId,
+	organizationId,
+	[MembershipRole.OWNER],
 );
 */
 @Injectable()
@@ -18,8 +26,9 @@ export class OrganizationAccessService {
 	async assertOrganizationMember(
 		userId: string,
 		organizationId: string,
+		client: Prisma.TransactionClient = this.prisma,
 	): Promise<Membership> {
-		const membership = await this.prisma.membership.findUnique({
+		const membership = await client.membership.findUnique({
 			where: {
 				organizationId_userId: {
 					organizationId,
@@ -51,10 +60,12 @@ export class OrganizationAccessService {
 		userId: string,
 		organizationId: string,
 		allowedRoles: readonly MembershipRole[],
+		client: Prisma.TransactionClient = this.prisma,
 	): Promise<Membership> {
 		const membership = await this.assertOrganizationMember(
 			userId,
 			organizationId,
+			client,
 		);
 
 		if (!allowedRoles.includes(membership.role)) {

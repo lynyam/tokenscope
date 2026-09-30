@@ -34,7 +34,8 @@ removing the prefix.
 - Dates are ISO-8601 UTC strings.
 - IDs are UUID strings.
 - Unknown request fields are rejected.
-- List endpoints return `[]`, never `null`, when empty.
+- Empty collections use `[]`, never `null`, within the endpoint's documented
+  response shape.
 - Pagination is not required for M1.
 
 ### Authentication
@@ -343,6 +344,10 @@ Organization deletion is not part of M1.
 
 ## Memberships
 
+Both `organizationId` and the target `userId` route parameters must be UUIDs.
+The actor comes from the verified bearer token; clients cannot set it in the
+request body. An invalid route UUID returns `400 VALIDATION_ERROR`.
+
 ### GET /organizations/:organizationId/members
 
 Returns the organization's memberships with safe user data and the
@@ -393,7 +398,10 @@ Request:
 ```
 
 `role` is optional and defaults to `MEMBER`. If supplied, it must be
-`OWNER`, `ADMIN`, or `MEMBER`.
+`OWNER`, `ADMIN`, or `MEMBER`; `null` is invalid.
+
+`email` is required, trimmed, lowercased, validated as an email address, and
+limited to 254 characters after normalization. The user must already exist.
 
 Response — `201 Created`: `MembershipWithUser`.
 
@@ -413,6 +421,9 @@ Changes an existing member's organization-scoped role.
 
 Required role: `OWNER`.
 
+`role` is required and must be `OWNER`, `ADMIN`, or `MEMBER`. Empty bodies,
+`null` roles, and unknown fields return `400 VALIDATION_ERROR`.
+
 Request:
 
 ```json
@@ -431,7 +442,8 @@ Errors:
 - `404 MEMBERSHIP_NOT_FOUND`;
 - `409 LAST_OWNER_REQUIRED`.
 
-Setting the same role is idempotent and returns `200 OK`.
+Setting the same role is idempotent and returns `200 OK` without changing
+`updatedAt`. An owner may demote themselves only when another owner remains.
 
 ### DELETE /organizations/:organizationId/members/:userId
 
@@ -443,6 +455,7 @@ Response — `204 No Content`.
 
 Errors:
 
+- `400 VALIDATION_ERROR`;
 - `403 INSUFFICIENT_ORGANIZATION_ROLE`;
 - `404 ORGANIZATION_NOT_FOUND`;
 - `404 MEMBERSHIP_NOT_FOUND`;

@@ -164,6 +164,7 @@ Provide and test equivalent centralized services/helpers:
 assertOrganizationMember(
   userId: string,
   organizationId: string,
+  client?: Prisma.TransactionClient,
 ): Promise<Membership>
 ```
 
@@ -172,6 +173,7 @@ assertOrganizationRole(
   userId: string,
   organizationId: string,
   allowedRoles: readonly MembershipRole[],
+  client?: Prisma.TransactionClient,
 ): Promise<Membership>
 ```
 
@@ -206,8 +208,14 @@ validated organization/project route IDs. The target user of a membership
 mutation is distinct from its acting user. Allowed roles are selected by
 backend policy, never by request input or JWT role claims.
 
-Each call reads current membership data from PostgreSQL. A helper returns a
-selected record or throws; its result does not replace a domain response mapper.
+The organization helpers default to the shared Prisma service. A domain service
+inside a transaction must pass its `tx` client; role checks then use that
+transaction's snapshot and can observe its own uncommitted writes. Each retry
+must call the helpers again inside the new transaction. Roles are never cached
+or taken from JWT claims.
+
+A helper returns a selected record or throws; its result does not replace a
+domain response mapper.
 
 Organization checks return `404 ORGANIZATION_NOT_FOUND` for absent membership,
 then `403 INSUFFICIENT_ORGANIZATION_ROLE` for a known member lacking permission.
@@ -256,7 +264,20 @@ Verification uses `make test-backend`:
   `configureApp`, and substituted Prisma results to prove HTTP error contracts,
   request IDs, safe failures, and rejection of protected rename fields.
 - HTTP probe controllers and their fixed actor exist only in tests. JWT
-  authentication and real domain endpoint adoption remain downstream duties.
+  verification is covered by authentication tests and the real membership
+  endpoint suites below.
+- `test/memberships/membership-contract.unit.spec.ts` verifies DTO constraints,
+  default roles, email normalization, and safe response mapping.
+- `test/memberships/membership-retry.unit.spec.ts` verifies both serialization
+  error forms, full-operation retries, the attempt limit, and errors not retried.
+- `test/memberships/memberships.e2e-spec.ts` uses the real `AppModule`, JWT guard,
+  validation, and exception filter with substituted membership service results
+  to verify HTTP routing, trusted actor IDs, request IDs, and error responses.
+- `test/database/memberships.integration.spec.ts` verifies real membership
+  services and HTTP endpoints against PostgreSQL, including scoped roles,
+  safe output, idempotence, user preservation, and overlapping owner mutations.
+  It also reuses existing JWTs after promotion, demotion, and removal to prove
+  that current database permissions govern subsequent requests.
 
 ## Tenant isolation
 
@@ -355,19 +376,35 @@ ownerless organization.
 
 Every organization must retain at least one owner.
 
-Before removing a membership or changing `OWNER` to another role:
+`MembershipsService` executes each add, role change, or removal in a
+`Serializable` transaction. Within each attempt:
 
-1. determine whether the target is an owner;
-2. if so, count the organization's owners;
-3. reject when the target is the last owner;
-4. perform the check and mutation in the same transaction.
+1. authorize the actor as OWNER before resolving the target;
+2. for a role change/removal, load the target using `(organizationId, userId)`;
+3. for a role change, return the existing safe response without changing
+   `updatedAt` when the requested role is unchanged;
+4. before demoting or removing an OWNER, count owners in that organization and
+   reject with `409 LAST_OWNER_REQUIRED` when the count is below two;
+5. perform the write using the same transaction client.
 
-The transaction must protect against concurrent owner removals/demotions.
-Use a serializable transaction (with bounded retry for serialization conflicts)
-or an equivalent database-locking strategy.
+Self-demotion and self-removal follow the same rule. Removing a membership
+preserves the global user and their memberships in other organizations.
 
-Return `409 LAST_OWNER_REQUIRED` when the requested state conflicts with this
-invariant.
+The transaction wrapper allows at most three total attempts. It recognizes
+Prisma `P2034` and a direct `DriverAdapterError` whose
+`cause.kind` is `TransactionWriteConflict`, including failures at commit.
+Each retry repeats authorization, target lookup, owner counting, and mutation
+with a new transaction snapshot. Retrying only the write is insufficient.
+
+Domain errors such as `LAST_OWNER_REQUIRED` and unrelated database errors are
+not retried. Exhausted retries and unexpected errors propagate to the shared
+filter as safe `500 INTERNAL_SERVER_ERROR` responses; a serialization conflict
+is not itself proof that the target is the last owner.
+
+PostgreSQL integration tests deliberately overlap two owner transactions and
+cover removal/removal, demotion/demotion, and mixed removal/demotion. They prove
+that one operation succeeds, the other returns `LAST_OWNER_REQUIRED` after
+retry, and one owner remains.
 
 ## Project lifecycle
 

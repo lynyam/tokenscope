@@ -147,4 +147,4 @@ help:
 .PHONY: \
 	start stop restart logs ps shell \
 	db-shell db-generate db-migrate db-migration db-seed db-status db-studio db-setup \
-	clean fullclean help test-db test-db-clean test-db-fresh test-backend
+	clean fullclean help test-db test-db-clean test-db-fresh test-backend frontendtest

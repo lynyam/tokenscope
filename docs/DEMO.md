@@ -45,11 +45,17 @@ git switch <branch-under-test>
 Create the environment file if it does not exist:
 
 ```bash
-cp .env.exemple .env
+cp .env.example .env
 ```
 
-The repository currently names the committed template `.env.exemple`. If that
-file is later renamed, update this runbook in the same pull request.
+Generate a local signing secret and set `JWT_SECRET` in your local `.env`:
+
+```bash
+docker run --rm node:24-alpine \
+  node -e 'console.log(require("node:crypto").randomBytes(32).toString("hex"))'
+```
+
+Copy only the generated value into `JWT_SECRET`. Never commit `.env`.
 
 ### Destructive reset
 
@@ -479,19 +485,19 @@ In each window:
 Run from the repository root:
 
 ```bash
-make test-db-fresh
+make test-backend
 make frontendcheck
-make backeNDcheck
 ```
 
-M1 should also expose one command that runs backend unit/controller/end-to-end
-tests. When that command is added, place it here and in the Makefile in the same
-pull request.
+`make test-backend` installs locked dependencies, checks source and test types,
+builds the backend, applies migrations, and runs unit, HTTP, and PostgreSQL
+integration suites in the isolated test Compose project.
 
 Expected:
 
 - all commands exit with status 0;
-- no test relies only on in-memory authorization mocks;
+- tenant isolation, role rules, and last-owner protection have PostgreSQL
+  coverage; unit and HTTP contract tests may substitute dependencies;
 - the database suite uses the isolated test Compose project;
 - browser console has no unexpected error or warning;
 - backend logs have no unexpected exception;
