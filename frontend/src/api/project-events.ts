@@ -1,18 +1,20 @@
-type ProjectChangeListener = (organizationId: string) => void;
+import type { Project } from "../types/workspace.types";
 
-const listeners = new Set<ProjectChangeListener>();
+type ProjectChange =
+  | { organizationId: string; kind: "upsert"; project: Project }
+  | { organizationId: string; kind: "archive"; projectId: string };
 
-export function subscribeToProjectChanges(listener: ProjectChangeListener) {
+type Listener = (change: ProjectChange) => void;
+const listeners = new Set<Listener>();
+
+export function subscribeToProjectChanges(listener: Listener) {
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
   };
 }
 
-export function notifyProjectsChanged(organizationId: string): void {
-  // Notify only after a successful write. Each subscriber reloads its own org.
-  // Keep this notification when TSE-43 replaces the mock writes with HTTP.
-  for (const listener of listeners) {
-    listener(organizationId);
-  }
+export function notifyProjectsChanged(change: ProjectChange): void {
+  // The list and sidebar consume the same confirmed server write.
+  for (const listener of listeners) listener(change);
 }

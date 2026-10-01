@@ -25,13 +25,15 @@ export function EditProjectForm({
   onCancel,
 }: EditProjectFormProps) {
   return (
-    <form onSubmit={onSubmit} className="space-y-3">
+    <form onSubmit={onSubmit} aria-busy={isSaving} className="space-y-3">
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="edit-name">Name</Label>
         <Input
           id="edit-name"
           value={nameDraft}
           onChange={(e) => setNameDraft(e.target.value)}
+          required
+          maxLength={100}
           disabled={isSaving}
         />
       </div>
@@ -41,6 +43,7 @@ export function EditProjectForm({
           id="edit-description"
           value={descriptionDraft}
           onChange={(e) => setDescriptionDraft(e.target.value)}
+          maxLength={2000}
           disabled={isSaving}
         />
       </div>
@@ -52,7 +55,11 @@ export function EditProjectForm({
           Cancel
         </Button>
       </div>
-      {saveError && <p className="text-sm text-destructive">{saveError}</p>}
+      {saveError && (
+        <p role="alert" className="text-sm text-destructive">
+          {saveError}
+        </p>
+      )}
     </form>
   );
 }

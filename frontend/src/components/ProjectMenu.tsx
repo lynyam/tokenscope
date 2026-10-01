@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
-import { ChevronRight, Plus } from "lucide-react";
+import { ChevronRight, } from "lucide-react";
 
 type CollapsibleNavItemProps = {
   label: string;
@@ -27,9 +27,8 @@ export function CollapsibleNavItem({ label, items, organizationId }: Collapsible
       >
         {label}
         <ChevronRight
-          className={`h-4 w-4 text-muted-foreground transition-transform ${
-            isOpen ? "rotate-90" : ""
-          }`}
+          className={`h-4 w-4 text-muted-foreground transition-transform ${isOpen ? "rotate-90" : ""
+            }`}
         />
       </button>
 
@@ -50,8 +49,7 @@ export function CollapsibleNavItem({ label, items, organizationId }: Collapsible
             to={`/organizations/${organizationId}/projects`}
             className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
           >
-            <Plus className="h-4 w-4" />
-            Create project
+            All projects
           </Link>
         </div>
       )}
