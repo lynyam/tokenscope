@@ -269,7 +269,7 @@ export function LandingPage() {
                 and a project for your AI application.
               </p>
               <p className="mt-3 text-sm text-muted-foreground">
-                Workspace screens currently use demo data.
+                Create your account, organize your team, and manage your projects.
               </p>
             </li>
 

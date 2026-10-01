@@ -9,7 +9,12 @@ import { useOrganizationProjects } from "../hooks/useOrganizationProjects";
 
 export function Sidebar() {
   const { organizationId } = useParams();
-  const { projects } = useOrganizationProjects(organizationId);
+  const {
+    projects,
+    isLoading,
+    error,
+    reload,
+  } = useOrganizationProjects(organizationId);
 
   return (
     <aside className="flex h-full w-56 flex-col border-r p-4">
@@ -27,6 +32,24 @@ export function Sidebar() {
             >
               Members
             </Link>
+            {isLoading && (
+              <p role="status" className="px-3 text-sm">
+                Loading projects…
+              </p>
+            )}
+
+            {error && (
+              <div className="px-3 text-sm">
+                <p role="alert">{error}</p>
+                <button
+                  type="button"
+                  onClick={reload}
+                  className="underline"
+                >
+                  Retry projects
+                </button>
+              </div>
+            )}
             <CollapsibleNavItem
               label="Projects"
               items={projects.map((project) => ({

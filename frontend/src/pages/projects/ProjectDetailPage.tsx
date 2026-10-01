@@ -1,339 +1,203 @@
-import { useParams, useNavigate, Link } from "react-router-dom";
-import {
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type FormEvent,
-} from "react";
-import {
-  getOrganizationProject,
-  updateProject,
-  archiveProject,
-} from "../../api/projects.api";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { archiveProject, getOrganizationProject, updateProject } from "../../api/projects.api";
 import { getOrganization } from "../../api/organizations.api";
-import type { Project, MembershipRole } from "../../types/workspace.types";
-import { Skeleton } from "@/components/ui/skeleton";
-import { CircleAlert } from "lucide-react";
+import { ApiError, getApiErrorMessage, isAbortError } from "../../api/http-client";
+import type { MembershipRole, Project, UpdateProjectInput } from "../../types/workspace.types";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EditProjectForm } from "./EditProjectForm";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 
 export function ProjectDetailPage() {
   const { organizationId, projectId } = useParams();
-
-  // A different URL gets fresh state, including editor drafts and pending flags.
-  return (
-    <ProjectDetail
-      key={`${organizationId}/${projectId}`}
-      organizationId={organizationId}
-      projectId={projectId}
-    />
-  );
+  if (!organizationId || !projectId) return <p role="alert">Missing organization or project.</p>;
+  return <ProjectDetail key={organizationId + "/" + projectId}
+    organizationId={organizationId} projectId={projectId} />;
 }
 
-function ProjectDetail({ organizationId, projectId }: {
-  organizationId?: string;
-  projectId?: string;
-}) {
+function ProjectDetail({ organizationId, projectId }: { organizationId: string; projectId: string }) {
   const navigate = useNavigate();
+  const listPath = "/organizations/" + encodeURIComponent(organizationId) + "/projects";
+  const requests = useRef<AbortController | null>(null);
+  const pending = useRef(false);
   const active = useRef(false);
-  const mutationPending = useRef(false);
-
-  useLayoutEffect(() => {
-    active.current = true;
-    return () => {
-      // Updating local state is not the only risk: an old archive must not redirect.
-      active.current = false;
-    };
-  }, []);
-
+  const [attempt, setAttempt] = useState(0);
   const [project, setProject] = useState<Project | null>(null);
-  const [currentUserRole, setCurrentUserRole] = useState<MembershipRole | null>(
-    null,
-  );
+  const [role, setRole] = useState<MembershipRole | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
   const [descriptionDraft, setDescriptionDraft] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-
   const [isArchiving, setIsArchiving] = useState(false);
   const [archiveError, setArchiveError] = useState<string | null>(null);
 
-  const canManage =
-    project !== null && project.archivedAt === null &&
-    (currentUserRole === "OWNER" || currentUserRole === "ADMIN");
-  const isMutating = isSaving || isArchiving;
+  useLayoutEffect(() => {
+    active.current = true;
+    // An old archive must not redirect after this route has been left.
+    return () => { active.current = false; };
+  }, []);
 
   useEffect(() => {
-    if (!organizationId || !projectId) {
-      return;
-    }
-    let isStale = false;
+    const controller = new AbortController();
+    requests.current = controller;
     setProject(null);
-    setCurrentUserRole(null);
-    setError(null);
+    setRole(null);
+    setLoadError(null);
     setIsLoading(true);
     Promise.all([
-      getOrganization(organizationId),
-      getOrganizationProject(organizationId, projectId),
+      getOrganization(organizationId, controller.signal),
+      getOrganizationProject(organizationId, projectId, controller.signal),
     ])
-      .then(([organization, projectData]) => {
-        if (isStale) {
-          return;
-        }
-        setCurrentUserRole(organization.currentUserRole);
-        setProject(projectData);
-        setNameDraft(projectData.name);
-        setDescriptionDraft(projectData.description ?? "");
-        setIsLoading(false);
+      .then(([organization, result]) => {
+        if (controller.signal.aborted) return;
+        setRole(organization.currentUserRole);
+        setProject(result);
+        setNameDraft(result.name);
+        setDescriptionDraft(result.description ?? "");
       })
-      .catch((err) => {
-        if (isStale) {
-          return;
-        }
-        // Read the HTTP status without depending on the mock error class.
-        // A future API error should expose the same documented statusCode.
-        const notFound = typeof err === "object" && err !== null &&
-          "statusCode" in err && err.statusCode === 404;
-        if (!notFound) {
-          setError(err instanceof Error ? err.message : "Failed to load project.");
-        }
-        setIsLoading(false);
+      .catch(failure => {
+        if (controller.signal.aborted || isAbortError(failure)) return;
+        // Do not reveal whether an inaccessible project exists.
+        setLoadError(failure instanceof ApiError && failure.statusCode === 404
+          ? "Project not found."
+          : getApiErrorMessage(failure, "Failed to load project."));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsLoading(false);
       });
-  }, [organizationId, projectId]);
+    return () => controller.abort();
+  }, [organizationId, projectId, attempt]);
+
+  const canManage = project?.archivedAt === null && (role === "OWNER" || role === "ADMIN");
+  const isMutating = isSaving || isArchiving;
 
   async function handleUpdateSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!active.current || mutationPending.current || !canManage ||
-        !organizationId || !projectId || !project) {
+    const signal = requests.current?.signal;
+    if (!active.current || pending.current || !canManage || !project || !signal || signal.aborted) return;
+
+    const name = nameDraft.trim();
+    const description = descriptionDraft.trim() || null;
+    if (!name || name.length > 100 || (description?.length ?? 0) > 2000) {
+      setSaveError("Use a name of 1–100 characters and a description of at most 2,000 characters.");
       return;
     }
-    const nameChanged = nameDraft.trim() !== project.name;
-    const descriptionChanged = descriptionDraft !== (project.description ?? "");
-    if (!nameChanged && !descriptionChanged) {
-      setIsEditing(false);
+
+    const input: UpdateProjectInput = {};
+    if (name !== project.name) input.name = name;
+    if (description !== project.description) input.description = description;
+    if (Object.keys(input).length === 0) {
+      setSaveError("Change the name or description before saving.");
       return;
     }
-    setSaveError(null);
-    // The ref blocks a second event immediately, before React rerenders.
-    // Save and archive share the lock so they cannot run together.
-    mutationPending.current = true;
+
+    // Save and archive share one immediate lock.
+    pending.current = true;
     setIsSaving(true);
+    setSaveError(null);
     try {
-      const updated = await updateProject(organizationId, projectId, {
-      name: nameChanged ? nameDraft : undefined,
-      description: descriptionChanged
-        ? descriptionDraft.trim() === ""
-          ? null
-          : descriptionDraft
-        : undefined,
-      });
-      if (!active.current) return;
-        setProject(updated);
-        setNameDraft(updated.name);
-        setDescriptionDraft(updated.description ?? "");
-        setIsEditing(false);
-      } catch (err) {
-      if (active.current) {
-        setSaveError(
-          err instanceof Error ? err.message : "Failed to update project.",
-        );
-      }
+      const updated = await updateProject(organizationId, projectId, input, signal);
+      if (!active.current || signal.aborted) return;
+      setProject(updated); // Includes the unchanged server-owned slug.
+      setNameDraft(updated.name);
+      setDescriptionDraft(updated.description ?? "");
+      setIsEditing(false);
+    } catch (failure) {
+      if (!active.current || signal.aborted || isAbortError(failure)) return;
+      const details = failure instanceof ApiError
+        ? failure.details?.flatMap(detail => detail.messages).join(" ")
+        : undefined;
+      setSaveError(details || getApiErrorMessage(failure, "Failed to update project."));
     } finally {
-      mutationPending.current = false;
-      if (active.current) setIsSaving(false);
+      pending.current = false;
+      if (active.current && !signal.aborted) setIsSaving(false);
     }
   }
 
   async function handleArchive() {
-    if (!active.current || mutationPending.current || !canManage ||
-        !organizationId || !projectId) {
-      return;
-    }
-    const confirmed = window.confirm(
-      "Archive this project? It will no longer appear in the active project list.",
-    );
-    if (!confirmed) {
-      return;
-    }
-    setArchiveError(null);
-    mutationPending.current = true;
-    setIsArchiving(true);
+    const signal = requests.current?.signal;
+    if (!active.current || pending.current || !canManage || !signal || signal.aborted) return;
+    if (!window.confirm("Archive this project? It will no longer appear in the active project list.")) return;
 
+    pending.current = true;
+    setIsArchiving(true);
+    setArchiveError(null);
     try {
-      await archiveProject(organizationId, projectId);
-      if (active.current) {
-        navigate(`/organizations/${organizationId}/projects`);
-      }
-    } catch (err) {
-      if (active.current) {
-        setArchiveError(
-          err instanceof Error ? err.message : "Failed to archive project.",
-        );
-      }
+      await archiveProject(organizationId, projectId, signal);
+      if (active.current && !signal.aborted) navigate(listPath, { replace: true });
+    } catch (failure) {
+      if (!active.current || signal.aborted || isAbortError(failure)) return;
+      setArchiveError(getApiErrorMessage(failure, "Failed to archive project."));
     } finally {
-      mutationPending.current = false;
-      if (active.current) setIsArchiving(false);
+      pending.current = false;
+      if (active.current && !signal.aborted) setIsArchiving(false);
     }
   }
 
   function handleEditingChange(open: boolean) {
-    if (mutationPending.current) return;
-    setIsEditing(open);
-    if (!open && project) {
+    if (pending.current) return;
+    // Reopen and Cancel both start from the last successful backend result.
+    if (project) {
       setNameDraft(project.name);
       setDescriptionDraft(project.description ?? "");
-      setSaveError(null);
     }
+    setSaveError(null);
+    setIsEditing(open);
   }
 
-  if (!organizationId) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-1 text-center mb-6 ">
-        <CircleAlert className="h-12 w-12 text-muted-foreground" />
-        <p className="mt-4 text-xl font-semibold">Missing organization.</p>
-        <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-          Organization id not found.
-        </p>
-      </div>
-    );
-  }
-  if (!projectId) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-1 text-center mb-6 ">
-        <CircleAlert className="h-12 w-12 text-muted-foreground" />
-        <p className="mt-4 text-xl font-semibold">Missing project.</p>
-        <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-          Project id not found.
-        </p>
-      </div>
-    );
-  }
-  if (isLoading) {
-    return (
-      <div className="flex flex-col gap-2 max-w-md mx-auto">
-        {Array.from({ length: 6 }).map((_, index) => (
-          <Skeleton key={index} className="h-16 w-full" />
-        ))}
-      </div>
-    );
-  }
-  if (error) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-1 text-center mb-6 ">
-        <CircleAlert className="h-12 w-12 text-muted-foreground" />
-        <p className="mt-4 text-xl font-semibold">
-          An unexpected error occurred
-        </p>
-        <p className="mt-2 max-w-sm text-sm text-muted-foreground">{error}</p>
-      </div>
-    );
-  }
-  if (!project) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-1 text-center mb-6 ">
-        <CircleAlert className="h-12 w-12 text-muted-foreground" />
-        <p className="mt-4 text-xl font-semibold">Project not found</p>
-        <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-          This project doesn't exist or you don't have access to it.
-        </p>
-      </div>
-    );
-  }
+  if (isLoading) return <p role="status">Loading project…</p>;
+  if (loadError) return (
+    <section>
+      <p role="alert">{loadError}</p>
+      <Button onClick={() => setAttempt(value => value + 1)}>Retry</Button>
+      <Link to={listPath}>Back to projects</Link>
+    </section>
+  );
+  if (!project) return <p role="alert">Project not found.</p>;
 
   return (
-    <div className="p-6 space-y-6 max-w-md mx-auto">
-      <p>
-        <Link to={`/organizations/${organizationId}/projects`}>
-          ← Back to projects
-        </Link>
-      </p>
-
-      <div className="flex items-center gap-2">
-        <h1 className="text-2xl font-semibold">{project.name}</h1>
-      </div>
+    <section className="mx-auto max-w-md space-y-6 p-6">
+      <Link to={listPath}>← Back to projects</Link>
+      <h1 className="text-2xl font-semibold">{project.name}</h1>
       <p className="text-sm text-muted-foreground">{project.slug}</p>
-
-      <Dialog open={isEditing} onOpenChange={handleEditingChange}>
-        <DialogContent className="rounded-lg">
-          <DialogHeader>
-            <DialogTitle>Edit project</DialogTitle>
-          </DialogHeader>
-          <EditProjectForm
-            nameDraft={nameDraft}
-            setNameDraft={setNameDraft}
-            descriptionDraft={descriptionDraft}
-            setDescriptionDraft={setDescriptionDraft}
-            isSaving={isSaving}
-            saveError={saveError}
-            onSubmit={handleUpdateSubmit}
-            onCancel={() => handleEditingChange(false)}
-          />
-        </DialogContent>
-      </Dialog>
-
-      <div className="rounded-lg border border-border p-4 space-y-2 text-sm">
-        <p>
-          <span className="font-medium">Description:</span>{" "}
-          {project.description ?? "No description yet."}
-        </p>
-        <p>
-          <span className="font-medium">Status:</span>{" "}
-          {project.archivedAt ? "Archived" : "Active"}
-        </p>
-        <p>
-          <span className="font-medium">Created at:</span> {project.createdAt}
-        </p>
-        <p>
-          <span className="font-medium">Updated at:</span> {project.updatedAt}
-        </p>
+      <div className="rounded-lg border p-4 space-y-2 text-sm">
+        <p>Description: {project.description ?? "No description yet."}</p>
+        <p>Status: {project.archivedAt ? "Archived" : "Active"}</p>
+        <p>Created at: {project.createdAt}</p>
+        <p>Updated at: {project.updatedAt}</p>
       </div>
-      <div className="rounded-lg border border-border p-4 space-y-1">
-        <h2 className="text-lg font-semibold">Coming soon</h2>
-        <p className="text-sm text-muted-foreground">API keys coming in M2.</p>
-        <p className="text-sm text-muted-foreground">Traces coming in M2.</p>
-        <p className="text-sm text-muted-foreground">
-          Cost dashboard coming later.
-        </p>
-      </div>
-      <div className="flex items-center gap-2">
-        {canManage && (
-          <Button
-            className="rounded-lg"
-            size="sm"
-            variant="outline"
-            onClick={() => handleEditingChange(true)}
-            disabled={isMutating}
-          >
-            Edit
-          </Button>
-        )}
-        {canManage && (
-          <div className="space-y-2">
-            <Button
-              className="rounded-lg"
-              variant="destructive"
-              onClick={handleArchive}
-              disabled={isMutating}
-            >
-              {isArchiving ? "Archiving..." : "Archive project"}
+      {canManage && (
+        <>
+          <Dialog open={isEditing} onOpenChange={handleEditingChange}>
+            <DialogContent className="rounded-lg" showCloseButton={!isMutating}>
+              <DialogHeader>
+                <DialogTitle>Edit project</DialogTitle>
+                <DialogDescription>Update the project name or description.</DialogDescription>
+              </DialogHeader>
+              <EditProjectForm
+                nameDraft={nameDraft} setNameDraft={setNameDraft}
+                descriptionDraft={descriptionDraft} setDescriptionDraft={setDescriptionDraft}
+                isSaving={isMutating} saveError={saveError}
+                onSubmit={handleUpdateSubmit} onCancel={() => handleEditingChange(false)}
+              />
+            </DialogContent>
+          </Dialog>
+          <div className="flex gap-2">
+            <Button variant="outline" disabled={isMutating} onClick={() => handleEditingChange(true)}>Edit</Button>
+            <Button variant="destructive" disabled={isMutating} onClick={handleArchive}>
+              {isArchiving ? "Archiving…" : "Archive project"}
             </Button>
-            {archiveError && (
-              <p className="text-sm text-destructive">{archiveError}</p>
-            )}
           </div>
-        )}
+          {archiveError && <p role="alert" className="text-sm text-destructive">{archiveError}</p>}
+        </>
+      )}
+      <div className="rounded-lg border p-4">
+        <h2 className="font-semibold">Coming soon</h2>
+        <p className="text-sm text-muted-foreground">API keys, traces, and cost analytics.</p>
       </div>
-    </div>
+    </section>
   );
 }

@@ -1,11 +1,13 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getOrganizationProjects } from "../api/projects.api";
 import { subscribeToProjectChanges } from "../api/project-events";
+import { getApiErrorMessage, isAbortError } from "../api/http-client";
 import type { Project } from "../types/workspace.types";
 
 interface ProjectsState {
-  organizationId: string | undefined;
+  organizationId?: string;
   projects: Project[];
+  hasLoaded: boolean;
   isLoading: boolean;
   error: string | null;
 }
@@ -14,59 +16,108 @@ export function useOrganizationProjects(organizationId?: string) {
   const [state, setState] = useState<ProjectsState>({
     organizationId,
     projects: [],
+    hasLoaded: false,
     isLoading: Boolean(organizationId),
     error: null,
   });
 
+  const [attempt, setAttempt] = useState(0);
+  const request = useRef<AbortController | null>(null);
+  const reload = useCallback(() => setAttempt(value => value + 1), []);
+
   useEffect(() => {
     if (!organizationId) return;
-    const requestedOrganizationId = organizationId;
 
-    let disposed = false;
-    let requestNumber = 0;
+    const controller = new AbortController();
+    request.current = controller;
 
-    function reload() {
-      const currentRequest = ++requestNumber;
-      setState({
-        organizationId,
-        projects: [],
-        isLoading: true,
-        error: null,
-      });
+    setState(previous => ({
+      organizationId,
+      projects:
+        previous.organizationId === organizationId
+          ? previous.projects
+          : [],
+      hasLoaded:
+        previous.organizationId === organizationId &&
+        previous.hasLoaded,
+      isLoading: true,
+      error: null,
+    }));
 
-      getOrganizationProjects(requestedOrganizationId)
-        .then((projects) => {
-          // A mutation refresh may finish before an earlier read of this org.
-          if (disposed || currentRequest !== requestNumber) return;
-          setState({ organizationId, projects, isLoading: false, error: null });
-        })
-        .catch((error: unknown) => {
-          // An obsolete failure must not erase the current organization's list.
-          if (disposed || currentRequest !== requestNumber) return;
+    getOrganizationProjects(organizationId, controller.signal)
+      .then(projects => {
+        if (!controller.signal.aborted) {
           setState({
             organizationId,
-            projects: [],
+            projects,
+            hasLoaded: true,
             isLoading: false,
-            error: error instanceof Error ? error.message : "Failed to load projects.",
+            error: null,
           });
-        });
-    }
+        }
+      })
+      .catch(error => {
+        if (controller.signal.aborted || isAbortError(error)) return;
 
-    const unsubscribe = subscribeToProjectChanges((changedOrganizationId) => {
-      if (changedOrganizationId === organizationId) reload();
-    });
-    reload();
+        // A failed refresh preserves the last confirmed list.
+        setState(previous => ({
+          ...previous,
+          isLoading: false,
+          error: getApiErrorMessage(error, "Failed to load projects."),
+        }));
+      });
 
-    return () => {
-      disposed = true;
-      unsubscribe();
+    return () => controller.abort();
+  }, [organizationId, attempt]);
+
+  useEffect(
+    () =>
+      subscribeToProjectChanges(change => {
+        if (change.organizationId !== organizationId) return;
+
+        // A read started before this write must not overwrite its newer result.
+        request.current?.abort();
+
+        if (!state.hasLoaded || state.organizationId !== organizationId) {
+          // One changed project cannot reconstruct an unknown full list.
+          reload();
+          return;
+        }
+
+        setState(previous => ({
+          ...previous,
+          projects:
+            change.kind === "archive"
+              ? previous.projects.filter(
+                  project => project.id !== change.projectId,
+                )
+              : [
+                  ...previous.projects.filter(
+                    project => project.id !== change.project.id,
+                  ),
+                  change.project,
+                ].sort(
+                  (a, b) =>
+                    a.createdAt.localeCompare(b.createdAt) ||
+                    a.id.localeCompare(b.id),
+                ),
+          isLoading: false,
+          error: null,
+        }));
+      }),
+    [organizationId, state.hasLoaded, state.organizationId, reload],
+  );
+
+  // Effects run after rendering: never show A's projects under B's URL.
+  if (!organizationId || state.organizationId !== organizationId) {
+    return {
+      projects: [],
+      hasLoaded: false,
+      isLoading: Boolean(organizationId),
+      error: null,
+      reload,
     };
-  }, [organizationId]);
-
-  // Effects run after rendering. Never render A's data with B's URL in between.
-  if (state.organizationId !== organizationId || !organizationId) {
-    return { projects: [], isLoading: Boolean(organizationId), error: null };
   }
 
-  return state;
+  return { ...state, reload };
 }

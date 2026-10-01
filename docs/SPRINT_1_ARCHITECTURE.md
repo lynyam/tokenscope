@@ -548,8 +548,16 @@ TSE-47 provides the OWNER-only organization rename form through the existing
 organization adapter. Successful renames use the server response; failed
 renames preserve the organization and draft. The backend owns authorization
 and preserves the slug.
-TSE-62 supplies the real project adapter. Remaining mock fixtures must be
-removed once their remaining project consumers have migrated.
+TSE-62 connects all five project operations through the shared HTTP client.
+The project list and sidebar share useOrganizationProjects and receive
+confirmed write results through project-events. Reads and mutations are
+cancelled when their screen is left; obsolete reads cannot overwrite a newer
+write. Initial load failures support Retry, and failed mutations preserve
+the last confirmed data and the current draft.
+
+Runtime mock adapters, mock sessions, and workspace fixtures are removed.
+AuthContext retains only deletion of legacy browser-storage keys; those keys
+are never read as credentials. Test fixtures remain confined to frontend/test.
 
 Organization adapters consume the shared HTTP client and never read token
 storage, create memberships locally, generate slugs, or interpret backend
