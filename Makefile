@@ -1,150 +1,23 @@
-.DEFAULT_GOAL := help
+EVAL_COMPOSE := docker compose -p tokenscope-eval -f compose.eval.yaml
 
-COMPOSE := docker compose
-BACKEND := backend
-FRONTEND := frontend
-DATABASE := postgres
+eval-up:
+	@test -f .env || cp .env.example .env
+	@grep -q '^JWT_SECRET=.' .env || \
+		(echo "JWT_SECRET missing in .env — generate one first (see .env.example)" && exit 1)
+	$(EVAL_COMPOSE) up --build -d --wait --wait-timeout 180
+	@chmod +x scripts/eval-readiness.sh
+	@./scripts/eval-readiness.sh
 
+eval-down:
+	$(EVAL_COMPOSE) down
 
-#APPS
+eval-restart:
+	$(EVAL_COMPOSE) restart
 
-up:
-	$(COMPOSE) up -d
+eval-logs:
+	$(EVAL_COMPOSE) logs -f
 
-start:
-	$(COMPOSE) start
+eval-clean:
+	$(EVAL_COMPOSE) down -v --remove-orphans
 
-restart:
-	$(COMPOSE) restart
-
-pause:
-	$(COMPOSE) pause
-
-stop:
-	$(COMPOSE) stop
-
-kill:
-	$(COMPOSE) kill
-
-logs:
-	$(COMPOSE) logs -f
-
-ps:
-	$(COMPOSE) ps
-
-psa:
-	$(COMPOSE) ps -a
-
-shell:
-	$(COMPOSE) exec $(BACKEND) sh
-
-#DB / PRISMA
-db-shell:
-	$(COMPOSE) exec $(DATABASE) \
-		sh -c 'psql -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"'
-db-generate:
-	$(COMPOSE) exec $(BACKEND) npx prisma generate
-
-db-migrate:
-	$(COMPOSE) exec $(BACKEND) npx prisma migrate dev
-
-db-migration:
-	@test -n "$(name)" || \
-		(echo "Usage: make db-migration name=<migration_name>" && exit 1)
-	$(COMPOSE) exec $(BACKEND) \
-		npx prisma migrate dev --name "$(name)"
-
-db-seed:
-	$(COMPOSE) exec $(BACKEND) npx prisma db seed
-
-db-status:
-	$(COMPOSE) exec $(BACKEND) npx prisma migrate status
-
-db-studio:
-	$(COMPOSE) exec $(BACKEND) \
-		npx prisma studio --browser none
-
-db-setup: db-generate db-migrate db-seed
-#frontend
-frontendcheck:
-	$(COMPOSE) exec $(FRONTEND) npm run check
-
-frontendtest:
-	$(COMPOSE) exec $(FRONTEND) npm run test
-
-backendcheck:
-	$(COMPOSE) exec $(BACKEND) npm run check
-
-#CLEANUP
-
-clean:
-	$(COMPOSE) down --remove-orphans
-
-fullclean:
-	$(COMPOSE) down -v --remove-orphans --rmi local
-
-#TEST
-TEST_COMPOSE := docker compose -p tokenscope-test -f compose.test.yaml
-
-test-db:
-	$(TEST_COMPOSE) up \
-		--abort-on-container-exit \
-		--exit-code-from backend-test
-
-test-db-clean:
-	$(TEST_COMPOSE) down -v --remove-orphans
-
-test-db-fresh: test-db-clean test-db
-
-test-backend:
-	@set -eu; \
-	trap '$(TEST_COMPOSE) down --remove-orphans' 0; \
-	$(TEST_COMPOSE) run --rm -T backend-test sh -c '\
-		npm ci && \
-		npm run check && \
-		npm run check:tests && \
-		npm run build && \
-		npx prisma migrate deploy && \
-		npm run test:unit && \
-		npm run test:e2e && \
-		npm run test:integration'
-#HELP
-
-help:
-	@echo ""
-	@echo "TokenScope"
-	@echo ""
-	@echo "Application:"
-	@echo "  make up                            create and Start services"
-	@echo "  make start                         Start services"
-	@echo "  make restart                       Restart services"
-	@echo "  make pause                         Pause services"
-	@echo "  make stop                          Stop services"
-	@echo "  make kill                          Force stop service containers"
-
-	@echo "  make logs                          Follow service logs"
-	@echo "  make ps                            Show service status"
-	@echo "  make psa                            Show all service status"
-	@echo "  make shell                         Open backend shell"
-	@echo ""
-	@echo "Database:"
-	@echo "  make db-shell                      Open PostgreSQL shell"
-	@echo "  make db-generate                   Generate Prisma Client"
-	@echo "  make db-migrate                    Apply pending dev migrations"
-	@echo "  make db-migration name=<name>      Create a new migration"
-	@echo "  make db-seed                       Seed development database"
-	@echo "  make db-status                     Show migration status"
-	@echo "  make db-studio                     Start Prisma Studio"
-	@echo "  make db-setup                      Generate + migrate + seed"
-	@echo ""
-	@echo "Cleanup:"
-	@echo "  make clean                         Remove project containers/network"
-	@echo "  make fullclean                     Also remove volumes/local images"
-	@echo "  make test-backend                  Check, build, unit, E2E and isolated database tests"
-	@echo "  make frontendtest                  Run frontend Vitest suite"
-	@echo ""
-
-.PHONY: \
-	start stop restart logs ps shell \
-	db-shell db-generate db-migrate db-migration db-seed db-status db-studio db-setup \
-	clean fullclean help test-db test-db-clean test-db-fresh test-backend frontendtest
+.PHONY: eval-up eval-down eval-restart eval-logs eval-clean

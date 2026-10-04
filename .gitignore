@@ -11,3 +11,4 @@ dist/
 
 #prisma
 backend/src/generated/
+caddy-root.crt
