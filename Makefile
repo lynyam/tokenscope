@@ -1,9 +1,8 @@
 EVAL_COMPOSE := docker compose -p tokenscope-eval -f compose.eval.yaml
 
 eval-up:
-	@test -f .env || cp .env.example .env
-	@grep -q '^JWT_SECRET=.' .env || \
-		(echo "JWT_SECRET missing in .env — generate one first (see .env.example)" && exit 1)
+	@chmod +x scripts/prepare-env.sh
+	@./scripts/prepare-env.sh
 	$(EVAL_COMPOSE) up --build -d --wait --wait-timeout 180
 	@chmod +x scripts/eval-readiness.sh
 	@./scripts/eval-readiness.sh
