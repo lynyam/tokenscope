@@ -26,7 +26,7 @@ export function UserMenu() {
       <DropdownMenuTrigger className="flex w-full items-center gap-2 rounded-lg border p-2 text-left transition-colors hover:bg-muted">
         <Avatar className="h-8 w-8">
           <AvatarFallback>
-            {user?.displayName?.charAt(0).toUpperCase()}
+            {user?.displayName?.charAt(0)}
           </AvatarFallback>
         </Avatar>
         <span className="flex-1 truncate text-sm font-medium">
