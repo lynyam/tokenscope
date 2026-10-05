@@ -35,6 +35,8 @@ import type {
   User,
 } from "@/types/workspace.types";
 
+import { MemoryRouter } from "react-router-dom";
+
 vi.mock("@/api/auth.api", () => ({
   getCurrentUser: vi.fn(),
   signIn: vi.fn(),
@@ -94,9 +96,11 @@ function Session() {
 
 function renderSession() {
   return render(
-    <AuthProvider>
-      <Session />
-    </AuthProvider>,
+    <MemoryRouter>
+      <AuthProvider>
+        <Session />
+      </AuthProvider>
+    </MemoryRouter>,
   );
 }
 
