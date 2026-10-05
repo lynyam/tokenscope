@@ -3,6 +3,7 @@ import { AuthResponse, User, SignInInput, SignUpInput } from "../types/workspace
 import { getCurrentUser, signIn as apiSignIn, signUp as apiSignUp } from "../api/auth.api";
 import { clearAuthSession, getAccessToken, saveAccessToken, subscribeToAuthInvalidation, } from "../api/auth-session";
 import { getApiErrorMessage, isAbortError, } from "../api/http-client";
+import { LegalLinks } from "../components/LegalLinks";
 
 
 /**
@@ -157,7 +158,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             Unable to verify your session
           </h1>
           <p>{sessionError}</p>
-          <button
+                    <button
             type="button"
             className="rounded-lg border px-4 py-2"
             onClick={() => setVerificationAttempt(value => value + 1)}
@@ -171,6 +172,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           >
             Sign out
           </button>
+
+          <LegalLinks className="mt-2" />
         </section>
       ) : (
         children

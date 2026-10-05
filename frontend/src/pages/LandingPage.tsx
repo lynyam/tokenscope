@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { buttonVariants } from "../components/ui/button";
 import { ProductPreview } from "../components/ProductPreview";
 import { useCurrentUser } from "../hooks/useCurrentUser";
+import { LegalLinks } from "../components/LegalLinks";
 import {
   Card,
   CardHeader,
@@ -321,26 +322,28 @@ export function LandingPage() {
           </div>
         </section>
 
-        <footer className="mt-24 border-t border-border py-10">
-          <div className="flex flex-col gap-4 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-            <p>TokenScope — collaborative LLM cost observability.</p>
+<footer className="mt-24 border-t border-border py-10">
+  <div className="flex flex-col gap-4 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+    <p>TokenScope — collaborative LLM cost observability.</p>
 
-            <nav
-              aria-label="Footer navigation"
-              className="flex flex-wrap gap-4"
-            >
-              <a href="#product" className={sectionLinkClasses}>
-                Product
-              </a>
-              <a href="#audience" className={sectionLinkClasses}>
-                Who it’s for
-              </a>
-              <a href="#how-it-works" className={sectionLinkClasses}>
-                How it works
-              </a>
-            </nav>
-          </div>
-        </footer>
+    <nav
+      aria-label="Footer navigation"
+      className="flex flex-wrap gap-4"
+    >
+      <a href="#product" className={sectionLinkClasses}>
+        Product
+      </a>
+      <a href="#audience" className={sectionLinkClasses}>
+        Who it’s for
+      </a>
+      <a href="#how-it-works" className={sectionLinkClasses}>
+        How it works
+      </a>
+    </nav>
+  </div>
+
+  <LegalLinks className="mt-6 justify-start" />
+</footer>
       </main>
     </div>
   );
