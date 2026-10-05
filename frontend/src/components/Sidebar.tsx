@@ -5,6 +5,7 @@ import { Separator } from "../components/ui/separator";
 import { Link } from "react-router-dom";
 import { useParams } from "react-router-dom";
 import { useOrganizationProjects } from "../hooks/useOrganizationProjects";
+import { ThemeToggle } from "./ThemeToggle";
 
 
 export function Sidebar() {
@@ -21,6 +22,7 @@ export function Sidebar() {
       <div className="flex items-center gap-2">
         <img src="/logo/logo.svg" alt="TokenScope logo" className="h-7 w-7" />
         <span className="text-lg font-semibold">TokenScope</span>
+        <ThemeToggle />
       </div>
       <Separator className="mt-2 mb-2" />
       <nav className="flex flex-1 flex-col gap-1">
