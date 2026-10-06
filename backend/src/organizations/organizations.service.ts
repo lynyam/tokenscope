@@ -7,6 +7,9 @@ import { OrganizationAccessService } from "../memberships/organization-access.se
 import { Prisma } from "../generated/prisma/client";
 import { MembershipRole } from "../generated/prisma/enums";
 import { Organization } from "../generated/prisma/client";
+import { ArchiveOrganizationDto } from "./dto/archive-organization.dto";
+
+const MAX_TRANSACTION_ATTEMPTS = 3;
 
 @Injectable()
 export class OrganizationsService {
@@ -103,6 +106,55 @@ export class OrganizationsService {
 			throw error;
 		}
 	}
+	async archive(userId: string, organizationId: string, dto: ArchiveOrganizationDto): Promise<void> {
+		await this.runSerializable(async (tx) => {
+			// Authorization comes first, so an outsider never learns whether the slug matches.
+			await this.organizationAccess.assertOrganizationRole(
+				userId, organizationId, [MembershipRole.OWNER], tx,
+			);
+
+			const organization = await tx.organization.findFirst({
+				where: { id: organizationId, archivedAt: null },
+				select: { slug: true },
+			});
+			if (!organization) {
+				throw this.notFound();
+			}
+
+			// Exact comparison: no trim, no lowercase.
+			if (dto.confirmSlug !== organization.slug) {
+				throw new ApiException(
+					HttpStatus.CONFLICT,
+					"ORGANIZATION_CONFIRMATION_MISMATCH",
+					"The confirmation does not match the organization slug.",
+				);
+			}
+
+			try {
+				// The write itself retains the actor and required role.
+				await tx.organization.update({
+					where: {
+						id: organizationId,
+						archivedAt: null,
+						memberships: { some: { userId, role: MembershipRole.OWNER } },
+					},
+					data: { archivedAt: new Date() },
+				});
+			} catch (error) {
+				if (
+					error instanceof Prisma.PrismaClientKnownRequestError &&
+					error.code === "P2025"
+				) {
+					// Resolve lost membership to 404 and lost OWNER status to 403.
+					await this.organizationAccess.assertOrganizationRole(
+						userId, organizationId, [MembershipRole.OWNER], tx,
+					);
+					throw this.notFound();
+				}
+				throw error;
+			}
+		});
+	}
 
 	private toSummary(organization: Organization, role: MembershipRole) {
 		return {
@@ -145,5 +197,52 @@ export class OrganizationsService {
 		const fields = Array.isArray(meta?.target) ? meta.target : cause?.kind === "UniqueConstraintViolation"
 			? cause.constraint?.fields : undefined;
 		return Array.isArray(fields) && fields.length === 1 && fields[0] === "slug";
+	}
+	private async runSerializable<T>(
+		operation: (tx: Prisma.TransactionClient) => Promise<T>,
+	): Promise<T> {
+		for (let attempt = 1; ; attempt += 1) {
+			try {
+				return await this.prisma.$transaction(operation, {
+					isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+				});
+			} catch (error) {
+				if (!this.isRetryableTransactionError(error)) {
+					throw error;
+				}
+				if (attempt >= MAX_TRANSACTION_ATTEMPTS) {
+					throw new ApiException(
+						HttpStatus.CONFLICT,
+						"CONCURRENT_MODIFICATION",
+						"The organization was modified concurrently. Please retry.",
+					);
+				}
+			}
+		}
+	}
+
+	private isRetryableTransactionError(error: unknown): boolean {
+		if (error instanceof Prisma.PrismaClientKnownRequestError) {
+			return error.code === "P2034";
+		}
+
+		// Transaction completion can expose the driver error without a P2034 wrapper.
+		if (
+			typeof error !== "object" ||
+			error === null ||
+			!("name" in error) ||
+			error.name !== "DriverAdapterError" ||
+			!("cause" in error)
+		) {
+			return false;
+		}
+		const cause = error.cause;
+
+		return (
+			typeof cause === "object" &&
+			cause !== null &&
+			"kind" in cause &&
+			cause.kind === "TransactionWriteConflict"
+		);
 	}
 }
