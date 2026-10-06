@@ -519,4 +519,29 @@ describe("Project endpoints with PostgreSQL", () => {
       where: { id: saved.id },
     })).archivedAt).toBeNull();
   });
+    describe("archived organization", () => {
+    it("answers PROJECT_NOT_FOUND on every project endpoint", async () => {
+      const project = await fixtureProject(ids.orgA, "Visible");
+      await prisma.organization.update({ where: { id: ids.orgA }, data: { archivedAt: new Date() } });
+      const auth = { Authorization: bearer(ids.owner) };
+      const one = base + "/" + project.id;
+
+      const calls = [
+        request(app.getHttpServer()).get(base).set(auth),
+        request(app.getHttpServer()).post(base).set(auth).send({ name: "New" }),
+        request(app.getHttpServer()).get(one).set(auth),
+        request(app.getHttpServer()).patch(one).set(auth).send({ name: "Changed" }),
+        request(app.getHttpServer()).delete(one).set(auth),
+      ];
+      for (const call of calls) {
+        const response = await call.expect(404);
+        expect(response.body.code).toBe("PROJECT_NOT_FOUND");
+      }
+
+      const unchanged = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
+      expect(unchanged.name).toBe("Visible");
+      expect(unchanged.archivedAt).toBeNull();
+      expect(await prisma.project.count({ where: { organizationId: ids.orgA } })).toBe(1);
+    });
+  });
 });
