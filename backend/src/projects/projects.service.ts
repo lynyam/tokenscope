@@ -37,6 +37,7 @@ export class ProjectsService {
                 organizationId,
                 archivedAt: null,
                 organization: {
+                    archivedAt: null,
                     memberships: { some: { userId } },
                 },
             },
@@ -191,6 +192,7 @@ export class ProjectsService {
             organizationId,
             archivedAt: null,
             organization: {
+                archivedAt: null,
                 memberships: {
                     some: {
                         userId,
