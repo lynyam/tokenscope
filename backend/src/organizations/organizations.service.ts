@@ -17,7 +17,7 @@ export class OrganizationsService {
 
 	async findAllForUser(userId: string) {
 		const memberships = await this.prisma.membership.findMany({
-			where: { userId },
+			where: { userId, organization: {archivedAt: null} },
 			include: { organization: true },
 			orderBy: [
 				{ organization: { createdAt: "asc"} },
@@ -32,7 +32,9 @@ export class OrganizationsService {
 		await this.organizationAccess.assertOrganizationMember(userId, organizationId);
 		// The final read still requires the same user's membership
 		const membership = await this.prisma.membership.findUnique({
-			where: { organizationId_userId: { organizationId, userId }},
+			where: { organizationId_userId: { organizationId, userId},
+				organization: {archivedAt: null},
+			},
 			include: {organization: true},
 		});
 
@@ -80,6 +82,7 @@ export class OrganizationsService {
 			const organization = await this.prisma.organization.update({
 				where: {
 					id: organizationId,
+					archivedAt: null,
 					memberships: { some: { userId, role: MembershipRole.OWNER } },
 				},
 				data: { name: dto.name },
