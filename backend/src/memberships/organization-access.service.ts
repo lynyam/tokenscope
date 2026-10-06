@@ -34,6 +34,7 @@ export class OrganizationAccessService {
 					organizationId,
 					userId,
 				},
+				organization: {archivedAt: null},
 			},
 			select: {
 				id: true,

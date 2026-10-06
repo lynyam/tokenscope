@@ -48,6 +48,7 @@ export class ProjectAccessService {
 				organizationId,
 				archivedAt: null,
 				organization: {
+					archivedAt: null,
 					memberships: {
 						some: {
 							userId,
