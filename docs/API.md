@@ -737,7 +737,13 @@ Authorization: Bearer <JWT>
 }
 ```
 
-Accept only the required `confirmSlug` string. Compare the submitted value exactly with the stored slug; do not trim or lowercase it into a match.
+Accept only the required `confirmSlug` string. Reject missing, empty,
+whitespace-only and non-string values with `400 VALIDATION_ERROR`.
+Reject unknown properties.
+
+Compare the submitted value exactly with the stored slug; do not trim
+or lowercase it into a match. A nonblank value that does not match
+returns `409 ORGANIZATION_CONFIRMATION_MISMATCH`.
 
 For stored `acme-demo`:
 

@@ -441,11 +441,8 @@ For general project context and team onboarding, see:
 docs/ONBOARDING.md
 ```
 
-For system architecture, see:
-
-```text
-docs/ARCHITECTURE.md
-```
+For the current architecture, see
+[Evaluation Architecture](./EVALUATION_ARCHITECTURE.md).
 
 ## Evaluation setup extensions — planned
 
