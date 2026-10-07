@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPatch } from "./http-client";
+import { apiGet, apiPost, apiPatch, apiDeleteWithBody } from "./http-client";
 import type {
     OrganizationSummary,
     CreateOrganizationInput,
@@ -33,6 +33,20 @@ export async function updateOrganization(
       `/organizations/${encodeURIComponent(organizationId)}`,
       // Renaming changes the name; the backend preserves the existing slug.
       { name: input.name },
+      { signal },
+    );
+}
+
+export async function archiveOrganization(
+    organizationId: string,
+    confirmSlug: string,
+    signal?: AbortSignal,
+): Promise<void> {
+    return apiDeleteWithBody(
+      `/organizations/${encodeURIComponent(organizationId)}`,
+      // The slug is sent exactly as typed: no trim, no lowercase.
+      // The backend compares it strictly and rejects any other property.
+      { confirmSlug },
       { signal },
     );
 }
