@@ -1,9 +1,7 @@
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
+import {archiveOrganization, getOrganization, updateOrganization,} from "../../api/organizations.api";
+import {Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,} from "@/components/ui/dialog";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import {
-    getOrganization,
-    updateOrganization,
-} from "../../api/organizations.api";
 import type { OrganizationSummary } from "../../types/workspace.types";
 import { Link } from "react-router-dom"
 import { Card } from "@/components/ui/card";
@@ -49,6 +47,12 @@ function OrganizationDetail({ organizationId, }: {
 
     const requests = useRef<AbortController | null>(null);
     const saving = useRef(false);
+    const navigate = useNavigate();
+    const [isArchiveOpen, setIsArchiveOpen] = useState(false);
+    const [confirmSlug, setConfirmSlug] = useState("");
+    const [isArchiving, setIsArchiving] = useState(false);
+    const [archiveError, setArchiveError] = useState<string | null>(null);
+    const archiving = useRef(false);
 
     useEffect(() => {
         const controller = new AbortController();
@@ -133,6 +137,46 @@ function OrganizationDetail({ organizationId, }: {
         } finally {
             saving.current = false;
             if (!signal.aborted) setIsSaving(false);
+        }
+    }
+    async function handleArchiveSubmit(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+
+        // A ref prevents a second submission before React disables the form.
+        if (archiving.current || organization?.currentUserRole !== "OWNER") return;
+
+        const signal = requests.current?.signal;
+        if (!signal || signal.aborted) return;
+
+        // Exact comparison, like the backend: no trim and no lowercase.
+        if (confirmSlug !== organization.slug) return;
+
+        archiving.current = true;
+        setIsArchiving(true);
+        setArchiveError(null);
+
+        try {
+            await archiveOrganization(organizationId, confirmSlug, signal);
+
+            if (signal.aborted) return;
+            navigate("/organizations", { replace: true });
+        } catch (failure) {
+            if (signal.aborted || isAbortError(failure)) return;
+
+            if (failure instanceof ApiError && failure.code === "ORGANIZATION_NOT_FOUND") {
+                // Already deleted or access lost: show the existing not-found state.
+                setIsArchiveOpen(false);
+                setOrganization(null);
+                return;
+            }
+
+            // Keep the dialog and the typed value so the owner can retry.
+            setArchiveError(
+                getApiErrorMessage(failure, "Failed to delete organization."),
+            );
+        } finally {
+            archiving.current = false;
+            if (!signal.aborted) setIsArchiving(false);
         }
     }
     if (isLoading) {
@@ -269,6 +313,90 @@ function OrganizationDetail({ organizationId, }: {
                     <span className="text-sm font-medium">{organization.currentUserRole}</span>
                 </div>
             </Card>
+            {organization.currentUserRole === "OWNER" && (
+                <div className="mb-6 max-w-md mx-auto">
+                    <Button
+                        type="button"
+                        variant="destructive"
+                        onClick={() => {
+                            setConfirmSlug("");
+                            setArchiveError(null);
+                            setIsArchiveOpen(true);
+                        }}
+                    >
+                        Delete organization
+                    </Button>
+                </div>
+            )}
+            <Dialog
+                open={isArchiveOpen}
+                onOpenChange={open => {
+                    // The dialog cannot be dismissed while the request is pending.
+                    if (!isArchiving) setIsArchiveOpen(open);
+                }}
+            >
+                <DialogContent>
+                    <form
+                        onSubmit={handleArchiveSubmit}
+                        aria-busy={isArchiving}
+                        className="flex flex-col gap-3"
+                    >
+                        <DialogHeader>
+                            <DialogTitle>Delete organization</DialogTitle>
+                            <DialogDescription>
+                                This organization and everything in it will become
+                                inaccessible. Type <strong>{organization.slug}</strong> to confirm.
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <Label htmlFor="organization-archive-slug">
+                            Organization slug
+                        </Label>
+                        <Input
+                            id="organization-archive-slug"
+                            value={confirmSlug}
+                            autoComplete="off"
+                            disabled={isArchiving}
+                            aria-invalid={Boolean(archiveError)}
+                            aria-describedby={
+                                archiveError ? "organization-archive-error" : undefined
+                            }
+                            onChange={event => {
+                                setConfirmSlug(event.target.value);
+                                setArchiveError(null);
+                            }}
+                        />
+
+                        {archiveError && (
+                            <p
+                                id="organization-archive-error"
+                                role="alert"
+                                className="text-sm text-destructive"
+                            >
+                                {archiveError}
+                            </p>
+                        )}
+
+                        <DialogFooter>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                disabled={isArchiving}
+                                onClick={() => setIsArchiveOpen(false)}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                type="submit"
+                                variant="destructive"
+                                disabled={isArchiving || confirmSlug !== organization.slug}
+                            >
+                                {isArchiving ? "Deleting..." : "Delete organization"}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
             <div className="grid grid-cols-2 gap-3 mb-6 max-w-md mx-auto ">
                 <Link
                     to={`/organizations/${organizationId}/projects`}
