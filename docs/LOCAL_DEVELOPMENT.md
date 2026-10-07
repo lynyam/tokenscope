@@ -369,7 +369,8 @@ npm run build
 
 `build` creates the frontend production assets with Vite.
 
-`test` runs the frontend HTTP-client, auth-invalidation, membership-adapter,
+`test` runs the frontend HTTP-client, auth-invalidation, organization and
+membership adapter, and page tests (including the organization deletion dialog) with Vitest.
 and membership-page tests with Vitest. The shared test setup uses jsdom and
 Testing Library to exercise React interactions. These are development-only
 dependencies: Vitest runs assertions, jsdom supplies browser APIs, and Testing
@@ -408,6 +409,29 @@ implemented, then run the full suite above.
 
 The TSE-61 shared-client usage and remaining adapter responsibilities are
 documented in `SPRINT_1_ARCHITECTURE.md` under "Frontend integration reference".
+
+### Organization archive migration
+
+After pulling TSE-66, apply the new migration:
+
+```bash
+make db-setup
+```
+
+### Browser end-to-end tests
+
+Browser tests run from the host against the running stack (frontend, backend
+and PostgreSQL). Start and migrate the application first, then from `frontend/`:
+
+```bash
+npm ci
+npx playwright install chromium
+E2E_BASE_URL="http://localhost:5173" npm run test:e2e
+```
+
+Adjust `E2E_BASE_URL` to the actual frontend origin. The specs live in
+`frontend/test/e2e/*.spec.ts` and create unique disposable accounts and
+organizations; they never truncate the development database.
 
 ---
 

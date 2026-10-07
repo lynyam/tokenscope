@@ -53,7 +53,7 @@ clean-browser demo.
 - No email invitations and passwords reset;
 - No WebSockets.
 - No refresh tokens, server-side sessions, and token revocation
-- No organization deletion;
+- - No hard organization deletion or organization restore (soft archive only);
 - No project restore;
 - No project-specific roles or ACLs (Access Control List)
 ```
@@ -481,6 +481,7 @@ apiGet<T>(path, options?)
 apiPost<T>(path, body, options?)
 apiPatch<T>(path, body, options?)
 apiDelete(path, options?) // Promise<void>; expects the M1 204 response
+apiDeleteWithBody(path, body, options?) //Promise<void>;DELETE with a JSON body, expects 204
 
 // Options: { auth?: "required" | "none"; signal?: AbortSignal }
 ```
@@ -538,6 +539,7 @@ demo procedure. Use `DEMO.md` for full-stack acceptance.
 
 #### Delivery boundaries
 
+TSE-66 adds owner-only organization soft archive (`DELETE /organizations/:organizationId`); restoration remains out of scope.
 TSE-61 provides the shared frontend foundation and real membership adapter/UI.
 TSE-59 provides real authentication and session restoration.
 TSE-60 provides real organization list, detail, create, and rename API calls,

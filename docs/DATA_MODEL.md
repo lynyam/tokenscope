@@ -38,6 +38,7 @@ before those records exist.
         string slug UK
         datetime createdAt
         datetime updatedAt
+        datetime archivedAt
     }
 
     Membership {
@@ -92,9 +93,11 @@ organization, and all projects belong to one organization.
 | `slug` | Human-readable stable identifier | Required, globally unique, generated at creation |
 | `createdAt` | Creation timestamp | Generated automatically |
 | `updatedAt` | Last update timestamp | Updated automatically |
+| `archivedAt` | Soft-archive timestamp | Nullable; `null` while the organization is active |
 
 The organization slug does not change when the organization is renamed in M1.
-Organization deletion is out of scope for M1.
+Organizations are never hard-deleted. An owner archives an organization by
+setting `archivedAt` once (see "Organization archive" below).
 
 ### Membership
 
@@ -196,6 +199,9 @@ and test them:
 10. Slugs are generated consistently, validated as non-empty, and checked
     through database uniqueness constraints. A race that reaches the unique
     constraint is mapped to `409 Conflict`.
+11. Archived organizations are excluded from every organization, membership,
+    and project access query. Child records carry no archive field of their own;
+    they become inaccessible through the active-parent check.
 
 ## Lifecycle rules
 
@@ -212,6 +218,12 @@ of scope. Membership removal deletes only the membership, not the global user.
 
 Multiple owners are allowed. An owner may remove or demote another owner/or
 themselves only if at least one owner remains.
+### Organization archive
+
+Archiving sets `Organization.archivedAt` once and leaves memberships and
+projects untouched. They become inaccessible because every access query also
+requires an active organization. There is no restore operation. An archived
+organization keeps reserving its slug.
 
 ### Project archive
 
@@ -239,6 +251,8 @@ Concrete query and authorization requirements are defined in
   `backend/prisma/migrations/20260815192357_init_identity_workspace/migration.sql`
 - Database integration tests:
   `backend/test/database/data-model.integration.spec.ts`
+- Organization archive migration:
+  `backend/prisma/migrations/20261006122840_add_organization_archived_at/migration.sql`
 
 If a schema change is accepted, update the Prisma schema, migration, integration
 tests, this document, and the API contract in the same pull request.
