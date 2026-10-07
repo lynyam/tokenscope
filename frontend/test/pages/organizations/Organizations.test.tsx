@@ -3,6 +3,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
@@ -526,5 +527,153 @@ describe("organization rename with the real HTTP adapter", () => {
       .not.toBeInTheDocument();
     expect(screen.queryByLabelText("Organization name"))
       .not.toBeInTheDocument();
+  });
+});
+
+describe("organization deletion with the real HTTP adapter", () => {
+  const deleteUrl = `/api/v1/organizations/${organization.id}`;
+
+  async function openDialog(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(
+      await screen.findByRole("button", { name: "Delete organization" }),
+    );
+    return screen.findByRole("dialog");
+  }
+
+  it.each(["ADMIN", "MEMBER"] as const)("hides deletion for %s", async role => {
+    fetchMock.mockResolvedValueOnce(
+      json({ ...organization, currentUserRole: role }),
+    );
+
+    renderPage(`/organizations/${organization.id}`);
+
+    await screen.findByText(organization.name);
+    expect(screen.queryByRole("button", { name: "Delete organization" }))
+      .not.toBeInTheDocument();
+  });
+
+  it("enables deletion only for the exact slug and resets cancelled input", async () => {
+    fetchMock.mockResolvedValueOnce(json(organization));
+
+    const user = userEvent.setup();
+    renderPage(`/organizations/${organization.id}`);
+
+    const dialog = within(await openDialog(user));
+    const input = dialog.getByLabelText("Organization slug");
+    const submit = dialog.getByRole("button", { name: "Delete organization" });
+
+    expect(submit).toBeDisabled();
+
+    for (const wrong of ["ACME-AI", "acme-ai ", " acme-ai", "acme", "   "]) {
+      fireEvent.change(input, { target: { value: wrong } });
+      expect(submit).toBeDisabled();
+    }
+
+    fireEvent.change(input, { target: { value: "acme-ai" } });
+    expect(submit).toBeEnabled();
+
+    await user.click(dialog.getByRole("button", { name: "Cancel" }));
+
+    const reopened = within(await openDialog(user));
+    expect(reopened.getByLabelText("Organization slug")).toHaveValue("");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends one DELETE with the exact slug, blocks controls, then returns to the list", async () => {
+    let finish!: (response: Response) => void;
+
+    fetchMock
+      .mockResolvedValueOnce(json(organization))
+      .mockImplementationOnce(
+        () => new Promise(resolve => { finish = resolve; }),
+      )
+      .mockResolvedValueOnce(json([]));
+
+    const user = userEvent.setup();
+    renderPage(`/organizations/${organization.id}`);
+
+    const dialog = within(await openDialog(user));
+    const input = dialog.getByLabelText("Organization slug");
+    fireEvent.change(input, { target: { value: "acme-ai" } });
+
+    // Two submissions inside one React batch must still send one request.
+    act(() => {
+      fireEvent.submit(input.closest("form")!);
+      fireEvent.submit(input.closest("form")!);
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2); // One GET and one DELETE.
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      deleteUrl,
+      expect.objectContaining({
+        method: "DELETE",
+        body: JSON.stringify({ confirmSlug: "acme-ai" }),
+      }),
+    );
+
+    expect(input).toBeDisabled();
+    expect(dialog.getByRole("button", { name: "Deleting..." })).toBeDisabled();
+    expect(dialog.getByRole("button", { name: "Cancel" })).toBeDisabled();
+
+    await act(async () => { finish(new Response(null, { status: 204 })); });
+
+    expect(await screen.findByText("No organizations yet."))
+      .toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(getAccessToken()).toBe("organization-ui-test-token");
+  });
+
+  it.each([
+    [409, "ORGANIZATION_CONFIRMATION_MISMATCH", "The confirmation does not match."],
+    [403, "INSUFFICIENT_ORGANIZATION_ROLE", "Only owners can delete this organization."],
+    [409, "CONCURRENT_MODIFICATION", "The organization was modified concurrently."],
+    [503, "SERVICE_UNAVAILABLE", "Service unavailable."],
+  ] as const)(
+    "keeps the dialog, typed slug and session after %i %s",
+    async (status, code, message) => {
+      fetchMock
+        .mockResolvedValueOnce(json(organization))
+        .mockResolvedValueOnce(json({ code, message }, status));
+
+      const user = userEvent.setup();
+      renderPage(`/organizations/${organization.id}`);
+
+      const dialog = within(await openDialog(user));
+      const input = dialog.getByLabelText("Organization slug");
+      fireEvent.change(input, { target: { value: "acme-ai" } });
+      await user.click(dialog.getByRole("button", { name: "Delete organization" }));
+
+      expect(await dialog.findByRole("alert")).toHaveTextContent(message);
+      expect(input).toHaveValue("acme-ai");
+      expect(input).toBeEnabled();
+      expect(getAccessToken()).toBe("organization-ui-test-token");
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it("clears the content with a link back after ORGANIZATION_NOT_FOUND", async () => {
+    fetchMock
+      .mockResolvedValueOnce(json(organization))
+      .mockResolvedValueOnce(json({
+        code: "ORGANIZATION_NOT_FOUND",
+        message: "Organization not found.",
+      }, 404));
+
+    const user = userEvent.setup();
+    renderPage(`/organizations/${organization.id}`);
+
+    const dialog = within(await openDialog(user));
+    fireEvent.change(dialog.getByLabelText("Organization slug"), {
+      target: { value: "acme-ai" },
+    });
+    await user.click(dialog.getByRole("button", { name: "Delete organization" }));
+
+    expect(await screen.findByText("Organization not found"))
+      .toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Back to organizations/ }))
+      .toHaveAttribute("href", "/organizations");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByText(organization.slug)).not.toBeInTheDocument();
+    expect(getAccessToken()).toBe("organization-ui-test-token");
   });
 });
