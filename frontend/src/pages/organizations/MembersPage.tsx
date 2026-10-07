@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { addOrganizationMember, getOrganizationMemberships, removeOrganizationMember, updateOrganizationMemberRole } from "../../api/memberships.api";
-import { getApiErrorMessage, isAbortError } from "../../api/http-client";
+import { ApiError, getApiErrorMessage, isAbortError } from "../../api/http-client";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import type { AddOrganizationMemberInput, MembershipRole, MembershipWithUser, OrganizationMembershipsResponse } from "../../types/workspace.types";
 import { AddMemberForm } from "./AddMemberForm";
@@ -26,6 +26,7 @@ function OrganizationMembers({ organizationId, currentUserId }: { organizationId
   const [loadError, setLoadError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
   const requests = useRef<AbortController | null>(null);
+  const [accessLost, setAccessLost] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -52,32 +53,66 @@ function OrganizationMembers({ organizationId, currentUserId }: { organizationId
     }));
   }
 
+  // Only ORGANIZATION_NOT_FOUND means the organization is gone for this user.
+  // USER_NOT_FOUND (unknown email when adding a member) stays a form error.
+  function noteAccessLoss(failure: unknown, signal: AbortSignal) {
+    if (
+      !signal.aborted &&
+      failure instanceof ApiError &&
+      failure.code === "ORGANIZATION_NOT_FOUND"
+    ) {
+      setAccessLost(true);
+    }
+  }
+
   async function addMember(input: AddOrganizationMemberInput) {
     const signal = requests.current!.signal;
-    const member = await addOrganizationMember(organizationId, input, signal);
-    signal.throwIfAborted();
-    applyMembership(member);
+    try {
+      const member = await addOrganizationMember(organizationId, input, signal);
+      signal.throwIfAborted();
+      applyMembership(member);
+    } catch (failure) {
+      noteAccessLoss(failure, signal);
+      throw failure;
+    }
   }
 
   async function changeRole(userId: string, role: MembershipRole) {
     const signal = requests.current!.signal;
-    const member = await updateOrganizationMemberRole(organizationId, userId, { role }, signal);
-    signal.throwIfAborted();
-    // Also immediately updates management controls when the caller demotes themself.
-    applyMembership(member);
+    try {
+      const member = await updateOrganizationMemberRole(organizationId, userId, { role }, signal);
+      signal.throwIfAborted();
+      // Also immediately updates management controls when the caller demotes themself.
+      applyMembership(member);
+    } catch (failure) {
+      noteAccessLoss(failure, signal);
+      throw failure;
+    }
   }
 
   async function removeMember(userId: string) {
     const signal = requests.current!.signal;
-    await removeOrganizationMember(organizationId, userId, signal);
-    signal.throwIfAborted();
-    if (userId === currentUserId) {
-      // The org list reloads on mount; the switcher reloads when opened.
-      navigate("/organizations", { replace: true });
-      return;
+    try {
+      await removeOrganizationMember(organizationId, userId, signal);
+      signal.throwIfAborted();
+      if (userId === currentUserId) {
+        // The org list reloads on mount; the switcher reloads when opened.
+        navigate("/organizations", { replace: true });
+        return;
+      }
+      setData(previous => previous && ({ ...previous, memberships: previous.memberships.filter(member => member.userId !== userId) }));
+    } catch (failure) {
+      noteAccessLoss(failure, signal);
+      throw failure;
     }
-    setData(previous => previous && ({ ...previous, memberships: previous.memberships.filter(member => member.userId !== userId) }));
   }
+  if (accessLost) return (
+    <section className="flex flex-col items-start gap-3">
+      <h1 className="text-2xl font-semibold">Organization not found</h1>
+      <p role="alert">This organization doesn't exist or you don't have access to it.</p>
+      <Link to="/organizations">Back to organizations</Link>
+    </section>
+  );
 
   if (loadError) return (
     <section className="flex flex-col items-start gap-3">

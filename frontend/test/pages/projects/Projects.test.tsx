@@ -559,3 +559,22 @@ import {
 
 	expect(result.current.projects).toEqual([other]);
   });
+  it("clears the projects page with a link back when creation returns ORGANIZATION_NOT_FOUND", async () => {
+  	write = async () => json({
+    	code: "ORGANIZATION_NOT_FOUND",
+    	message: "Organization not found.",
+  	}, 404);
+
+  	const user = userEvent.setup();
+  	view();
+
+  	await user.type(await screen.findByLabelText("Project name"), "New project");
+  	await user.click(screen.getByRole("button", { name: "Create" }));
+
+  	expect(await screen.findByRole("alert")).toHaveTextContent("Organization not found.");
+  	expect(screen.getByRole("link", { name: "Back to organizations" }))
+    	.toHaveAttribute("href", "/organizations");
+  	expect(screen.queryByLabelText("Project name")).not.toBeInTheDocument();
+  	expect(screen.queryByText(project.name)).not.toBeInTheDocument();
+  	expect(getAccessToken()).not.toBeNull();
+});

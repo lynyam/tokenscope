@@ -59,6 +59,7 @@ function OrganizationProjects({
   const [description, setDescription] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [accessLost, setAccessLost] = useState(false);
 
   const requests = useRef<AbortController | null>(null);
   const pending = useRef(false);
@@ -156,6 +157,11 @@ function OrganizationProjects({
         signal.aborted ||
         isAbortError(failure)
       ) return;
+      if (failure instanceof ApiError && failure.code === "ORGANIZATION_NOT_FOUND") {
+        // The organization was archived or access was lost: clear the page.
+        setAccessLost(true);
+        return;
+      }
 
       const details = failure instanceof ApiError
         ? failure.details?.flatMap(detail => detail.messages).join(" ")
@@ -172,7 +178,14 @@ function OrganizationProjects({
   }
 
   const loadError = roleError ?? error;
-
+  if (accessLost) {
+    return (
+      <section>
+        <p role="alert">Organization not found.</p>
+        <Link to="/organizations">Back to organizations</Link>
+      </section>
+    );
+  }
   if (roleError || !hasLoaded || role === null) {
     return loadError ? (
       <section>
