@@ -1,8 +1,12 @@
-import { Link } from "react-router-dom";
 import { buttonVariants } from "../components/ui/button";
 import { ProductPreview } from "../components/ProductPreview";
 import { useCurrentUser } from "../hooks/useCurrentUser";
 import { LegalLinks } from "../components/LegalLinks";
+import {
+  LandingActions,
+  LandingHeader,
+  sectionLinkClasses,
+} from "../components/LandingHeader";
 import {
   Card,
   CardHeader,
@@ -10,12 +14,6 @@ import {
   CardContent,
   CardDescription,
 } from "../components/ui/card";
-
-const signupFocusClasses =
-  "focus-visible:outline-solid! focus-visible:outline-4! focus-visible:outline-offset-4! focus-visible:outline-amber-400! focus-visible:ring-0!";
-
-const sectionLinkClasses =
-  "rounded-sm text-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring";
 
 const productBenefits = [
   {
@@ -74,85 +72,13 @@ function InfoCard({
   );
 }
 
-function LandingActions({
-  isLoggedIn,
-  size,
-  showLogin = true,
-}: {
-  isLoggedIn: boolean;
-  size: "sm" | "lg";
-  showLogin?: boolean;
-}) {
-  if (isLoggedIn) {
-    return (
-      <Link
-        to="/organizations"
-        className={buttonVariants({
-          size,
-          className: signupFocusClasses,
-        })}
-      >
-        Dashboard
-      </Link>
-    );
-  }
-
-  return (
-    <>
-      {showLogin && (
-        <Link
-          to="/signin"
-          className={buttonVariants({ variant: "outline", size })}
-        >
-          Log in
-        </Link>
-      )}
-
-      <Link
-        to="/signup"
-        className={buttonVariants({
-          size,
-          className: signupFocusClasses,
-        })}
-      >
-        Try TokenScope
-      </Link>
-    </>
-  );
-}
-
 export function LandingPage() {
   const { user } = useCurrentUser();
   const isLoggedIn = Boolean(user);
 
   return (
     <div className="dark min-h-screen bg-background text-foreground">
-      <header className="border-b border-border">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-5">
-          <Link to="/" className="flex items-center gap-2 font-semibold">
-            <img
-              src="/logo/logo.svg"
-              alt=""
-              className="size-7 rounded bg-white p-1"
-            />
-            TokenScope
-          </Link>
-
-          <a href="#product" className={sectionLinkClasses}>
-            Product
-          </a>
-
-          <a href="#audience" className={sectionLinkClasses}>
-            Who it’s for
-          </a>
-
-          <a href="#how-it-works" className={sectionLinkClasses}>
-            How it works
-          </a>
-
-          <LandingActions isLoggedIn={isLoggedIn} size="sm" />
-        </div>
-      </header>
+      <LandingHeader isLoggedIn={isLoggedIn} />
 
       <main className="mx-auto max-w-6xl px-6 py-20 sm:py-28">
         <p className="mb-6 text-sm text-muted-foreground">
@@ -322,28 +248,28 @@ export function LandingPage() {
           </div>
         </section>
 
-<footer className="mt-24 border-t border-border py-10">
-  <div className="flex flex-col gap-4 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-    <p>TokenScope — collaborative LLM cost observability.</p>
+        <footer className="mt-24 border-t border-border py-10">
+          <div className="flex flex-col gap-4 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+            <p>TokenScope — collaborative LLM cost observability.</p>
 
-    <nav
-      aria-label="Footer navigation"
-      className="flex flex-wrap gap-4"
-    >
-      <a href="#product" className={sectionLinkClasses}>
-        Product
-      </a>
-      <a href="#audience" className={sectionLinkClasses}>
-        Who it’s for
-      </a>
-      <a href="#how-it-works" className={sectionLinkClasses}>
-        How it works
-      </a>
-    </nav>
-  </div>
+            <nav
+              aria-label="Footer navigation"
+              className="flex flex-wrap gap-4"
+            >
+              <a href="#product" className={sectionLinkClasses}>
+                Product
+              </a>
+              <a href="#audience" className={sectionLinkClasses}>
+                Who it’s for
+              </a>
+              <a href="#how-it-works" className={sectionLinkClasses}>
+                How it works
+              </a>
+            </nav>
+          </div>
 
-  <LegalLinks className="mt-6 justify-start" />
-</footer>
+          <LegalLinks className="mt-6 justify-start" />
+        </footer>
       </main>
     </div>
   );
