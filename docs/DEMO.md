@@ -1,5 +1,11 @@
 # M1 demo and acceptance runbook
 
+> This runbook’s existing numbered procedure verifies the Sprint 1 identity/workspace baseline.
+>
+> References to M2 placeholders and excluded features apply to that historical baseline. They do not prohibit the evaluation extensions defined in [EVALUATION_ARCHITECTURE.md](./EVALUATION_ARCHITECTURE.md).
+>
+> The evaluation section below records planned acceptance coverage. A checklist or expected value is not a passing test result.
+
 ## Purpose
 
 This runbook is the executable acceptance contract for M1. It starts from a
@@ -524,3 +530,79 @@ Expected:
 - [ ] Browser console and backend logs are clean.
 - [ ] Required automated tests pass.
 - [ ] API keys, traces, cost calculation, and dashboards remain M2 scope.
+
+## Evaluation acceptance extension — planned
+
+TSE-83 owns the executable evaluation runbook. TSE-85 records results against the final candidate.
+
+For each verification, record:
+
+- Commit SHA and environment.
+- Exact command or browser steps.
+- Expected and observed behavior.
+- PASS, FAIL, BLOCKED or NOT RUN.
+- Relevant safe evidence and known limitations.
+
+Do not reuse older test totals as fresh evidence.
+
+### Required integrated journeys
+
+| Area | Required demonstration |
+|---|---|
+| Deployment | Trusted HTTPS, direct-route reload, readiness and persistence |
+| Workspace | Real auth, memberships, role restrictions, last-owner protection and isolation |
+| Organization archive | OWNER confirmation, retained data, inaccessible children and unchanged user session |
+| API keys | One-time disclosure, public use, revocation and archived-parent rejection |
+| Public traces | Create, identical replay, read, list, versioned correction and soft deletion |
+| Search | Combined filters, stable sorting and 51-record pagination |
+| Analytics | Exact totals, dates, filters, empty state and coherent snapshots |
+| Realtime | Two clients, committed changes, reconnect repair and access revocation |
+| Exports | CSV/PDF match the captured displayed snapshot, including empty and filtered results |
+| Documents | Validated upload, role restrictions, private preview/download and eventual file cleanup |
+| Assistant | Fixed context, streamed answer, Stop, errors, access loss and deliberate live Gemini call |
+| Browsers | Chrome, Firefox and Edge evidence |
+| Public pages | Accessible Privacy/Terms reflecting actual implementation |
+
+### Canonical analytics fixture
+
+Use the full UTC day:
+
+```text
+from = 2026-10-01T00:00:00.000Z
+to   = 2026-10-02T00:00:00.000Z
+```
+
+If the explicit seed anchor changes, shift fixture dates and examples consistently. Never rely on old fixture records remaining inside “Last 7 days.”
+
+Expected golden results:
+
+| Metric | Expected |
+|---|---|
+| Trace count | `6` |
+| Input tokens | `"6000"` |
+| Output tokens | `"1200"` |
+| Total tokens | `"7200"` |
+| Estimated cost | `"0.015350000000"` |
+| Error count | `2` |
+| Error rate | `33.33` |
+| Average latency | `1833.333` |
+| `fixture-a/demo-fast` cost | `"0.007150000000"` |
+| `fixture-b/demo-large` cost | `"0.008200000000"` |
+| Hourly buckets | `24`, including `18` empty buckets |
+
+These values are fixture expectations, not live-provider prices.
+
+Keep the 51-row pagination dataset, cross-tenant data and mutation demonstrations separate from the golden project so they do not change its expected totals.
+
+### Evidence boundaries
+
+- Fixtures do not automatically populate the application.
+- Evaluation seeding is explicit and uses an operator-supplied password.
+- Normal startup must not reset or seed user data.
+- Mocked HTTP tests do not prove database authorization.
+- Simulated streams do not prove a working Gemini account.
+- A Chromium run does not prove Firefox or actual Edge compatibility.
+- Export/download existence alone does not prove correct contents.
+- A passing retry does not erase an unexplained flaky failure.
+
+The 16-point figure remains a target until complete functionality and the subject’s requirements have been demonstrated.

@@ -75,15 +75,19 @@ For detailed setup instructions, see [Local Development](docs/LOCAL_DEVELOPMENT.
 
 ## Documentation
 
-* [Local Development](docs/LOCAL_DEVELOPMENT.md) — local setup, Docker, environment, and tests
-* [M1 API Contract](docs/API.md) — HTTP routes, validation, request IDs, and errors
-* [M1 Security](docs/SECURITY.md) — authentication, authorization, tenant isolation, and secret handling
-* [Sprint 1 Architecture](docs/SPRINT_1_ARCHITECTURE.md) — M1 backend architecture and dependency rules
-* [Data Model](docs/DATA_MODEL.md) — application data model and invariants
-* [M1 Demo](docs/DEMO.md) — executable M1 verification and demo procedure
-* [Onboarding](docs/ONBOARDING.md) — project context and contributor onboarding
-* [Repository Workflow](docs/REPOSITORY_WORKFLOW.md) — branches, commits, pull requests, and reviews
+Read the evaluation architecture first when implementing the current delivery scope.
+
+* [Evaluation Architecture](docs/EVALUATION_ARCHITECTURE.md) — current scope, module ownership, shared decisions and implementation status
+* [API Contract](docs/API.md) — existing routes and explicitly marked evaluation contracts
+* [Security](docs/SECURITY.md) — authentication, authorization, tenant isolation and privacy
+* [Data Model](docs/DATA_MODEL.md) — implemented schema and planned evaluation extensions
+* [Local Development](docs/LOCAL_DEVELOPMENT.md) — environment, configuration and executable commands
+* [Demo and Acceptance](docs/DEMO.md) — verification procedures and evidence
+* [Sprint 1 Architecture](docs/SPRINT_1_ARCHITECTURE.md) — historical architecture and existing foundation
+* [Historical Onboarding Pack](docs/ONBOARDING.md) — original product plan, team context and learning material
+* [Repository Workflow](docs/REPOSITORY_WORKFLOW.md) — branches, commits, pull requests and reviews
 * [Architecture Decision Records](docs/ADR/README.md) — documented architectural decisions
+
 ## Repository structure
 
 ```text

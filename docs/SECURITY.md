@@ -1,18 +1,12 @@
-# M1 security: Authentication, authorization, and tenant isolation
+# TokenScope security: authentication, authorization and tenant isolation
 
 ## Purpose
 
-This document defines the security rules that every M1 backend implementation
-and review must enforce.
+This document defines the security rules for TokenScope.
 
-The central rule is:
+The existing sections describe the Sprint 1 foundation. The evaluation extension specifies additional required behavior that is not yet implemented at baseline `854da94`.
 
-> Frontend permission checks are user experience. Backend permission checks are
-> security.
-
-Hiding a button does not authorize or protect an operation. Every backend
-request independently authenticates the caller and verifies membership, role,
-and tenant scope.
+Feature implementation and review must preserve the existing guarantees while adding the applicable evaluation requirements.
 
 ## Security boundary
 
@@ -565,3 +559,140 @@ M2 must add separate project API-key authentication without reusing user JWTs
 for public trace ingestion. API key plaintext must be shown once, stored only as
 a hash, scoped to a project, and revocable. Those rules belong in the M2
 extension of this document.
+
+## Evaluation security extension — agreed, not yet implemented
+
+### Current authorization and active parents
+
+Every new project resource requires the correct tenant/project scope and active organization/project.
+
+Browser routes derive identity from the verified JWT and current membership. Public trace routes derive project identity from a verified project API key.
+
+Frontend roles, route parameters, client totals and project metadata are not authority.
+
+Preserve existing error ordering and resource concealment. An accessible member lacking a required role receives the documented `403`; an outsider receives a scoped `404`.
+
+### Transaction-aware project access
+
+TSE-64 extends the existing project helper with an optional transaction client:
+
+```ts
+assertProjectAccess(
+  userId: string,
+  organizationId: string,
+  projectId: string,
+  allowedRoles: readonly MembershipRole[],
+  client?: Prisma.TransactionClient,
+): Promise<Project>
+```
+
+This is a target signature, not the signature implemented at baseline `854da94`.
+
+All nested access checks and queries use the supplied client. The helper does not open or retry transactions.
+
+Domain services own transaction boundaries and must preserve authorization predicates in actual reads and writes.
+
+Retry only recognized transaction conflicts, at most three total attempts, with fresh authorization on every attempt. Exhaustion uses `409 CONCURRENT_MODIFICATION`.
+
+Do not hold transactions open during provider calls, uploads or socket delivery.
+
+A consistent read can precede a concurrent revocation. Repeating a query within that same snapshot does not provide a fresh revocation check.
+
+### API-key separation
+
+Public trace endpoints require `X-API-Key`. A user JWT alone cannot authorize them.
+
+Browser workspace, document, analytics, assistant and key-management routes require JWT authentication. A project key cannot authorize them.
+
+Generate API keys with 32 cryptographically random bytes. Store only their SHA-256 digest and display prefix.
+
+Plaintext disclosure occurs once after successful creation. Never include secrets in URLs, logs, browser persistence, fixtures or screenshots.
+
+Missing, invalid, revoked and archived-parent keys use the same `401 INVALID_API_KEY` response.
+
+The key belongs to its project. Creator removal/demotion does not revoke it automatically; explicit revocation and parent archive invalidate it.
+
+### Shared frontend session behavior
+
+Preserve `auth-session.ts` and its captured-session protection.
+
+A response from an obsolete session must not clear a newer login.
+
+New JSON, multipart, binary and SSE transports must reuse the same authentication/error conventions. Do not create independent token stores.
+
+Provider authentication failures must never become TokenScope user `401` responses.
+
+Abort, permission, not-found, conflict, rate-limit and network failures do not invalidate the user session.
+
+### Resource limits
+
+| Boundary | Agreed limit |
+|---|---|
+| Public trace routes before key authentication | 60 requests/minute per trusted client IP |
+| Public trace routes after key authentication | 120 requests/minute per verified key |
+| Browser trace-list/analytics budget | Shared 60 requests/minute per user/project |
+| Authorized document uploads | 5/minute per user |
+| Realtime connections | 5 simultaneous sockets per user |
+| Realtime subscribe attempts | 10 per 10 seconds per socket |
+| Assistant concurrency | 1 active request per user |
+| Assistant accepted requests | 5/minute per user and 30/minute per project |
+
+Public trace quotas apply across public trace routes. Database retries do not consume another HTTP quota.
+
+Use bounded bookkeeping. Do not introduce Redis for the single-backend evaluation deployment.
+
+Do not trust arbitrary forwarded IP headers. Configure the known proxy boundary and preserve it in tests.
+
+### Realtime access
+
+Verify JWT signature and expiry using the existing token service.
+
+Validate exact allowed browser Origins for polling and WebSocket transport.
+
+Check access when subscribing and again before notifications. Protect asynchronous subscription changes with a generation check.
+
+After committed membership removal or parent archive, revoke affected subscriptions. Demotion to MEMBER retains read access.
+
+At verified token expiry, stop delivery and disconnect.
+
+If current access cannot be verified, do not send project notifications.
+
+### Assistant privacy and cancellation
+
+Send Gemini only the question and allowlisted project/analytics context.
+
+Exclude JWTs, API keys, user emails, raw prompts, arbitrary trace metadata and uploaded documents.
+
+Treat project text and the question as untrusted content. They cannot override instructions or authorize tools.
+
+No tools, document retrieval, conversation persistence or automatic provider retries are introduced.
+
+Use one provider attempt, a maximum of 600 output tokens, a 15-second first-visible-text deadline and a 60-second total provider deadline.
+
+Recheck current access before provider dispatch and through fresh reads during streaming, at the agreed five-second interval. Also enforce verified JWT expiry.
+
+Cancellation, expiry, access loss, timeout and disconnect must release provider work, timers and concurrency slots. Do not promise that client cancellation guarantees the remote provider stops all computation.
+
+Keep provider credentials backend-only. Verify the actual account/model configuration and disclose applicable provider processing accurately. Do not promise zero retention or unlimited free use without evidence.
+
+### Private files
+
+Authorize before accepting upload bytes and again before committing metadata.
+
+Validate extension, media type and content. Enforce actual file-size limits.
+
+Use server-generated storage keys and a private persistent directory. Never use original filenames as paths or expose the directory through static hosting.
+
+Individual deletion schedules durable cleanup after database commit. Parent archive retains bytes.
+
+Orphan cleanup must fail closed when reference checks fail and must preserve files referenced by archived records.
+
+Render Markdown/TXT as inert text. Use a local PDF renderer without enabling document scripts or runtime remote dependencies.
+
+### Evidence
+
+Real PostgreSQL tests must cover tenant isolation, current roles, archived parents, transaction behavior and persistent constraints.
+
+Realtime tests must use real connections. Browser tests must exercise the integrated UI. Provider stubs must remain separate from deliberate live-provider evidence.
+
+Logs and test artifacts must exclude credentials, file contents, questions, complete contexts and answers.

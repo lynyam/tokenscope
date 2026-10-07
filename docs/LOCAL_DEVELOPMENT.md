@@ -2,6 +2,10 @@
 
 This document explains how to run TokenScope locally and how the development environment is structured.
 
+Current architecture and feature ownership are defined in [EVALUATION_ARCHITECTURE.md](./EVALUATION_ARCHITECTURE.md).
+
+Commands in this document describe implemented tooling unless explicitly marked as planned. Adding an architecture contract does not create its Make target, environment variable or test configuration.
+
 ## Requirements
 
 Install:
@@ -395,20 +399,15 @@ assertions run. The flag lets jsdom provide isolated browser storage; no
 disk-backed storage file or custom storage mock is needed. Local checks use
 Node 24, matching the development containers.
 
-While implementing the shared foundation before the membership adapter and
-page, install only its two test files and run this checkpoint from `frontend/`:
+The shared authentication, organization, membership and project integrations are present in the Sprint 1 baseline. Run the complete frontend suite when changing their shared transport or session behavior.
 
-```bash
-npm run test -- test/api/http-client.test.ts test/context/AuthContext.test.tsx
-```
+New unit/component tests remain under `frontend/test/`. Real browser journeys belong under `frontend/test/e2e/` once browser-test infrastructure is introduced.
 
-Add `test/api/memberships.api.test.ts` and
-`test/pages/organizations/MembersPage.test.tsx` once their production code is
-implemented, then run the full suite above.
+At baseline `854da94`, the frontend package has no Playwright dependency or browser-test command. Do not present planned browser tests as an existing executable suite.
 
-The TSE-61 shared-client usage and remaining adapter responsibilities are
-documented in `SPRINT_1_ARCHITECTURE.md` under "Frontend integration reference".
+TSE-72 extends transport for multipart uploads, private binary responses and assistant streams while preserving current JSON callers.
 
+See `EVALUATION_ARCHITECTURE.md` for current integration boundaries and `SPRINT_1_ARCHITECTURE.md` for the existing client/session design.
 ---
 
 ### Backend
@@ -447,3 +446,64 @@ For system architecture, see:
 ```text
 docs/ARCHITECTURE.md
 ```
+
+## Evaluation setup extensions — planned
+
+At baseline `854da94`, evaluation startup, evaluation seeding, realtime, private-file storage and Gemini configuration are not implemented.
+
+### Deployment ownership
+
+TSE-65 introduces evaluation mode using the existing `compose.yaml`, service names and PostgreSQL volume.
+
+The planned entry point is `make eval-up`, serving the built application at `https://localhost:8443`.
+
+Do not create a second application stack merely for evaluation. Development/evaluation mode switching preserves the database.
+
+The implementation PR must document certificate trust, readiness, migration execution and the final executable commands.
+
+### Configuration ownership
+
+| Feature | Owner | Required integration |
+|---|---|---|
+| Evaluation mode and HTTPS | TSE-65 | Compose, Dockerfiles, proxy and Makefile |
+| Public-request limits | TSE-67 | Trusted proxy/IP configuration |
+| Realtime | TSE-73 | Origin allowlist and Socket.IO proxying |
+| Private files | TSE-78 | `DOCUMENT_STORAGE_ROOT` and persistent private volume |
+| Assistant | TSE-80 | `GEMINI_API_KEY`, `LLM_MODEL`, SSE proxy verification |
+| Evaluation seed | TSE-70 | Explicit opt-in, operator-supplied password and documented command |
+
+Backend configuration uses:
+
+```text
+backend/src/config/env.validation.ts
+backend/src/config/configuration.module.ts
+```
+
+Because configuration has `skipProcessEnv: true`, new settings must be included in the typed validated configuration returned to consumers. Adding them only to Compose does not make them available through `ConfigService`.
+
+Update `.env.example`, container environment mapping, validation, consumers and tests together. Commit placeholders only.
+
+Missing optional Gemini configuration must not prevent unrelated application features from starting. Assistant requests report their documented unavailable state.
+
+No secrets may use a frontend `VITE_` variable.
+
+### Migration and verification
+
+Use existing commands where applicable:
+
+```bash
+make db-generate
+make db-migration name=<migration_name>
+make db-status
+
+make test-backend
+make frontendcheck
+make frontendtest
+docker compose exec frontend npm run build
+```
+
+`db-migration` creates/applies a development migration against the configured development database. Use isolated disposable databases for migration-upgrade and destructive test scenarios.
+
+The existing backend gate runs type checks, builds, migrations, unit tests, HTTP tests and PostgreSQL integration tests through the test Compose configuration.
+
+New browser and seed commands must be documented when implemented. Do not substitute development data resets for isolated evaluation tests.
