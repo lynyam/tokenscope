@@ -578,3 +578,56 @@ import {
   	expect(screen.queryByText(project.name)).not.toBeInTheDocument();
   	expect(getAccessToken()).not.toBeNull();
 });
+it("clears the project detail after an update returns PROJECT_NOT_FOUND", async () => {
+  write = async () => json({
+    code: "PROJECT_NOT_FOUND",
+    message: "Project not found.",
+  }, 404);
+
+  const user = userEvent.setup();
+  view(detailPath);
+
+  await user.click(await screen.findByRole("button", { name: "Edit" }));
+  const input = screen.getByLabelText("Name");
+  fireEvent.change(input, { target: { value: "Renamed" } });
+  fireEvent.submit(input.closest("form")!);
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("Project not found.");
+  expect(screen.getByRole("link", { name: "Back to projects" }))
+    .toHaveAttribute("href", listPath);
+  expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Archive project" }))
+    .not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Name")).not.toBeInTheDocument();
+  expect(screen.queryByText(project.name)).not.toBeInTheDocument();
+  expect(writes()).toHaveLength(1);
+  expect(getAccessToken()).toBe("project-ui-token");
+});
+
+it("clears the project detail after an archive returns PROJECT_NOT_FOUND", async () => {
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+  try {
+    write = async () => json({
+      code: "PROJECT_NOT_FOUND",
+      message: "Project not found.",
+    }, 404);
+
+    const user = userEvent.setup();
+    view(detailPath);
+
+    await user.click(await screen.findByRole("button", { name: "Archive project" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Project not found.");
+    expect(screen.getByRole("link", { name: "Back to projects" }))
+      .toHaveAttribute("href", listPath);
+    expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Archive project" }))
+      .not.toBeInTheDocument();
+    expect(screen.queryByText(project.name)).not.toBeInTheDocument();
+    expect(writes()).toHaveLength(1);
+    expect(getAccessToken()).toBe("project-ui-token");
+  } finally {
+    confirm.mockRestore();
+  }
+});
