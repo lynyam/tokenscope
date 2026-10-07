@@ -1,4 +1,5 @@
 import { LegalLayout } from "../../layouts/LegalLayout";
+import { useScrollToTop } from "../../hooks/useScrollToTop";
 
 const deletionActions = [
   {
@@ -39,6 +40,8 @@ const deletionActions = [
 ];
 
 export function PrivacyPage() {
+  useScrollToTop();
+
   return (
     <LegalLayout title="Privacy Policy">
       <section>

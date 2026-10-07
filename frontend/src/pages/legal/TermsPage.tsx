@@ -1,7 +1,12 @@
 import { Link } from "react-router-dom";
 import { LegalLayout } from "../../layouts/LegalLayout";
+import { useScrollToTop } from "../../hooks/useScrollToTop";
+
+const CONTACT_EMAIL = "contact@example.com";
 
 export function TermsPage() {
+  useScrollToTop();
+
   return (
     <LegalLayout title="Terms of Service">
       <section>
@@ -165,6 +170,10 @@ export function TermsPage() {
 
       <section>
         <h2>Contact and updates</h2>
+        <p>
+          For questions about these terms or private requests, write to{" "}
+          <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.
+        </p>
         <p>
           Use{" "}
           <a href="https://github.com/lynyam/tokenscope/issues">
