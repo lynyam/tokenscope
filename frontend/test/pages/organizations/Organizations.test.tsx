@@ -625,7 +625,6 @@ describe("organization deletion with the real HTTP adapter", () => {
 
   it.each([
     [409, "ORGANIZATION_CONFIRMATION_MISMATCH", "The confirmation does not match."],
-    [403, "INSUFFICIENT_ORGANIZATION_ROLE", "Only owners can delete this organization."],
     [409, "CONCURRENT_MODIFICATION", "The organization was modified concurrently."],
     [503, "SERVICE_UNAVAILABLE", "Service unavailable."],
   ] as const)(
@@ -650,6 +649,33 @@ describe("organization deletion with the real HTTP adapter", () => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
     },
   );
+
+  it("closes the dialog and reloads the role after 403 INSUFFICIENT_ORGANIZATION_ROLE", async () => {
+    fetchMock
+      .mockResolvedValueOnce(json(organization))
+      .mockResolvedValueOnce(json({
+        code: "INSUFFICIENT_ORGANIZATION_ROLE",
+        message: "Only owners can delete this organization.",
+      }, 403))
+      .mockResolvedValueOnce(json({ ...organization, currentUserRole: "ADMIN" }));
+
+    const user = userEvent.setup();
+    renderPage(`/organizations/${organization.id}`);
+
+    const dialog = within(await openDialog(user));
+    fireEvent.change(dialog.getByLabelText("Organization slug"), {
+      target: { value: "acme-ai" },
+    });
+    await user.click(dialog.getByRole("button", { name: "Delete organization" }));
+
+    // The effective role is reloaded from the server.
+    expect(await screen.findByText("ADMIN")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete organization" }))
+      .not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3); // GET, DELETE, GET again.
+    expect(getAccessToken()).toBe("organization-ui-test-token");
+  });
 
   it("clears the content with a link back after ORGANIZATION_NOT_FOUND", async () => {
     fetchMock

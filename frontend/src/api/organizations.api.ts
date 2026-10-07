@@ -3,6 +3,7 @@ import type {
     OrganizationSummary,
     CreateOrganizationInput,
     UpdateOrganizationInput,
+    ArchiveOrganizationInput,
 } from "../types/workspace.types";
 
 // Authentication, /api/v1, JSON and errors belong to the shared client.
@@ -39,14 +40,12 @@ export async function updateOrganization(
 
 export async function archiveOrganization(
     organizationId: string,
-    confirmSlug: string,
+    input: ArchiveOrganizationInput,
     signal?: AbortSignal,
 ): Promise<void> {
     return apiDeleteWithBody(
-      `/organizations/${encodeURIComponent(organizationId)}`,
-      // The slug is sent exactly as typed: no trim, no lowercase.
-      // The backend compares it strictly and rejects any other property.
-      { confirmSlug },
-      { signal },
+        `/organizations/${encodeURIComponent(organizationId)}`,
+        { confirmSlug: input.confirmSlug },
+        { signal },
     );
 }

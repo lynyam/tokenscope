@@ -84,7 +84,7 @@ function OrganizationDetail({ organizationId, }: {
         event.preventDefault();
 
         // A ref prevents a second submission before React disables the form.
-        if (saving.current || organization?.currentUserRole !== "OWNER") return;
+        if (saving.current || archiving.current || organization?.currentUserRole !== "OWNER") return;
 
         const signal = requests.current?.signal;
         if (!signal || signal.aborted) return;
@@ -143,7 +143,7 @@ function OrganizationDetail({ organizationId, }: {
         event.preventDefault();
 
         // A ref prevents a second submission before React disables the form.
-        if (archiving.current || organization?.currentUserRole !== "OWNER") return;
+        if (archiving.current || saving.current || organization?.currentUserRole !== "OWNER") return;
 
         const signal = requests.current?.signal;
         if (!signal || signal.aborted) return;
@@ -156,17 +156,23 @@ function OrganizationDetail({ organizationId, }: {
         setArchiveError(null);
 
         try {
-            await archiveOrganization(organizationId, confirmSlug, signal);
+            await archiveOrganization(organizationId, { confirmSlug }, signal);
 
             if (signal.aborted) return;
             navigate("/organizations", { replace: true });
         } catch (failure) {
             if (signal.aborted || isAbortError(failure)) return;
-
             if (failure instanceof ApiError && failure.code === "ORGANIZATION_NOT_FOUND") {
                 // Already deleted or access lost: show the existing not-found state.
                 setIsArchiveOpen(false);
                 setOrganization(null);
+                return;
+            }
+            if (failure instanceof ApiError && failure.code === "INSUFFICIENT_ORGANIZATION_ROLE") {
+                // The role changed: close the dialog and reload the effective role.
+                setIsArchiveOpen(false);
+                setConfirmSlug("");
+                setRetry(value => value + 1);
                 return;
             }
 
@@ -344,9 +350,15 @@ function OrganizationDetail({ organizationId, }: {
                         <DialogHeader>
                             <DialogTitle>Delete organization</DialogTitle>
                             <DialogDescription>
-                                This organization and everything in it will become
-                                inaccessible. Type <strong>{organization.slug}</strong> to confirm.
+                                This organization and its contents will become inaccessible. Stored data
+                                is retained. Restoration is not available in the application.
                             </DialogDescription>
+                            <p className="text-sm">
+                                 Organization: <strong>{organization.name}</strong>
+                            </p>
+                            <p className="text-sm">
+                                Type <strong>{organization.slug}</strong> to confirm.
+                            </p>
                         </DialogHeader>
 
                         <Label htmlFor="organization-archive-slug">

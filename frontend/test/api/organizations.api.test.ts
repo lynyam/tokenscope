@@ -190,7 +190,7 @@ describe("organization HTTP adapter", () => {
     const controller = new AbortController();
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
 
-    await expect(archiveOrganization(organization.id, " Acme-AI ", controller.signal))
+    await expect(archiveOrganization(organization.id, { confirmSlug: " Acme-AI " }, controller.signal))
       .resolves.toBeUndefined();
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -219,7 +219,7 @@ describe("organization HTTP adapter", () => {
         json({ code, message: "Request rejected.", requestId: "archive-1" }, status),
       );
 
-      await expect(archiveOrganization(organization.id, "acme-ai"))
+      await expect(archiveOrganization(organization.id, { confirmSlug: "acme-ai" }))
         .rejects.toMatchObject({ statusCode: status, code, requestId: "archive-1" });
 
       expect(getAccessToken()).toBe("organization-test-token");
@@ -230,7 +230,7 @@ describe("organization HTTP adapter", () => {
     const id = "organization/with ?#characters";
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
 
-    await archiveOrganization(id, "acme-ai");
+    await archiveOrganization(id, { confirmSlug: "acme-ai" });
 
     expect(fetchMock.mock.calls[0][0]).toBe(`${base}/${encodeURIComponent(id)}`);
   });
