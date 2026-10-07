@@ -526,18 +526,18 @@ describe("Project endpoints with PostgreSQL", () => {
       const auth = { Authorization: bearer(ids.owner) };
       const one = base + "/" + project.id;
 
+      const server = app.getHttpServer();
       const calls = [
-        request(app.getHttpServer()).get(base).set(auth),
-        request(app.getHttpServer()).post(base).set(auth).send({ name: "New" }),
-        request(app.getHttpServer()).get(one).set(auth),
-        request(app.getHttpServer()).patch(one).set(auth).send({ name: "Changed" }),
-        request(app.getHttpServer()).delete(one).set(auth),
-      ];
-      for (const call of calls) {
-        const response = await call.expect(404);
-        expect(response.body.code).toBe("PROJECT_NOT_FOUND");
+        [() => request(server).get(base).set(auth), "ORGANIZATION_NOT_FOUND"],
+        [() => request(server).post(base).set(auth).send({ name: "New" }), "ORGANIZATION_NOT_FOUND"],
+        [() => request(server).get(one).set(auth), "PROJECT_NOT_FOUND"],
+        [() => request(server).patch(one).set(auth).send({ name: "Changed" }), "PROJECT_NOT_FOUND"],
+        [() => request(server).delete(one).set(auth), "PROJECT_NOT_FOUND"],
+      ] as const;
+      for (const [makeCall, code] of calls) {
+        const response = await makeCall().expect(404);
+        expect(response.body.code).toBe(code);
       }
-
       const unchanged = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
       expect(unchanged.name).toBe("Visible");
       expect(unchanged.archivedAt).toBeNull();
