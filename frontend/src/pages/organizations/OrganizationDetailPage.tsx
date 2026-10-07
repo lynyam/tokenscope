@@ -297,6 +297,7 @@ function OrganizationDetail({ organizationId, }: {
                                     type="button"
                                     variant="outline"
                                     size="sm"
+                                    disabled={isArchiving}
                                     onClick={() => {
                                         // Always start from the last server-confirmed name.
                                         setNameDraft(organization.name);
@@ -324,6 +325,7 @@ function OrganizationDetail({ organizationId, }: {
                     <Button
                         type="button"
                         variant="destructive"
+                        disabled={isSaving}
                         onClick={() => {
                             setConfirmSlug("");
                             setArchiveError(null);

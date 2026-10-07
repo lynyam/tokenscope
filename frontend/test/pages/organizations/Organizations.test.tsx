@@ -676,6 +676,75 @@ describe("organization deletion with the real HTTP adapter", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3); // GET, DELETE, GET again.
     expect(getAccessToken()).toBe("organization-ui-test-token");
   });
+    it("blocks deletion while a rename is pending", async () => {
+    let finish!: (response: Response) => void;
+
+    fetchMock
+      .mockResolvedValueOnce(json(organization))
+      .mockImplementationOnce(
+        () => new Promise(resolve => { finish = resolve; }),
+      );
+
+    const user = userEvent.setup();
+    renderPage(`/organizations/${organization.id}`);
+
+    await user.click(await screen.findByRole("button", { name: "Rename" }));
+    const nameInput = screen.getByLabelText("Organization name");
+    fireEvent.change(nameInput, { target: { value: "Acme Renamed" } });
+    act(() => { fireEvent.submit(nameInput.closest("form")!); });
+
+    // While the PATCH is pending, archiving cannot start.
+    expect(screen.getByRole("button", { name: "Delete organization" }))
+      .toBeDisabled();
+    expect(fetchMock).toHaveBeenCalledTimes(2); // One GET and one PATCH.
+
+    await act(async () => {
+      finish(json({ ...organization, name: "Acme Renamed" }));
+    });
+
+    expect(await screen.findByText("Acme Renamed")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete organization" }))
+      .toBeEnabled();
+  });
+
+  it("ignores a late DELETE response after leaving the organization", async () => {
+    let finish!: (response: Response) => void;
+    const other = {
+      ...organization,
+      id: "00000000-0000-4000-8000-000000000002",
+      name: "Other Org",
+      slug: "other-org",
+    };
+
+    fetchMock
+      .mockResolvedValueOnce(json(organization))
+      .mockImplementationOnce(
+        () => new Promise(resolve => { finish = resolve; }),
+      )
+      .mockResolvedValueOnce(json(other));
+
+    const user = userEvent.setup();
+    renderPage(`/organizations/${organization.id}`);
+
+    const dialog = within(await openDialog(user));
+    const input = dialog.getByLabelText("Organization slug");
+    fireEvent.change(input, { target: { value: "acme-ai" } });
+    act(() => { fireEvent.submit(input.closest("form")!); });
+
+    // Leave while the DELETE is pending (the page behind the dialog is inert).
+    fireEvent.click(
+      screen.getByRole("link", { name: "Open other organization", hidden: true }),
+    );
+    expect(await screen.findByText("Other Org")).toBeInTheDocument();
+
+    await act(async () => { finish(new Response(null, { status: 204 })); });
+
+    // The late 204 must neither navigate away nor touch the new screen.
+    expect(screen.getByText("Other Org")).toBeInTheDocument();
+    expect(screen.queryByText("No organizations yet.")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(getAccessToken()).toBe("organization-ui-test-token");
+  }); 
 
   it("clears the content with a link back after ORGANIZATION_NOT_FOUND", async () => {
     fetchMock
