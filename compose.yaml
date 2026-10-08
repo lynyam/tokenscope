@@ -1,8 +1,9 @@
 services:
 
   frontend:
-    image: node:24-alpine
-    working_dir: /app
+    build:
+      context: ./frontend
+      target: ${APP_MODE:-dev}
     volumes:
       - type: bind
         source: ./frontend
@@ -10,19 +11,23 @@ services:
       - type: volume
         source: tokenscope_frontend_node_modules
         target: /app/node_modules
+      - type: volume
+        source: ${CADDY_DATA_VOLUME:-tokenscope_dev_scratch}
+        target: /data
+      - type: volume
+        source: tokenscope_caddy_config
+        target: /config
     ports:
-      - "${FRONTEND_PORT}:5173"
+      - "${FRONTEND_BIND:-0.0.0.0}:${FRONTEND_HOST_PORT:-${FRONTEND_PORT}}:${FRONTEND_CONTAINER_PORT:-5173}"
     depends_on:
       - backend
     environment:
       BACKEND_URL: "http://backend:${BACKEND_PORT}"
-    command:
-      - sh
-      - -c
-      - "npm ci && npm run dev"
+      BACKEND_PORT: "${BACKEND_PORT}"
   backend:
-    image: node:24-alpine
-    working_dir: /app
+    build:
+      context: ./backend
+      target: ${APP_MODE:-dev}
     volumes:
       - type: bind
         source: ./backend
@@ -42,10 +47,16 @@ services:
     depends_on:
      postgres:
       condition: service_healthy
-    command:
-      - sh
-      - -c
-      - "npm ci && npm run dev"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"require('http').get('http://localhost:'+process.env.BACKEND_PORT+'/api/v1/health/db',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 20s
 
   postgres:
     image: postgres:16-alpine
@@ -66,7 +77,11 @@ services:
      interval: 5s
      timeout: 5s
      retries: 5
+
 volumes:
   tokenscope_frontend_node_modules:
   tokenscope_backend_node_modules:
   tokenscope_postgres_data:
+  tokenscope_dev_scratch:
+  tokenscope_caddy_data:
+  tokenscope_caddy_config:

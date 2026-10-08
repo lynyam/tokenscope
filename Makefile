@@ -8,8 +8,9 @@ DATABASE := postgres
 
 #APPS
 
+# Rebuild the development targets when switching back from evaluation mode.
 up:
-	$(COMPOSE) up -d
+	APP_MODE=dev $(COMPOSE) up -d --build
 
 start:
 	$(COMPOSE) start
@@ -108,6 +109,11 @@ test-backend:
 		npm run test:unit && \
 		npm run test:e2e && \
 		npm run test:integration'
+
+#EVAL
+eval-up:
+	@sh scripts/eval-up.sh
+
 #HELP
 
 help:
@@ -115,7 +121,7 @@ help:
 	@echo "TokenScope"
 	@echo ""
 	@echo "Application:"
-	@echo "  make up                            create and Start services"
+	@echo "  make up                            Build and start development mode"
 	@echo "  make start                         Start services"
 	@echo "  make restart                       Restart services"
 	@echo "  make pause                         Pause services"
@@ -124,6 +130,7 @@ help:
 
 	@echo "  make logs                          Follow service logs"
 	@echo "  make ps                            Show service status"
+	@echo "  make eval-up                       Build and start HTTPS evaluation mode"
 	@echo "  make psa                            Show all service status"
 	@echo "  make shell                         Open backend shell"
 	@echo ""
@@ -145,6 +152,6 @@ help:
 	@echo ""
 
 .PHONY: \
-	start stop restart logs ps shell \
+	up eval-up start stop restart logs ps shell \
 	db-shell db-generate db-migrate db-migration db-seed db-status db-studio db-setup \
 	clean fullclean help test-db test-db-clean test-db-fresh test-backend frontendtest

@@ -73,6 +73,18 @@ make test-backend
 
 For detailed setup instructions, see [Local Development](docs/LOCAL_DEVELOPMENT.md).
 
+### Evaluation mode (HTTPS)
+
+```sh
+make up        # development, hot reload
+make eval-up   # https://localhost:8443
+```
+
+Both modes share the same Compose project,
+`.env` and database. See
+[Local development](docs/LOCAL_DEVELOPMENT.md#evaluation-mode-https) for the one-time
+certificate trust step and troubleshooting.
+
 ## Documentation
 
 Read the evaluation architecture first when implementing the current delivery scope.
