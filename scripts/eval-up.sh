@@ -15,6 +15,7 @@ fail()  { printf 'ERROR at stage "%s": %s\n' "$1" "$2" >&2; exit 1; }
 
 compose() {
   APP_MODE=eval FRONTEND_BIND=127.0.0.1 \
+  CADDY_DATA_VOLUME=tokenscope_caddy_data \
   FRONTEND_HOST_PORT="$HTTPS_PORT" FRONTEND_CONTAINER_PORT=443 \
   docker compose "$@"
 }
@@ -66,4 +67,25 @@ check_url() { # name url expected_body (empty = any body)
   while :; do
     code="$(curl --silent --show-error --cacert "$CERT_FILE" \
             -o "$body_file" -w '%{http_code}' "$url" 2>"$body_file.err" || true)"
-    if [ "$code" = "200" ] &&
+  if [ "$code" = "200" ]; then
+      if [ -z "$expected" ]; then break; fi
+      if [ "$(cat "$body_file")" = "$expected" ]; then break; fi
+    fi
+    elapsed=$((elapsed + INTERVAL))
+    if [ "$elapsed" -ge "$WAIT" ]; then
+      err="$(head -c 200 "$body_file.err" 2>/dev/null)"
+      rm -f "$body_file" "$body_file.err"
+      fail readiness "$name not ready in ${WAIT}s (HTTP ${code:-none}) $err"
+    fi
+    sleep "$INTERVAL"
+  done
+  rm -f "$body_file" "$body_file.err"
+}
+
+check_url "database health" "$BASE_URL/api/v1/health/db" '{"status":"healthy"}'
+check_url "frontend" "$BASE_URL/" ''
+
+printf '\nTokenScope is running: %s\n' "$BASE_URL"
+printf 'Trust the local CA once: %s\n' "$CERT_FILE"
+printf 'See docs/LOCAL_DEVELOPMENT.md\n'
+printf 'Commands: make ps | make logs | make stop | make clean\n'

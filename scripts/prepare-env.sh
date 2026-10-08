@@ -14,7 +14,7 @@ else
   cp .env.example .env
   echo ".env créé depuis .env.example"
 fi
-
+chmod 600 .env
 get_env() {
   grep -E "^[[:space:]]*$1[[:space:]]*=" .env | tail -n 1 | cut -d= -f2- \
     | tr -d '\r' \
