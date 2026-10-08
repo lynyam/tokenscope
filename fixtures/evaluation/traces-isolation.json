@@ -1,0 +1,40 @@
+[
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000007",
+    "projectId": "30000000-0000-4000-8000-000000000003",
+    "body": {
+      "externalId": "secret-other-tenant",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 1000,
+      "outputTokens": 200,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000008",
+    "projectId": "30000000-0000-4000-8000-000000000005",
+    "body": {
+      "externalId": "archived-project-trace",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 1000,
+      "outputTokens": 200,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  }
+]

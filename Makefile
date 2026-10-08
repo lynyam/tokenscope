@@ -8,8 +8,9 @@ DATABASE := postgres
 
 #APPS
 
+# Rebuild the development targets when switching back from evaluation mode.
 up:
-	APP_MODE=dev $(COMPOSE) up -d
+	APP_MODE=dev $(COMPOSE) up -d --build
 
 start:
 	$(COMPOSE) start
@@ -120,7 +121,7 @@ help:
 	@echo "TokenScope"
 	@echo ""
 	@echo "Application:"
-	@echo "  make up                            create and Start services"
+	@echo "  make up                            Build and start development mode"
 	@echo "  make start                         Start services"
 	@echo "  make restart                       Restart services"
 	@echo "  make pause                         Pause services"

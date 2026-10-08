@@ -8,11 +8,10 @@ localhost {
 	encode gzip
 
 	handle /api/* {
-		reverse_proxy backend:{$BACKEND_PORT:3000} {
-			flush_interval -1
-		}
+		reverse_proxy backend:{$BACKEND_PORT:3000}
 	}
 
+	# Only frontend routes receive the SPA fallback.
 	handle {
 		root * /srv
 		try_files {path} /index.html

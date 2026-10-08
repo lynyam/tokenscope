@@ -11,4 +11,7 @@ dist/
 
 #prisma
 backend/src/generated/
+
 .local/
+
+backend/.tse64-migration-*/

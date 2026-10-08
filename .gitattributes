@@ -1,3 +1,8 @@
 *.sh text eol=lf
 Dockerfile text eol=lf
 Caddyfile text eol=lf
+# SSE fixtures intentionally preserve blank lines that delimit events.
+fixtures/evaluation/assistant/*.sse whitespace=-blank-at-eof
+
+# Preserve PDF bytes; disable textual diffing and merging.
+fixtures/evaluation/uploads/*.pdf binary
