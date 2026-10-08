@@ -447,3 +447,110 @@ For system architecture, see:
 ```text
 docs/ARCHITECTURE.md
 ```
+## Evaluation mode (HTTPS)
+
+TokenScope runs in two modes from the same `compose.yaml`, the same `.env`
+and the same PostgreSQL service and volume.
+
+| | Development: `make up` | Evaluation: `make eval-up` |
+|---|---|---|
+| frontend | Vite dev server (hot reload) | Caddy serving the production build |
+| backend | NestJS in watch mode | Compiled NestJS, migrations applied at startup |
+| Address | `http://localhost:${FRONTEND_PORT}` | `https://localhost:8443` |
+| Source changes | Hot reload | Rebuild with `make eval-up` |
+
+Only the `frontend` container publishes a host port in evaluation mode
+(`127.0.0.1:8443`). The backend and PostgreSQL stay on the Docker network.
+
+### Start
+
+```sh
+make eval-up
+```
+
+The command checks prerequisites (Docker, Docker Compose, Make, curl), prepares
+`.env` (creating it from `.env.example` and generating `JWT_SECRET` only if it
+is missing or empty), builds the images, starts PostgreSQL and the backend
+(which applies `prisma migrate deploy` before NestJS starts), starts the
+frontend, exports Caddy's public root certificate to `.local/eval/caddy-root.crt`
+and verifies `https://localhost:8443/api/v1/health/db` with that certificate.
+Each stage has a 120 s limit and a failure names the stage that failed.
+
+Running it again keeps your data and succeeds when no migration is pending.
+
+### Trust the local certificate (once)
+
+Caddy signs `localhost` with its own local CA. Importing the public root
+certificate is a manual, one-time step. The CA private key stays inside the
+`tokenscope_caddy_data` Docker volume.
+
+**macOS** (Safari and Chrome use the system keychain):
+
+```sh
+sudo security add-trusted-cert -d -r trustRoot \
+  -k /Library/Keychains/System.keychain .local/eval/caddy-root.crt
+```
+
+**Linux, system store** (curl and most CLI tools):
+
+```sh
+# Debian / Ubuntu
+sudo cp .local/eval/caddy-root.crt /usr/local/share/ca-certificates/tokenscope-caddy-root.crt
+sudo update-ca-certificates
+
+# Fedora
+sudo cp .local/eval/caddy-root.crt /etc/pki/ca-trust/source/anchors/tokenscope-caddy-root.crt
+sudo update-ca-trust
+```
+
+**Chrome / Chromium on Linux** use their own store:
+
+```sh
+sudo apt install libnss3-tools   # or: sudo dnf install nss-tools
+certutil -d sql:$HOME/.pki/nssdb -A -t "C,," -n tokenscope-caddy \
+  -i .local/eval/caddy-root.crt
+```
+
+**Firefox** (all systems): Settings → Privacy & Security → Certificates →
+View Certificates → Authorities → Import, select `.local/eval/caddy-root.crt`
+and tick "Trust this CA to identify websites".
+
+Restart the browser, then open `https://localhost:8443` without a warning.
+Verify from a terminal without disabling verification:
+
+```sh
+curl --fail --show-error --cacert .local/eval/caddy-root.crt \
+  https://localhost:8443/api/v1/health/db
+# {"status":"healthy"}
+```
+
+### Switching modes and rebuilding
+
+- `make up` returns to development: the `frontend` and `backend` containers
+  are replaced, the database and its data are the same.
+- After changing code in evaluation mode, run `make eval-up` again to rebuild.
+
+### Logs, status and shutdown
+
+```sh
+make logs    # follow logs of the running mode
+make ps      # service status
+make stop    # stop containers, keep everything
+make clean   # remove containers and network, keep named volumes
+```
+
+`make fullclean` also deletes volumes, including the database and the Caddy
+CA. After it you must import the new certificate again.
+
+### Common startup failures
+
+| Message | Cause and fix |
+|---|---|
+| `ERROR at stage "prerequisites"` | Install the missing tool, or start Docker. |
+| `ERROR at stage "env"` | A required value in `.env` is missing or invalid; the message names the key. Existing values are never overwritten. |
+| `ERROR at stage "build"` | Image build failed; read the build output above the message. |
+| `ERROR at stage "backend"` | Migration failed or NestJS did not become healthy; the last backend logs are printed. NestJS does not start if a migration fails. |
+| `ERROR at stage "certificate"` | Caddy did not create its root CA; check `make logs`. |
+| `ERROR at stage "readiness"` | HTTPS check failed; the HTTP status and curl error are shown. |
+| Port 8443 already in use | Stop the other program using it, or run `EVAL_HTTPS_PORT=9443 make eval-up`. |
+| Browser certificate warning | Import `.local/eval/caddy-root.crt` as described above. |
