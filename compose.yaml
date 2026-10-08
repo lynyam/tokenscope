@@ -66,7 +66,72 @@ services:
      interval: 5s
      timeout: 5s
      retries: 5
+migrate:
+  profiles: [eval]
+  build: { context: ./backend, dockerfile: Dockerfile, target: build }
+  command: ["npx", "prisma", "migrate", "deploy"]
+  environment:
+    DATABASE_URL: "${DATABASE_URL}"
+  depends_on:
+    postgres: { condition: service_healthy }
+  restart: "no"
+
+backend-eval:
+  profiles: [eval]
+  build: { context: ./backend, dockerfile: Dockerfile, target: production }
+  environment:
+    BACKEND_PORT: "${BACKEND_PORT}"
+    DATABASE_URL: "${DATABASE_URL}"
+    JWT_SECRET: "${JWT_SECRET}"
+    JWT_ISSUER: "${JWT_ISSUER}"
+    JWT_AUDIENCE: "${JWT_AUDIENCE}"
+    JWT_ACCESS_TTL_SECONDS: "${JWT_ACCESS_TTL_SECONDS}"
+    APP_ORIGIN: "${APP_ORIGIN}"
+    LLM_PROVIDER_API_KEY: "${LLM_PROVIDER_API_KEY:-}"
+  volumes:
+    - tokenscope_eval_private_files:/app/private-files
+  expose:
+    - "${BACKEND_PORT}"
+  depends_on:
+    postgres: { condition: service_healthy }
+    migrate: { condition: service_completed_successfully }
+  healthcheck:
+    test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:'+process.env.BACKEND_PORT+'/api/v1/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+    interval: 5s
+    timeout: 5s
+    retries: 15
+    start_period: 10s
+
+frontend-build:
+  profiles: [eval]
+  build:
+    context: ./frontend
+    dockerfile: Dockerfile
+    target: build
+    args: { VITE_API_BASE: /api/v1 }
+  volumes:
+    - tokenscope_eval_frontend_dist:/output
+  command: ["sh", "-c", "cp -r /app/dist/. /output/ && echo 'frontend build copied'"]
+  restart: "no"
+
+caddy:
+  profiles: [eval]
+  image: caddy:2-alpine
+  volumes:
+    - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    - tokenscope_eval_frontend_dist:/srv/frontend:ro
+    - tokenscope_eval_caddy_data:/data
+    - tokenscope_eval_caddy_config:/config
+  ports:
+    - "${EVAL_HTTPS_PORT:-8443}:8443"
+  depends_on:
+    backend-eval: { condition: service_healthy }
+    frontend-build: { condition: service_completed_successfully }
 volumes:
   tokenscope_frontend_node_modules:
   tokenscope_backend_node_modules:
   tokenscope_postgres_data:
+  tokenscope_eval_private_files:
+  tokenscope_eval_frontend_dist:
+  tokenscope_eval_caddy_data:
+  tokenscope_eval_caddy_config:

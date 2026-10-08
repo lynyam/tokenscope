@@ -1,0 +1,21 @@
+{
+	admin off
+	auto_https disable_redirects
+}
+
+localhost {
+	tls internal
+	encode gzip
+
+	handle /api/* {
+		reverse_proxy backend:{$BACKEND_PORT:3000} {
+			flush_interval -1
+		}
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
