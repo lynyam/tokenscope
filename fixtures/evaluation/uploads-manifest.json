@@ -1,0 +1,50 @@
+[
+  {
+    "name": "empty.txt",
+    "sizeBytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "accepted": false,
+    "mediaType": null,
+    "expectedStatus": 422
+  },
+  {
+    "name": "invalid-utf8.txt",
+    "sizeBytes": 10,
+    "sha256": "bab56b3b42a4b32a8b84f7f87730700058455d170b0549bad98d5368ea309535",
+    "accepted": false,
+    "mediaType": null,
+    "expectedStatus": 422
+  },
+  {
+    "name": "malformed.pdf",
+    "sizeBytes": 44,
+    "sha256": "3ad81b5d056c5e63edb779b7be013576b78263ee449245d9503f13a6409c03fa",
+    "accepted": false,
+    "mediaType": null,
+    "expectedStatus": 422
+  },
+  {
+    "name": "sample-brief.pdf",
+    "sizeBytes": 1737,
+    "sha256": "01e7e325b6aac3d86322be0bb61a779ed0a05eedefb02715695edc72966380cc",
+    "accepted": true,
+    "mediaType": "application/pdf",
+    "expectedStatus": 201
+  },
+  {
+    "name": "sample-guide.md",
+    "sizeBytes": 158,
+    "sha256": "f0ab1282b2d5f0875a79835abb11d403f5f148dd237eeb0d94f48b9442a324dc",
+    "accepted": true,
+    "mediaType": "text/markdown",
+    "expectedStatus": 201
+  },
+  {
+    "name": "sample-policy.txt",
+    "sizeBytes": 103,
+    "sha256": "109b6db60a2e02e75c07ec8edaa5d7ef9a1895768b44f4242c0ff33735eb2b9e",
+    "accepted": true,
+    "mediaType": "text/plain",
+    "expectedStatus": 201
+  }
+]

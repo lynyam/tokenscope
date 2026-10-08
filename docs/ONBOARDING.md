@@ -4,13 +4,21 @@
 
 **Project type:** ft_transcendence web application
 
-**Status:** Pre-build / source of truth
+**Status:** Historical product plan and learning material; not the current evaluation implementation contract.
+
+> Start current development with [EVALUATION_ARCHITECTURE.md](./EVALUATION_ARCHITECTURE.md).
+>
+> This pack preserves the original broader vision. Its references to a single-trace assistant, RAG, embeddings, prompt playground, stored conversations and the original sprint sequence are historical proposals.
+>
+> The current evaluation assistant answers questions about an explicit dashboard period and filters using server-built analytics. Uploaded documents are a separate private-file feature. RAG and conversation persistence are outside the evaluation scope.
+>
+> Use `API.md`, `DATA_MODEL.md` and `SECURITY.md` for current contracts. Do not implement an older example from this pack when it conflicts with those documents.
 
 ---
 
 ## 1. Why this document exists
 
-This document is the single starting point for every person joining TokenScope.
+This document preserves the original team onboarding and learning plan. The current development starting point is EVALUATION_ARCHITECTURE.md.
 
 Before writing code, each contributor must understand:
 

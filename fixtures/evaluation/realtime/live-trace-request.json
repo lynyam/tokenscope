@@ -1,0 +1,15 @@
+{
+  "externalId": "golden-live",
+  "provider": "fixture-a",
+  "model": "demo-fast",
+  "workflow": "support",
+  "inputTokens": 1000,
+  "outputTokens": 100,
+  "latencyMs": 500,
+  "status": "SUCCESS",
+  "occurredAt": "2026-10-01T16:00:00.000Z",
+  "metadata": {
+    "environment": "evaluation",
+    "synthetic": true
+  }
+}

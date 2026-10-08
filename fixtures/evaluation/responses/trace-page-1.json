@@ -1,0 +1,68 @@
+{
+  "items": [
+    {
+      "id": "50000000-0000-4000-8000-000000000006",
+      "projectId": "30000000-0000-4000-8000-000000000001",
+      "externalId": "golden-006",
+      "provider": "fixture-b",
+      "model": "demo-large",
+      "workflow": "batch",
+      "inputTokens": 1500,
+      "outputTokens": 300,
+      "latencyMs": 1000,
+      "status": "ERROR",
+      "occurredAt": "2026-10-01T15:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      },
+      "priceVersionId": "40000000-0000-4000-8000-000000000003",
+      "pricing": {
+        "inputUsdPerMillion": "2.000000",
+        "outputUsdPerMillion": "8.000000",
+        "currency": "USD",
+        "isSynthetic": true
+      },
+      "inputCostUsd": "0.003000000000",
+      "outputCostUsd": "0.002400000000",
+      "estimatedCostUsd": "0.005400000000",
+      "version": 1,
+      "createdAt": "2026-10-02T08:00:00.000Z",
+      "updatedAt": "2026-10-02T08:00:00.000Z"
+    },
+    {
+      "id": "50000000-0000-4000-8000-000000000005",
+      "projectId": "30000000-0000-4000-8000-000000000001",
+      "externalId": "golden-005",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "batch",
+      "inputTokens": 500,
+      "outputTokens": 100,
+      "latencyMs": 0,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T14:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      },
+      "priceVersionId": "40000000-0000-4000-8000-000000000002",
+      "pricing": {
+        "inputUsdPerMillion": "1.500000",
+        "outputUsdPerMillion": "6.000000",
+        "currency": "USD",
+        "isSynthetic": true
+      },
+      "inputCostUsd": "0.000750000000",
+      "outputCostUsd": "0.000600000000",
+      "estimatedCostUsd": "0.001350000000",
+      "version": 1,
+      "createdAt": "2026-10-02T08:00:00.000Z",
+      "updatedAt": "2026-10-02T08:00:00.000Z"
+    }
+  ],
+  "page": 1,
+  "pageSize": 2,
+  "total": 6,
+  "totalPages": 3
+}

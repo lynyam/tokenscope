@@ -1,5 +1,5 @@
 import { HttpStatus, Injectable } from "@nestjs/common";
-import type { MembershipRole, Project } from "../generated/prisma/client";
+import type { MembershipRole, Project, Prisma } from "../generated/prisma/client";
 import { ApiException } from "../common/errors/api.exception";
 import { PrismaService } from "../database/prisma.service";
 import { OrganizationAccessService } from "../memberships/organization-access.service";
@@ -25,12 +25,14 @@ export class ProjectAccessService {
 		organizationId: string,
 		projectId: string,
 		allowedRoles: readonly MembershipRole[],
+		client: Prisma.TransactionClient = this.prisma,
 	): Promise<Project> {
 		try {
 			await this.organizationAccess.assertOrganizationRole(
 				userId,
 				organizationId,
 				allowedRoles,
+				client,
 			);
 		} catch (error: unknown) {
 			if (
@@ -42,12 +44,13 @@ export class ProjectAccessService {
 			}
 			throw error;
 		}
-		const project = await this.prisma.project.findFirst({
+		const project = await client.project.findFirst({
 			where: {
 				id: projectId,
 				organizationId,
 				archivedAt: null,
 				organization: {
+					archivedAt: null,
 					memberships: {
 						some: {
 							userId,
