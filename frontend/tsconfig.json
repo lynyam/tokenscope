@@ -1,0 +1,23 @@
+{
+	"compilerOptions": {
+		"jsx": "react-jsx",
+		"strict": true,
+		"moduleResolution": "bundler",
+		"noEmit": true,
+		"module": "ESNext",
+		"target": "ES2022",
+		"lib": ["ES2022", "DOM", "DOM.Iterable"],
+		"skipLibCheck": true,
+		"isolatedModules": true,
+		"types": ["vite/client"],
+		// tells TypeScript "@" means src/, matching the Vite alias
+		"paths": {
+			"@/*": ["./src/*"]
+		}
+	},
+	"include": ["src", "test"]
+}
+
+/*
+ * TypeScript configuration: paths make it type-check correctly in your editor (TypeScript knows what @ points to).
+ */

@@ -343,7 +343,7 @@ Responsibilities:
 Every developer (All members are developer) is responsible for:
 
 - understanding the feature before implementation;
-- When yyou use AI to make your implementatuion, you had to take time to understand each line before ask a PR.
+- When you use AI to make your implementatuion, you had to take time to understand each line before ask a PR.
 - writing tests appropriate to the component;
 - documenting decisions and limitations;
 - participating in code review;
@@ -366,7 +366,20 @@ This does not mean developers only execute orders. Contributors are expected to 
 
 ## 10. How we work
 
-### Git workflow
+### Local development
+
+To install and run TokenScope locally, follow:
+
+[Local Development](./LOCAL_DEVELOPMENT.md)
+
+A new contributor should be able to run:
+
+cp .env.example .env
+make up
+make db-setup
+Access the frontend at http://localhost:5173.
+
+### Git workflow -> read full explanation in [REPOSITORY_WORKFLOW.md](./REPOSITORY_WORKFLOW.md)
 
 ```text
 main        = stable and demoable
@@ -377,7 +390,7 @@ fix/...     = focused defect branch
 
 Rules:
 
-- No direct push to `main`.
+- No direct push to `main` or `develop`
 - Every non-trivial change is made through a pull request.
 - One reviewer minimum for important changes.
 - A PR must link to an issue and explain what changed, how it was tested, and what remains limited.
@@ -555,8 +568,8 @@ Deliverables:
 
 - Read this document completely.
 - Read the current README and latest ADRs.
-- Run `docker compose up --build` successfully.
 - Create a local `.env` from `.env.example`.
+- Run `make up and make db-setup` successfully.
 - Open the app and reproduce the current demo flow.
 - Read the issues labeled `good-first-task` and `architecture`.
 

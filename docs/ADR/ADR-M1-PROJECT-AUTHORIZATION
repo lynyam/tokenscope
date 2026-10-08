@@ -1,0 +1,13 @@
+ADR — M1 project authorization (editing)
+
+Decision:
+Project permissions are inherited from the user's
+organization membership role.
+
+Rationale:
+M1 does not require project-specific access control.
+
+Future:
+Introduce project-scoped membership/permissions only
+when product requirements require different access
+between projects within the same organization.
