@@ -606,3 +606,18 @@ Keep the 51-row pagination dataset, cross-tenant data and mutation demonstration
 - A passing retry does not erase an unexplained flaky failure.
 
 The 16-point figure remains a target until complete functionality and the subject’s requirements have been demonstrated.
+
+### Canonical evaluation data
+
+Fixture inputs and expected responses are available under
+fixtures/evaluation/. Read its README for consumers and lifecycle rules.
+
+The golden period is 2026-10-01T00:00:00.000Z inclusive through
+2026-10-02T00:00:00.000Z exclusive.
+
+The six golden traces total 0.015350000000 USD in synthetic
+estimated cost.
+
+TSE-70 owns loading usable evaluation data. Fixture presence alone
+does not demonstrate implemented feature endpoints or live Gemini
+integration.

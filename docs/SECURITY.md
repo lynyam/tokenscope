@@ -586,7 +586,12 @@ assertProjectAccess(
 ): Promise<Project>
 ```
 
-This is a target signature, not the signature implemented at baseline `854da94`.
+TSE-64 implements this signature. Omitting the client uses the shared Prisma service. Supplying a transaction client makes every nested access check and project read use that client.
+
+TSE-64 enforces active-organization conditions in the existing organization/project access paths. The organization archive endpoint itself belongs to TSE-66.
+
+Membership operations retain their existing transaction-aware
+authorization and last-owner protections.
 
 All nested access checks and queries use the supplied client. The helper does not open or retry transactions.
 

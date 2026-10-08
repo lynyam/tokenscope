@@ -15,13 +15,20 @@ enum MembershipRole {
   MEMBER
 }
 
+enum TraceStatus {
+  SUCCESS
+  ERROR
+}
+
 model User {
   id           String @id @default(uuid())
   email        String @unique
   passwordHash String
   displayName  String
 
-  memberships Membership[]
+  memberships       Membership[]
+  createdApiKeys    ApiKey[]
+  uploadedDocuments ProjectDocument[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -35,8 +42,9 @@ model Organization {
   memberships Membership[]
   projects    Project[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  archivedAt DateTime?
 }
 
 model Membership {
@@ -63,8 +71,121 @@ model Project {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
+  apiKeys   ApiKey[]
+  traces    Trace[]
+  documents ProjectDocument[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([organizationId, slug])
+}
+
+model ApiKey {
+  id              String    @id @default(uuid())
+  projectId       String
+  name            String    @db.VarChar(64)
+  keyHash         String    @unique @db.VarChar(64)
+  keyPrefix       String    @db.VarChar(12)
+  createdByUserId String
+  createdAt       DateTime  @default(now())
+  lastUsedAt      DateTime?
+  revokedAt       DateTime?
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  createdBy User    @relation(fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([projectId, createdAt, id])
+}
+
+model ModelPrice {
+  id                  String   @id @default(uuid())
+  provider            String   @db.VarChar(40)
+  model               String   @db.VarChar(100)
+  effectiveFrom       DateTime
+  inputUsdPerMillion  Decimal  @db.Decimal(18, 6)
+  outputUsdPerMillion Decimal  @db.Decimal(18, 6)
+  currency            String   @default("USD") @db.VarChar(3)
+  sourceUrl           String?
+  isSynthetic         Boolean
+  createdAt           DateTime @default(now())
+
+  traces Trace[]
+
+  @@unique([provider, model, effectiveFrom])
+}
+
+model Trace {
+  id           String      @id @default(uuid())
+  projectId    String
+  externalId   String      @db.VarChar(128)
+  provider     String      @db.VarChar(40)
+  model        String      @db.VarChar(100)
+  workflow     String      @db.VarChar(80)
+  status       TraceStatus
+  inputTokens  Int
+  outputTokens Int
+  latencyMs    Int
+  occurredAt   DateTime
+  metadata     Json        @default("{}")
+
+  priceVersionId String
+
+  // Copy the selected historical rates.
+  // Reading a trace must never substitute today's catalogue rates.
+  inputUsdPerMillion  Decimal @db.Decimal(18, 6)
+  outputUsdPerMillion Decimal @db.Decimal(18, 6)
+
+  inputCostUsd     Decimal @db.Decimal(24, 12)
+  outputCostUsd    Decimal @db.Decimal(24, 12)
+  estimatedCostUsd Decimal @db.Decimal(24, 12)
+
+  version     Int       @default(1)
+  payloadHash String    @db.VarChar(64)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  project      Project    @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  priceVersion ModelPrice @relation(fields: [priceVersionId], references: [id], onDelete: Restrict)
+
+  // A deleted trace still reserves its external ID.
+  @@unique([projectId, externalId])
+  @@index([projectId, deletedAt, occurredAt, id])
+  @@index([projectId, deletedAt, provider, model, occurredAt])
+  @@index([projectId, deletedAt, status, occurredAt])
+}
+
+model ProjectDocument {
+  id               String @id @default(uuid())
+  projectId        String
+  uploadedByUserId String
+
+  // SQL enforces the UTF-8 byte limit, not a character-count limit.
+  originalName String
+
+  storageKey String   @unique
+  mediaType  String
+  sizeBytes  Int
+  sha256     String   @db.VarChar(64)
+  createdAt  DateTime @default(now())
+
+  project    Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  uploadedBy User    @relation(fields: [uploadedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([projectId, createdAt, id])
+}
+
+model FileDeletionJob {
+  id String @id @default(uuid())
+
+  // No document FK: this job must survive deletion of the metadata row.
+  storageKey String @unique
+
+  attempts      Int      @default(0)
+  nextAttemptAt DateTime
+  lastErrorCode String?
+  createdAt     DateTime @default(now())
+
+  @@index([nextAttemptAt])
 }

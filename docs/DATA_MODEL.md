@@ -236,9 +236,16 @@ Concrete query and authorization requirements are defined in
 If a schema change is accepted, update the Prisma schema, migration, integration
 tests, this document, and the API contract in the same pull request.
 
-## Evaluation extensions — agreed, not yet implemented
+## Evaluation persistence foundation — TSE-64
 
-TSE-64 owns the initial evaluation-resource schema. TSE-66 owns organization archive behavior and coordinates the `Organization.archivedAt` migration.
+TSE-64 adds the evaluation-resource schema, the Organization.archivedAt field and its migration.
+
+The schema includes ApiKey, ModelPrice, Trace, ProjectDocument and
+FileDeletionJob. Feature endpoints and workflows are implemented
+by their owning tickets.
+
+TSE-66 implements the organization archive operation and UI using
+the field and access rules supplied by TSE-64.
 
 At baseline `854da94`, none of the new models below exists.
 
@@ -333,6 +340,20 @@ A read, POST replay or no-op PUT preserves stored history.
 
 Trace deletion retains the row and external ID while excluding it from ordinary reads and aggregates.
 
+The persisted historical rate snapshots on Trace are named:
+
+- inputUsdPerMillion: Decimal(18,6)
+- outputUsdPerMillion: Decimal(18,6)
+
+The associated catalogue row is referenced through priceVersionId
+and the Prisma relation priceVersion.
+
+These snapshot values belong to the stored trace. Normal reads
+must not replace them with current catalogue rates.
+
+The Prisma schema is authoritative for exact persisted field names:
+[backend/prisma/schema.prisma](../backend/prisma/schema.prisma).
+
 ### Private documents
 
 File bytes live outside PostgreSQL in private storage.
@@ -374,3 +395,14 @@ Use database constraints for:
 DTOs and services additionally enforce normalization, detailed metadata limits, byte limits, timestamp rules, actual file-content validation and authorization.
 
 A successful DTO test does not prove that database constraints exist.
+
+SHA-256 digest fields use 64 lowercase hexadecimal characters.
+
+The migration rejects numeric NaN for stored costs. Rate upper
+bounds also reject NaN.
+
+The document filename limit is enforced as 1–255 UTF-8 bytes.
+
+Services remain responsible for normalized identifiers, exact
+cost calculation, price selection, generated UUID storage keys,
+file-content validation and authorization.

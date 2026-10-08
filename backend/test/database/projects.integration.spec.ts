@@ -9,6 +9,9 @@ import { TokenService } from "../../src/auth/token.service";
 import { configureApp } from "../../src/configure-app";
 import { PrismaService } from "../../src/database/prisma.service";
 import { ProjectAccessService } from "../../src/projects/project-access.service";
+import {
+  resetTestDatabase,
+} from "../support/reset-test-database";
 
 const ids = {
   owner: randomUUID(),
@@ -86,10 +89,7 @@ describe("Project endpoints with PostgreSQL", () => {
   beforeEach(async () => {
     // Jest's integration setup restricts this to tokenscope_test.
     // Delete children before parents because foreign keys restrict deletion.
-    await prisma.project.deleteMany();
-    await prisma.membership.deleteMany();
-    await prisma.organization.deleteMany();
-    await prisma.user.deleteMany();
+    await resetTestDatabase(prisma);
 
     await prisma.user.createMany({
       data: (["owner", "admin", "member", "outsider"] as const)
@@ -519,4 +519,126 @@ describe("Project endpoints with PostgreSQL", () => {
       where: { id: saved.id },
     })).archivedAt).toBeNull();
   });
+  it(
+    "hides an archived organization throughout existing workspace APIs",
+    async () => {
+      const project = await fixtureProject(
+        ids.orgA,
+        "Retained project",
+      );
+
+      // TSE-64 tests the persisted state directly.
+      // TSE-66 will implement the HTTP operation that sets it.
+      await prisma.organization.update({
+        where: {
+          id: ids.orgA,
+        },
+        data: {
+          archivedAt: new Date(),
+        },
+      });
+
+      const orgPath = `/api/v1/organizations/${ids.orgA}`;
+
+      const cases = [
+        ["get", orgPath, undefined, "ORGANIZATION_NOT_FOUND"],
+        [
+          "patch",
+          orgPath,
+          { name: "Rename" },
+          "ORGANIZATION_NOT_FOUND",
+        ],
+        [
+          "get",
+          orgPath + "/members",
+          undefined,
+          "ORGANIZATION_NOT_FOUND",
+        ],
+        [
+          "post",
+          orgPath + "/members",
+          {
+            email: "member@projects.test",
+            role: "MEMBER",
+          },
+          "ORGANIZATION_NOT_FOUND",
+        ],
+        [
+          "patch",
+          orgPath + `/members/${ids.member}`,
+          { role: "ADMIN" },
+          "ORGANIZATION_NOT_FOUND",
+        ],
+        [
+          "delete",
+          orgPath + `/members/${ids.member}`,
+          undefined,
+          "ORGANIZATION_NOT_FOUND",
+        ],
+        ["get", base, undefined, "ORGANIZATION_NOT_FOUND"],
+        [
+          "post",
+          base,
+          { name: "New project" },
+          "ORGANIZATION_NOT_FOUND",
+        ],
+        [
+          "get",
+          base + `/${project.id}`,
+          undefined,
+          "PROJECT_NOT_FOUND",
+        ],
+        [
+          "patch",
+          base + `/${project.id}`,
+          { name: "Rename" },
+          "PROJECT_NOT_FOUND",
+        ],
+        [
+          "delete",
+          base + `/${project.id}`,
+          undefined,
+          "PROJECT_NOT_FOUND",
+        ],
+      ] as const;
+
+      for (const [method, path, body, code] of cases) {
+        const response = await request(app.getHttpServer())[method](path)
+          .set("Authorization", bearer(ids.owner))
+          .send(body)
+          .expect(404);
+
+        expect(response.body.code).toBe(code);
+      }
+
+      for (const actor of [ids.owner, ids.admin, ids.member]) {
+        const list = await request(app.getHttpServer())
+          .get("/api/v1/organizations")
+          .set("Authorization", bearer(actor))
+          .expect(200);
+
+        expect(
+          list.body.some(
+            (organization: { id: string }) =>
+              organization.id === ids.orgA,
+          ),
+        ).toBe(false);
+
+        await request(app.getHttpServer())
+          .get("/api/v1/auth/me")
+          .set("Authorization", bearer(actor))
+          .expect(200);
+      }
+
+      expect(
+        await prisma.project.findUniqueOrThrow({
+          where: {
+            id: project.id,
+          },
+        }),
+      ).toMatchObject({
+        archivedAt: null,
+      });
+    },
+  );
 });

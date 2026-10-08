@@ -11,3 +11,6 @@ dist/
 
 #prisma
 backend/src/generated/
+
+# Temporary directories used by the isolated migration test.
+backend/.tse64-migration-*/

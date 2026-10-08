@@ -16,6 +16,23 @@ At that baseline:
 - Organization archiving and the evaluation resources described below are not yet implemented.
 - The development environment uses Vite, NestJS and PostgreSQL through Docker Compose.
 
+### TSE-64 foundation
+
+TSE-64 adds:
+
+- Organization.archivedAt.
+- ApiKey, ModelPrice, Trace, ProjectDocument and FileDeletionJob.
+- Database uniqueness, foreign keys, indexes and CHECK constraints.
+- Transaction-aware project access.
+- Active-parent filtering in existing workspace access paths.
+- Canonical fixtures under fixtures/evaluation/.
+
+TSE-66 reuses the organization archive field and shared access checks. It owns the archive endpoint, confirmation flow and UI.
+
+The persistence foundation does not imply that API-key, trace, analytics, document, realtime or assistant endpoints are implemented.
+
+Downstream consumers use the existing generated Prisma client under backend/src/generated/prisma/client.
+
 These statements describe the inspected code, not a new acceptance-test result.
 
 Unless explicitly identified as baseline behavior, the evaluation architecture below is an agreed target awaiting implementation. Feature PRs must update implementation status and attach verification evidence.
