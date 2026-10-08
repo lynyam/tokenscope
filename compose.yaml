@@ -1,8 +1,9 @@
 services:
 
   frontend:
-    image: node:24-alpine
-    working_dir: /app
+    build:
+      context: ./frontend
+      target: ${APP_MODE:-dev}
     volumes:
       - type: bind
         source: ./frontend
@@ -10,19 +11,23 @@ services:
       - type: volume
         source: tokenscope_frontend_node_modules
         target: /app/node_modules
+      - type: volume
+        source: tokenscope_caddy_data
+        target: /data
+      - type: volume
+        source: tokenscope_caddy_config
+        target: /config
     ports:
-      - "${FRONTEND_PORT}:5173"
+      - "${FRONTEND_BIND:-0.0.0.0}:${FRONTEND_HOST_PORT:-${FRONTEND_PORT}}:${FRONTEND_CONTAINER_PORT:-5173}"
     depends_on:
       - backend
     environment:
       BACKEND_URL: "http://backend:${BACKEND_PORT}"
-    command:
-      - sh
-      - -c
-      - "npm ci && npm run dev"
+      BACKEND_PORT: "${BACKEND_PORT}"
   backend:
-    image: node:24-alpine
-    working_dir: /app
+    build:
+      context: ./backend
+      target: ${APP_MODE:-dev}
     volumes:
       - type: bind
         source: ./backend
@@ -42,10 +47,16 @@ services:
     depends_on:
      postgres:
       condition: service_healthy
-    command:
-      - sh
-      - -c
-      - "npm ci && npm run dev"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"require('http').get('http://localhost:'+process.env.BACKEND_PORT+'/api/v1/health/db',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 20s
 
   postgres:
     image: postgres:16-alpine
@@ -66,72 +77,10 @@ services:
      interval: 5s
      timeout: 5s
      retries: 5
-migrate:
-  profiles: [eval]
-  build: { context: ./backend, dockerfile: Dockerfile, target: build }
-  command: ["npx", "prisma", "migrate", "deploy"]
-  environment:
-    DATABASE_URL: "${DATABASE_URL}"
-  depends_on:
-    postgres: { condition: service_healthy }
-  restart: "no"
 
-backend-eval:
-  profiles: [eval]
-  build: { context: ./backend, dockerfile: Dockerfile, target: production }
-  environment:
-    BACKEND_PORT: "${BACKEND_PORT}"
-    DATABASE_URL: "${DATABASE_URL}"
-    JWT_SECRET: "${JWT_SECRET}"
-    JWT_ISSUER: "${JWT_ISSUER}"
-    JWT_AUDIENCE: "${JWT_AUDIENCE}"
-    JWT_ACCESS_TTL_SECONDS: "${JWT_ACCESS_TTL_SECONDS}"
-    APP_ORIGIN: "${APP_ORIGIN}"
-    LLM_PROVIDER_API_KEY: "${LLM_PROVIDER_API_KEY:-}"
-  volumes:
-    - tokenscope_eval_private_files:/app/private-files
-  expose:
-    - "${BACKEND_PORT}"
-  depends_on:
-    postgres: { condition: service_healthy }
-    migrate: { condition: service_completed_successfully }
-  healthcheck:
-    test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:'+process.env.BACKEND_PORT+'/api/v1/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
-    interval: 5s
-    timeout: 5s
-    retries: 15
-    start_period: 10s
-
-frontend-build:
-  profiles: [eval]
-  build:
-    context: ./frontend
-    dockerfile: Dockerfile
-    target: build
-    args: { VITE_API_BASE: /api/v1 }
-  volumes:
-    - tokenscope_eval_frontend_dist:/output
-  command: ["sh", "-c", "cp -r /app/dist/. /output/ && echo 'frontend build copied'"]
-  restart: "no"
-
-caddy:
-  profiles: [eval]
-  image: caddy:2-alpine
-  volumes:
-    - ./Caddyfile:/etc/caddy/Caddyfile:ro
-    - tokenscope_eval_frontend_dist:/srv/frontend:ro
-    - tokenscope_eval_caddy_data:/data
-    - tokenscope_eval_caddy_config:/config
-  ports:
-    - "${EVAL_HTTPS_PORT:-8443}:8443"
-  depends_on:
-    backend-eval: { condition: service_healthy }
-    frontend-build: { condition: service_completed_successfully }
 volumes:
   tokenscope_frontend_node_modules:
   tokenscope_backend_node_modules:
   tokenscope_postgres_data:
-  tokenscope_eval_private_files:
-  tokenscope_eval_frontend_dist:
-  tokenscope_eval_caddy_data:
-  tokenscope_eval_caddy_config:
+  tokenscope_caddy_data:
+  tokenscope_caddy_config:
