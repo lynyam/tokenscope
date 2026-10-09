@@ -137,6 +137,7 @@ project-specific member table or ACL.
 | Create organization | yes | yes | yes | no |
 | View organization | yes | yes | yes | no |
 | Rename organization | yes | no | no | no |
+| Archive (delete) organization | yes | no | no | no |
 | View members | yes | yes | yes | no |
 | Add member | yes | no | no | no |
 | Remove member | yes | no | no | no |
@@ -358,6 +359,10 @@ Use:
 This prevents an outsider from using status codes to enumerate organizations or
 projects while still giving legitimate members a useful permission error.
 
+An archived organization is treated as absent: it returns the same concealed
+`404 ORGANIZATION_NOT_FOUND` as an unknown organization, and its projects return
+`404` through the active-organization check.
+
 ## Ownership invariants
 
 ### Initial owner
@@ -399,6 +404,27 @@ PostgreSQL integration tests deliberately overlap two owner transactions and
 cover removal/removal, demotion/demotion, and mixed removal/demotion. They prove
 that one operation succeeds, the other returns `LAST_OWNER_REQUIRED` after
 retry, and one owner remains.
+
+## Organization archive
+
+`DELETE /organizations/:organizationId` is restricted to `OWNER`. Order of checks:
+
+1. authenticate the caller (JWT);
+2. require an active organization and an `OWNER` membership
+   (`404` for outsiders or archived organizations, `403` for ADMIN/MEMBER);
+3. only then compare `confirmSlug` exactly with the slug (`409
+   ORGANIZATION_CONFIRMATION_MISMATCH`).
+
+Comparing the slug after authorization prevents outsiders and non-owners from
+using the endpoint to confirm slugs. The operation runs in a `Serializable`
+transaction. Each attempt repeats authorization and the archive write. Only
+recognized serialization/write conflicts are retried, at most three attempts;
+exhaustion returns `409 CONCURRENT_MODIFICATION`. Final queries also filter on
+`archivedAt: null`, so a concurrent archive cannot be bypassed.
+
+Archiving sets only `Organization.archivedAt`. Child tables get no archive
+field; their inaccessibility comes from the active-organization condition in
+backend access checks. There is no restore operation.
 
 ## Project lifecycle
 
@@ -522,6 +548,9 @@ The following are M1 completion requirements:
 | Archive behavior | Archived project disappears from normal list/detail/update |
 | Slug constraints | Conflicting organization/project slugs return `409` |
 | Mass assignment | Unknown/protected request properties return `400` |
+| Organization archive roles | ADMIN and MEMBER get `403`; outsiders get `404`; slug is never compared first |
+| Organization archive behavior | Archived organization, its members, and its projects become concealed `404`; a second deletion returns `404` |
+| Archive confirmation | Wrong, empty, whitespace-only, or differently-cased slug is rejected; unknown properties return `400` |
 
 At least the tenant-isolation, role, last-owner, and safe-output cases must be
 integration or end-to-end tests against PostgreSQL—not only mocked unit tests.

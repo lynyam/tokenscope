@@ -3,7 +3,7 @@ import {
   createOrganization,
   getOrganization,
   getOrganizations,
-  updateOrganization,
+  updateOrganization, archiveOrganization
 } from "@/api/organizations.api";
 import { getAccessToken, saveAccessToken } from "@/api/auth-session";
 import type { OrganizationSummary } from "@/types/workspace.types";
@@ -185,5 +185,53 @@ describe("organization HTTP adapter", () => {
     });
 
     expect(getAccessToken()).toBeNull();
+  });
+  it("sends only confirmSlug exactly as typed and accepts 204", async () => {
+    const controller = new AbortController();
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+    await expect(archiveOrganization(organization.id, { confirmSlug: " Acme-AI " }, controller.signal))
+      .resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${base}/${organization.id}`,
+      expect.objectContaining({
+        method: "DELETE",
+        body: JSON.stringify({ confirmSlug: " Acme-AI " }),
+        signal: controller.signal,
+      }),
+    );
+
+    const headers = new Headers(fetchMock.mock.calls[0][1]?.headers);
+    expect(headers.get("Authorization")).toBe("Bearer organization-test-token");
+    expect(headers.get("Content-Type")).toBe("application/json");
+  });
+
+  it.each([
+    [409, "ORGANIZATION_CONFIRMATION_MISMATCH"],
+    [409, "CONCURRENT_MODIFICATION"],
+    [403, "INSUFFICIENT_ORGANIZATION_ROLE"],
+    [404, "ORGANIZATION_NOT_FOUND"],
+  ] as const)(
+    "propagates archive %i %s without clearing authentication",
+    async (status, code) => {
+      fetchMock.mockResolvedValueOnce(
+        json({ code, message: "Request rejected.", requestId: "archive-1" }, status),
+      );
+
+      await expect(archiveOrganization(organization.id, { confirmSlug: "acme-ai" }))
+        .rejects.toMatchObject({ statusCode: status, code, requestId: "archive-1" });
+
+      expect(getAccessToken()).toBe("organization-test-token");
+    },
+  );
+
+  it("encodes the organization ID as one path segment when archiving", async () => {
+    const id = "organization/with ?#characters";
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+    await archiveOrganization(id, { confirmSlug: "acme-ai" });
+
+    expect(fetchMock.mock.calls[0][0]).toBe(`${base}/${encodeURIComponent(id)}`);
   });
 });

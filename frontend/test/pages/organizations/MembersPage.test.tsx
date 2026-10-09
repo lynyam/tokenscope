@@ -224,4 +224,30 @@ describe("membership screen with the real HTTP adapter", () => {
     expect(screen.queryByText("Bob")).not.toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
+    it("clears the page with a link back when adding a member returns ORGANIZATION_NOT_FOUND", async () => {
+    fetchMock
+      .mockResolvedValueOnce(list([]))
+      .mockResolvedValueOnce(json({
+        code: "ORGANIZATION_NOT_FOUND",
+        message: "Organization not found.",
+      }, 404));
+
+    const user = userEvent.setup();
+    render(view());
+
+    await user.click(await screen.findByRole("button", { name: "Add member" }));
+    await user.type(screen.getByLabelText("Email"), bob.email);
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Add member" }),
+    );
+
+    expect(await screen.findByRole("heading", { name: "Organization not found" }))
+      .toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to organizations" }))
+      .toHaveAttribute("href", "/organizations");
+    expect(screen.queryByRole("button", { name: "Add member" }))
+      .not.toBeInTheDocument();
+    expect(screen.queryByText("Bob")).not.toBeInTheDocument();
+    expect(getAccessToken()).toBe("alice-token");
+  });
 });

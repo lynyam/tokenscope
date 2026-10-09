@@ -1,8 +1,9 @@
-import { apiGet, apiPost, apiPatch } from "./http-client";
+import { apiGet, apiPost, apiPatch, apiDeleteWithBody } from "./http-client";
 import type {
     OrganizationSummary,
     CreateOrganizationInput,
     UpdateOrganizationInput,
+    ArchiveOrganizationInput,
 } from "../types/workspace.types";
 
 // Authentication, /api/v1, JSON and errors belong to the shared client.
@@ -34,5 +35,17 @@ export async function updateOrganization(
       // Renaming changes the name; the backend preserves the existing slug.
       { name: input.name },
       { signal },
+    );
+}
+
+export async function archiveOrganization(
+    organizationId: string,
+    input: ArchiveOrganizationInput,
+    signal?: AbortSignal,
+): Promise<void> {
+    return apiDeleteWithBody(
+        `/organizations/${encodeURIComponent(organizationId)}`,
+        { confirmSlug: input.confirmSlug },
+        { signal },
     );
 }

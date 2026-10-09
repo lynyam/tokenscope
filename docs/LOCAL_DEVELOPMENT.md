@@ -376,8 +376,8 @@ npm run build
 
 `build` creates the frontend production assets with Vite.
 
-`test` runs the frontend HTTP-client, auth-invalidation, membership-adapter,
-and membership-page tests with Vitest. The shared test setup uses jsdom and
+`test` runs the frontend HTTP-client, auth-invalidation, organization and
+membership adapter, and page tests (including the organization deletion dialog) with Vitest. The shared test setup uses jsdom and
 Testing Library to exercise React interactions. These are development-only
 dependencies: Vitest runs assertions, jsdom supplies browser APIs, and Testing
 Library exercises controls and accessible output. They do not replace the
@@ -406,11 +406,27 @@ The shared authentication, organization, membership and project integrations are
 
 New unit/component tests remain under `frontend/test/`. Real browser journeys belong under `frontend/test/e2e/` once browser-test infrastructure is introduced.
 
-At baseline `854da94`, the frontend package has no Playwright dependency or browser-test command. Do not present planned browser tests as an existing executable suite.
+Browser tests use Playwright; see "Browser end-to-end tests" below.
 
 TSE-72 extends transport for multipart uploads, private binary responses and assistant streams while preserving current JSON callers.
 
 See `EVALUATION_ARCHITECTURE.md` for current integration boundaries and `SPRINT_1_ARCHITECTURE.md` for the existing client/session design.
+
+### Browser end-to-end tests
+
+Browser tests run from the host against the running stack (frontend, backend
+and PostgreSQL). Start and migrate the application first, then from `frontend/`:
+
+```bash
+npm ci
+npx playwright install chromium
+E2E_BASE_URL="http://localhost:5173" npm run test:e2e
+```
+
+Adjust `E2E_BASE_URL` to the actual frontend origin. The specs live in
+`frontend/test/e2e/*.spec.ts` and create unique disposable accounts and
+organizations; they never truncate the development database.
+
 ---
 
 ### Backend

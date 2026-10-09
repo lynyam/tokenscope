@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { apiDelete, apiGet, apiPatch, apiPost, ApiError } from "@/api/http-client";
+import { apiDelete, apiGet, apiPatch, apiPost, ApiError, apiDeleteWithBody } from "@/api/http-client";
 import { clearAuthSession, getAccessToken, saveAccessToken, subscribeToAuthInvalidation } from "@/api/auth-session";
 
 const fetchMock = vi.fn<typeof fetch>();
@@ -145,5 +145,25 @@ describe("shared M1 HTTP client", () => {
     expect(getAccessToken()).toBeNull();
     expect(localStorage.getItem("theme")).toBe("dark");
     expect(listener).not.toHaveBeenCalled();
+  });
+    it("sends a JSON body with DELETE and accepts 204 without parsing", async () => {
+    const response = new Response(null, { status: 204 });
+    const parse = vi.spyOn(response, "json");
+    fetchMock.mockResolvedValue(response);
+
+    await expect(apiDeleteWithBody("/organizations/org", { confirmSlug: "slug" }))
+      .resolves.toBeUndefined();
+
+    const options = fetchMock.mock.calls[0][1]!;
+    expect(options.method).toBe("DELETE");
+    expect(options.body).toBe('{"confirmSlug":"slug"}');
+    expect(new Headers(options.headers).get("Content-Type")).toBe("application/json");
+    expect(parse).not.toHaveBeenCalled();
+  });
+
+  it("requires 204 from DELETE with a body", async () => {
+    fetchMock.mockResolvedValue(json({ success: true }));
+    await expect(apiDeleteWithBody("/organizations/org", { confirmSlug: "slug" }))
+      .rejects.toMatchObject({ code: "INVALID_API_RESPONSE" });
   });
 });

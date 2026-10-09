@@ -122,3 +122,7 @@ export function apiPatch<T>(path: string, body: unknown, options: ApiRequestOpti
 export function apiDelete(path: string, options: ApiRequestOptions = {}): Promise<void> {
   return request<void>("DELETE", path, undefined, options, true);
 }
+
+export function apiDeleteWithBody(path: string, body: unknown, options: ApiRequestOptions = {}): Promise<void> {
+  return request<void>("DELETE", path, body, options, true);
+}

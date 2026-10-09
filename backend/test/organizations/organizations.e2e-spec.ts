@@ -42,8 +42,9 @@ describe("Organization HTTP contract with a test-only actor", () => {
 	let app: INestApplication;
 	const prisma = {
 		membership: { findMany: jest.fn(), findUnique: jest.fn() },
-		organization: { create: jest.fn(), update: jest.fn() },
-	};
+        organization: { create: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
+        $transaction: jest.fn(),
+    };
 
 	beforeAll(async () => {
 		const context = await Test.createTestingModule({
@@ -69,6 +70,10 @@ describe("Organization HTTP contract with a test-only actor", () => {
 		prisma.organization.update.mockImplementation(async ({ data }) => ({
 			...organization, name: data.name, updatedAt: new Date(),
 		}));
+		prisma.organization.findFirst.mockResolvedValue({ slug: organization.slug });
+        prisma.$transaction.mockImplementation(
+                async (operation: (tx: unknown) => Promise<unknown>) => operation(prisma),
+        );
 	});
 
 	afterAll(async () => { await app?.close(); });
@@ -186,5 +191,105 @@ describe("Organization HTTP contract with a test-only actor", () => {
       .send({ name: "New" }).expect(500);
     expect(response.body.code).toBe("INTERNAL_SERVER_ERROR");
     expect(JSON.stringify(response.body)).not.toContain("PRIVATE_DATABASE_DETAIL");
+  });
+    describe("DELETE /organizations/:organizationId", () => {
+    it("archives for OWNER with the exact slug and returns 204 without a body", async () => {
+      const response = await request(app.getHttpServer()).delete(detail)
+        .send({ confirmSlug: "original" }).expect(204);
+      expect(response.text).toBe("");
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: organization.id, archivedAt: null, memberships: { some: { userId: actorId, role: "OWNER" } } },
+        data: { archivedAt: expect.any(Date) },
+      });
+    });
+
+    it.each(["Original", "original ", " original", "other"])(
+      "rejects the non-exact confirmSlug %j with 409", async confirmSlug => {
+        const response = await request(app.getHttpServer()).delete(detail)
+          .send({ confirmSlug }).expect(409);
+        expect(response.body.code).toBe("ORGANIZATION_CONFIRMATION_MISMATCH");
+        expect(prisma.organization.update).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(["ADMIN", "MEMBER"])(
+      "rejects %s with 403 even when the confirmation is wrong", async role => {
+        prisma.membership.findUnique.mockResolvedValue({ ...membership, role });
+        const response = await request(app.getHttpServer()).delete(detail)
+          .send({ confirmSlug: "wrong" }).expect(403);
+        expect(response.body.code).toBe("INSUFFICIENT_ORGANIZATION_ROLE");
+        expect(prisma.organization.findFirst).not.toHaveBeenCalled();
+        expect(prisma.organization.update).not.toHaveBeenCalled();
+      },
+    );
+
+    it("returns 404 to a non-member before comparing the confirmation", async () => {
+      prisma.membership.findUnique.mockResolvedValue(null);
+      const response = await request(app.getHttpServer()).delete(detail)
+        .send({ confirmSlug: "wrong" }).expect(404);
+      expect(response.body.code).toBe("ORGANIZATION_NOT_FOUND");
+      expect(prisma.organization.findFirst).not.toHaveBeenCalled();
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+
+    it("returns 404 when the organization was archived after the role check", async () => {
+      prisma.organization.findFirst.mockResolvedValue(null);
+      const response = await request(app.getHttpServer()).delete(detail)
+        .send({ confirmSlug: "original" }).expect(404);
+      expect(response.body.code).toBe("ORGANIZATION_NOT_FOUND");
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["removed", null, 404, "ORGANIZATION_NOT_FOUND"],
+      ["demoted", { ...membership, role: "MEMBER" }, 403, "INSUFFICIENT_ORGANIZATION_ROLE"],
+    ] as const)("maps a failed scoped archive after access was %s", async (_label, latest, status, code) => {
+      prisma.membership.findUnique.mockResolvedValueOnce(membership).mockResolvedValueOnce(latest);
+      prisma.organization.update.mockRejectedValue(dbError("P2025"));
+      const response = await request(app.getHttpServer()).delete(detail)
+        .send({ confirmSlug: "original" }).expect(status);
+      expect(response.body.code).toBe(code);
+    });
+
+    it.each([
+      {}, { confirmSlug: "" }, { confirmSlug: "   " }, { confirmSlug: 42 },
+      { confirmSlug: "original", extra: "x" },
+      { confirmSlug: "original", organizationId: randomUUID() },
+    ])("rejects the invalid body %j with 400", async body => {
+      const response = await request(app.getHttpServer()).delete(detail)
+        .send(body).expect(400);
+      expect(response.body.code).toBe("VALIDATION_ERROR");
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it("rejects a malformed organization id with 400", async () => {
+      const response = await request(app.getHttpServer()).delete(base + "/invalid")
+        .send({ confirmSlug: "original" }).expect(400);
+      expect(response.body.code).toBe("VALIDATION_ERROR");
+    });
+
+    it("retries a transaction conflict and then succeeds", async () => {
+      prisma.$transaction.mockRejectedValueOnce(dbError("P2034"));
+      await request(app.getHttpServer()).delete(detail)
+        .send({ confirmSlug: "original" }).expect(204);
+      expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+    });
+
+    it("returns 409 CONCURRENT_MODIFICATION after three conflicting attempts", async () => {
+      prisma.$transaction.mockRejectedValue(dbError("P2034"));
+      const response = await request(app.getHttpServer()).delete(detail)
+        .send({ confirmSlug: "original" }).expect(409);
+      expect(response.body.code).toBe("CONCURRENT_MODIFICATION");
+      expect(prisma.$transaction).toHaveBeenCalledTimes(3);
+    });
+
+    it("does not retry unrelated failures and hides them behind the standard 500", async () => {
+      prisma.$transaction.mockRejectedValue(new Error("PRIVATE_DATABASE_DETAIL"));
+      const response = await request(app.getHttpServer()).delete(detail)
+        .send({ confirmSlug: "original" }).expect(500);
+      expect(response.body.code).toBe("INTERNAL_SERVER_ERROR");
+      expect(JSON.stringify(response.body)).not.toContain("PRIVATE_DATABASE_DETAIL");
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    });
   });
 });

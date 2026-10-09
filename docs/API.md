@@ -344,7 +344,49 @@ Errors:
 - `403 INSUFFICIENT_ORGANIZATION_ROLE`;
 - `404 ORGANIZATION_NOT_FOUND`.
 
-Organization deletion is not part of M1.
+### DELETE /organizations/:organizationId
+
+Soft-archives an organization. The organization row is kept and marked with an
+internal `archivedAt` timestamp; nothing is physically deleted. There is no
+restore endpoint.
+
+Required role: `OWNER`.
+
+Request:
+
+```json
+{
+  "confirmSlug": "acme"
+}
+```
+
+`confirmSlug` is required, must be a non-empty string that is not only
+whitespace, and is compared exactly with the organization slug (no trimming,
+no case folding). Any other property is rejected.
+
+Response — `204 No Content` with no body.
+
+Errors:
+
+- `400 VALIDATION_ERROR`;
+- `403 INSUFFICIENT_ORGANIZATION_ROLE`;
+- `404 ORGANIZATION_NOT_FOUND`;
+- `409 ORGANIZATION_CONFIRMATION_MISMATCH`;
+- `409 CONCURRENT_MODIFICATION`.
+
+The role is checked before the slug is compared, so a caller who is not an
+`OWNER` never learns whether a submitted slug is correct. An unknown
+organization, an organization the caller does not belong to, and an already
+archived organization all return `404 ORGANIZATION_NOT_FOUND`; a second
+deletion therefore returns `404`. `CONCURRENT_MODIFICATION` is returned when
+competing writes still conflict after three bounded attempts.
+
+Once an organization is archived, it no longer appears in `GET /organizations`,
+and its organization, membership, and project endpoints behave as if it did not
+exist: `404 ORGANIZATION_NOT_FOUND` for organization, membership, project list,
+and project creation routes, and `404 PROJECT_NOT_FOUND` for single-project
+routes. `OrganizationSummary` is unchanged and never exposes `archivedAt`. An
+archived organization keeps reserving its slug.
 
 ## Memberships
 
