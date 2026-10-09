@@ -59,7 +59,7 @@ clean-browser demo.
 - No email invitations and passwords reset;
 - No WebSockets.
 - No refresh tokens, server-side sessions, and token revocation
-- - No hard organization deletion or organization restore (soft archive only);
+- No hard organization deletion or organization restore (soft archive only);
 - No project restore;
 - No project-specific roles or ACLs (Access Control List)
 ```

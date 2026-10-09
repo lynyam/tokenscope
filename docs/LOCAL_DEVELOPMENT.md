@@ -377,8 +377,7 @@ npm run build
 `build` creates the frontend production assets with Vite.
 
 `test` runs the frontend HTTP-client, auth-invalidation, organization and
-membership adapter, and page tests (including the organization deletion dialog) with Vitest.
-and membership-page tests with Vitest. The shared test setup uses jsdom and
+membership adapter, and page tests (including the organization deletion dialog) with Vitest. The shared test setup uses jsdom and
 Testing Library to exercise React interactions. These are development-only
 dependencies: Vitest runs assertions, jsdom supplies browser APIs, and Testing
 Library exercises controls and accessible output. They do not replace the

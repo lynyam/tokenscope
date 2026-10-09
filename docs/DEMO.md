@@ -448,18 +448,24 @@ Expected: `404 PROJECT_NOT_FOUND`.
 A wrong slug is rejected:
 
 ```bash
-curl --silent --output /dev/null --write-out '%{http_code}\n' \
+curl --silent --output /tmp/tokenscope-org-archive-mismatch.json --write-out '%{http_code}\n' \
   -X DELETE "$DEMO_API_BASE/organizations/$BOB_ORGANIZATION_ID" \
   -H "Authorization: Bearer $BOB_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"confirmSlug": "wrong-slug"}'
+
+jq . /tmp/tokenscope-org-archive-mismatch.json
 ```
 
 Expected: `409 ORGANIZATION_CONFIRMATION_MISMATCH`.
 
-The owner confirms the exact slug (read it from `GET /organizations/$BOB_ORGANIZATION_ID`):
+The owner confirms the exact slug:
 
 ```bash
+BOB_ORGANIZATION_SLUG=$(
+  printf '%s' "$BOB_ORGANIZATION_JSON" | jq -r '.slug'
+)
+
 curl --silent --output /dev/null --write-out '%{http_code}\n' \
   -X DELETE "$DEMO_API_BASE/organizations/$BOB_ORGANIZATION_ID" \
   -H "Authorization: Bearer $BOB_ACCESS_TOKEN" \
