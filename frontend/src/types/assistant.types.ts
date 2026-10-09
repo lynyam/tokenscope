@@ -29,3 +29,28 @@ export type AssistantEvent =
   | { type: 'delta'; data: { text: string } }
   | { type: 'done'; data: DonePayload }
   | { type: 'error'; data: ErrorPayload };
+
+
+// PROVISIONAL: replace with the dashboard's shared filter type once TSE-76 exists.
+export type AssistantFilters = {
+  q?: string;
+  provider?: string;
+  model?: string;
+  workflow?: string;
+  status?: 'SUCCESS' | 'ERROR';
+};
+
+// The dashboard's applied selection (exact resolved UTC dates + active filters).
+export type AssistantSelection = {
+  from: string;
+  to: string;
+  filters: AssistantFilters;
+};
+
+// The exact JSON body sent to the backend.
+export type AskAssistantRequest = {
+  question: string;
+  from: string;
+  to: string;
+  filters: AssistantFilters;
+};
