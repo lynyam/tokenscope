@@ -15,6 +15,8 @@ export class ApiError extends Error {
     message: string,
     public readonly details?: ApiErrorDetail[],
     public readonly requestId?: string,
+    // Seconds to wait before retrying (from the Retry-After header, if any).
+    public readonly retryAfterSeconds?: number,
   ) {
     super(message);
     this.name = "ApiError";
@@ -121,4 +123,101 @@ export function apiPatch<T>(path: string, body: unknown, options: ApiRequestOpti
 
 export function apiDelete(path: string, options: ApiRequestOptions = {}): Promise<void> {
   return request<void>("DELETE", path, undefined, options, true);
+}
+
+// ---------------------------------------------------------------------------
+// Streamed POST (Server-Sent Events). Added for the dashboard assistant.
+// ---------------------------------------------------------------------------
+
+export interface ApiStreamResponse {
+  body: ReadableStream<Uint8Array>;
+  requestId?: string;
+  // True while the session that started the request is still the current one.
+  isSessionCurrent(): boolean;
+  // Invalidates the session that started the request (never a newer one).
+  invalidateSession(): void;
+}
+
+// Retry-After may be a number of seconds or an HTTP date.
+function parseRetryAfter(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  if (/^\d+$/.test(trimmed)) return Number(trimmed);
+  const date = Date.parse(trimmed);
+  if (Number.isNaN(date)) return undefined;
+  return Math.max(0, Math.ceil((date - Date.now()) / 1000));
+}
+
+export async function apiPostStream(
+  path: string,
+  data: unknown,
+  options: ApiRequestOptions = {},
+): Promise<ApiStreamResponse> {
+  // The session is captured ONCE, when the request starts.
+  const session = options.auth !== "none" ? getAuthSessionSnapshot() : undefined;
+  const headers = new Headers({
+    Accept: "text/event-stream",
+    "Content-Type": "application/json",
+  });
+  if (session?.token) headers.set("Authorization", `Bearer ${session.token}`);
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(data),
+      signal: options.signal,
+    });
+  } catch (error) {
+    if (isAbortError(error)) throw error;
+    throw new ApiError(undefined, "NETWORK_ERROR", "Unable to reach the server. Please try again.");
+  }
+
+  // HTTP status governs authentication even if a proxy returns a non-JSON body.
+  if (response.status === 401 && session) invalidateAuthSession(session);
+
+  const requestId = response.headers.get("X-Request-Id") ?? undefined;
+
+  // Error before the stream starts: normal JSON error envelope.
+  if (!response.ok) {
+    let errorBody: unknown;
+    try {
+      errorBody = await response.json();
+    } catch (error) {
+      if (isAbortError(error)) throw error;
+    }
+    const envelope = isRecord(errorBody) ? errorBody : {};
+    throw new ApiError(
+      response.status,
+      typeof envelope.code === "string" ? envelope.code : "HTTP_ERROR",
+      typeof envelope.message === "string" ? envelope.message : "The request failed. Please try again.",
+      errorDetails(envelope.details),
+      typeof envelope.requestId === "string" ? envelope.requestId : requestId,
+      parseRetryAfter(response.headers.get("Retry-After")),
+    );
+  }
+
+  // Success: the contract requires 200, the SSE content type and a readable body.
+  const contentType = response.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase();
+  if (response.status !== 200 || contentType !== "text/event-stream" || !response.body) {
+    await response.body?.cancel().catch(() => {});
+    throw new ApiError(
+      response.status,
+      "INVALID_API_RESPONSE",
+      "The server returned an unexpected response.",
+      undefined,
+      requestId,
+    );
+  }
+
+  // The stream is returned as is: no response.json() or response.text().
+  return {
+    body: response.body,
+    requestId,
+    isSessionCurrent: () => (session ? getAuthSessionSnapshot() === session : true),
+    invalidateSession: () => {
+      if (session) invalidateAuthSession(session);
+    },
+  };
 }
