@@ -1,0 +1,13 @@
+.env
+
+node_modules/
+dist/
+
+.DS_Store
+.vscode/
+
+#tools caches
+.eslintcache
+
+#prisma
+backend/src/generated/
