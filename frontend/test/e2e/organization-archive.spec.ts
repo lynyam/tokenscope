@@ -9,6 +9,8 @@ import {
 // Every run creates its own disposable accounts and organizations.
 const run = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 const password = "E2e-Passw0rd!2026";
+let sequence = 0;
+const unique = (label: string) => `${label}-${run}-${++sequence}`;
 
 interface Account { email: string; id: string; token: string; }
 interface Org { id: string; name: string; slug: string; }
@@ -16,7 +18,7 @@ interface Org { id: string; name: string; slug: string; }
 const auth = (account: Account) => ({ Authorization: `Bearer ${account.token}` });
 
 async function signUp(request: APIRequestContext, label: string): Promise<Account> {
-  const email = `${label}-${run}@e2e.tokenscope.test`;
+  const email = `${unique(label)}@e2e.tokenscope.test`;
   const response = await request.post("/api/v1/auth/signup", {
     data: { email, password, displayName: `${label} ${run}` },
   });
@@ -29,7 +31,7 @@ async function createOrganization(
   request: APIRequestContext, owner: Account, label: string,
 ): Promise<Org> {
   const response = await request.post("/api/v1/organizations", {
-    headers: auth(owner), data: { name: `E2E ${label} ${run}` },
+    headers: auth(owner), data: { name: `E2E ${unique(label)}` },
   });
   expect(response.ok()).toBeTruthy();
   return response.json();
@@ -118,7 +120,7 @@ test.describe("Organization soft archive", () => {
     await expect(page.getByRole("heading", { name: "Organizations" })).toBeVisible();
     await expect(page.getByText(org.name, { exact: true })).toHaveCount(0);
     await page.goto(`/organizations/${org.id}`);
-    await expect(page.getByText("Organization not found")).toBeVisible();
+    await expect(page.getByRole("main").getByText("Organization not found")).toBeVisible();
   });
 
   test("ADMIN and MEMBER cannot delete; an outsider gets 404", async ({ browser, request }) => {
@@ -170,7 +172,7 @@ test.describe("Organization soft archive", () => {
     const { page: memberPage, context } = await signedInPage(browser, member);
     try {
       await memberPage.goto(`/organizations/${org.id}`);
-      await expect(memberPage.getByText(org.name, { exact: true })).toBeVisible();
+      await expect(memberPage.getByRole("main").getByText(org.name, { exact: true })).toBeVisible();
 
       // The OWNER deletes it from another browser context.
       await signInThroughUi(page, owner);
@@ -179,7 +181,7 @@ test.describe("Organization soft archive", () => {
 
       // On the member's next request or reload, access is lost.
       await memberPage.reload();
-      await expect(memberPage.getByText("Organization not found")).toBeVisible();
+      await expect(memberPage.getByRole("main").getByText("Organization not found")).toBeVisible();
 
       // The member is still authenticated and can use the application.
       await memberPage.goto("/organizations");
