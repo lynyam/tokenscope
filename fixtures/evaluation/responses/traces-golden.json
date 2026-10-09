@@ -1,0 +1,182 @@
+[
+  {
+    "id": "50000000-0000-4000-8000-000000000001",
+    "projectId": "30000000-0000-4000-8000-000000000001",
+    "externalId": "golden-001",
+    "provider": "fixture-a",
+    "model": "demo-fast",
+    "workflow": "support",
+    "inputTokens": 1000,
+    "outputTokens": 200,
+    "latencyMs": 1000,
+    "status": "SUCCESS",
+    "occurredAt": "2026-10-01T10:00:00.000Z",
+    "metadata": {
+      "environment": "evaluation",
+      "synthetic": true
+    },
+    "priceVersionId": "40000000-0000-4000-8000-000000000001",
+    "pricing": {
+      "inputUsdPerMillion": "1.000000",
+      "outputUsdPerMillion": "4.000000",
+      "currency": "USD",
+      "isSynthetic": true
+    },
+    "inputCostUsd": "0.001000000000",
+    "outputCostUsd": "0.000800000000",
+    "estimatedCostUsd": "0.001800000000",
+    "version": 1,
+    "createdAt": "2026-10-02T08:00:00.000Z",
+    "updatedAt": "2026-10-02T08:00:00.000Z"
+  },
+  {
+    "id": "50000000-0000-4000-8000-000000000002",
+    "projectId": "30000000-0000-4000-8000-000000000001",
+    "externalId": "golden-002",
+    "provider": "fixture-a",
+    "model": "demo-fast",
+    "workflow": "batch",
+    "inputTokens": 2000,
+    "outputTokens": 500,
+    "latencyMs": 2000,
+    "status": "SUCCESS",
+    "occurredAt": "2026-10-01T11:00:00.000Z",
+    "metadata": {
+      "environment": "evaluation",
+      "synthetic": true
+    },
+    "priceVersionId": "40000000-0000-4000-8000-000000000001",
+    "pricing": {
+      "inputUsdPerMillion": "1.000000",
+      "outputUsdPerMillion": "4.000000",
+      "currency": "USD",
+      "isSynthetic": true
+    },
+    "inputCostUsd": "0.002000000000",
+    "outputCostUsd": "0.002000000000",
+    "estimatedCostUsd": "0.004000000000",
+    "version": 1,
+    "createdAt": "2026-10-02T08:00:00.000Z",
+    "updatedAt": "2026-10-02T08:00:00.000Z"
+  },
+  {
+    "id": "50000000-0000-4000-8000-000000000003",
+    "projectId": "30000000-0000-4000-8000-000000000001",
+    "externalId": "golden-003",
+    "provider": "fixture-b",
+    "model": "demo-large",
+    "workflow": "support",
+    "inputTokens": 1000,
+    "outputTokens": 100,
+    "latencyMs": 3000,
+    "status": "SUCCESS",
+    "occurredAt": "2026-10-01T12:00:00.000Z",
+    "metadata": {
+      "environment": "evaluation",
+      "synthetic": true
+    },
+    "priceVersionId": "40000000-0000-4000-8000-000000000003",
+    "pricing": {
+      "inputUsdPerMillion": "2.000000",
+      "outputUsdPerMillion": "8.000000",
+      "currency": "USD",
+      "isSynthetic": true
+    },
+    "inputCostUsd": "0.002000000000",
+    "outputCostUsd": "0.000800000000",
+    "estimatedCostUsd": "0.002800000000",
+    "version": 1,
+    "createdAt": "2026-10-02T08:00:00.000Z",
+    "updatedAt": "2026-10-02T08:00:00.000Z"
+  },
+  {
+    "id": "50000000-0000-4000-8000-000000000004",
+    "projectId": "30000000-0000-4000-8000-000000000001",
+    "externalId": "golden-004",
+    "provider": "fixture-b",
+    "model": "demo-large",
+    "workflow": "support",
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "latencyMs": 4000,
+    "status": "ERROR",
+    "occurredAt": "2026-10-01T13:00:00.000Z",
+    "metadata": {
+      "environment": "evaluation",
+      "synthetic": true
+    },
+    "priceVersionId": "40000000-0000-4000-8000-000000000003",
+    "pricing": {
+      "inputUsdPerMillion": "2.000000",
+      "outputUsdPerMillion": "8.000000",
+      "currency": "USD",
+      "isSynthetic": true
+    },
+    "inputCostUsd": "0.000000000000",
+    "outputCostUsd": "0.000000000000",
+    "estimatedCostUsd": "0.000000000000",
+    "version": 1,
+    "createdAt": "2026-10-02T08:00:00.000Z",
+    "updatedAt": "2026-10-02T08:00:00.000Z"
+  },
+  {
+    "id": "50000000-0000-4000-8000-000000000005",
+    "projectId": "30000000-0000-4000-8000-000000000001",
+    "externalId": "golden-005",
+    "provider": "fixture-a",
+    "model": "demo-fast",
+    "workflow": "batch",
+    "inputTokens": 500,
+    "outputTokens": 100,
+    "latencyMs": 0,
+    "status": "SUCCESS",
+    "occurredAt": "2026-10-01T14:00:00.000Z",
+    "metadata": {
+      "environment": "evaluation",
+      "synthetic": true
+    },
+    "priceVersionId": "40000000-0000-4000-8000-000000000002",
+    "pricing": {
+      "inputUsdPerMillion": "1.500000",
+      "outputUsdPerMillion": "6.000000",
+      "currency": "USD",
+      "isSynthetic": true
+    },
+    "inputCostUsd": "0.000750000000",
+    "outputCostUsd": "0.000600000000",
+    "estimatedCostUsd": "0.001350000000",
+    "version": 1,
+    "createdAt": "2026-10-02T08:00:00.000Z",
+    "updatedAt": "2026-10-02T08:00:00.000Z"
+  },
+  {
+    "id": "50000000-0000-4000-8000-000000000006",
+    "projectId": "30000000-0000-4000-8000-000000000001",
+    "externalId": "golden-006",
+    "provider": "fixture-b",
+    "model": "demo-large",
+    "workflow": "batch",
+    "inputTokens": 1500,
+    "outputTokens": 300,
+    "latencyMs": 1000,
+    "status": "ERROR",
+    "occurredAt": "2026-10-01T15:00:00.000Z",
+    "metadata": {
+      "environment": "evaluation",
+      "synthetic": true
+    },
+    "priceVersionId": "40000000-0000-4000-8000-000000000003",
+    "pricing": {
+      "inputUsdPerMillion": "2.000000",
+      "outputUsdPerMillion": "8.000000",
+      "currency": "USD",
+      "isSynthetic": true
+    },
+    "inputCostUsd": "0.003000000000",
+    "outputCostUsd": "0.002400000000",
+    "estimatedCostUsd": "0.005400000000",
+    "version": 1,
+    "createdAt": "2026-10-02T08:00:00.000Z",
+    "updatedAt": "2026-10-02T08:00:00.000Z"
+  }
+]

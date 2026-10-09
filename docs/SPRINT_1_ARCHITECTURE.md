@@ -1,5 +1,11 @@
 # TokenScope Sprint 1 — Identity & Workspace Foundation
 
+> **Scope:** this document records the Sprint 1 architecture and its implemented foundation. Its “No Goals” list applies to Sprint 1 only.
+>
+> For current evaluation work, start with [EVALUATION_ARCHITECTURE.md](./EVALUATION_ARCHITECTURE.md). New features extend the existing modules, access helpers, HTTP client and session behavior described here.
+>
+> Historical delivery instructions are not evidence that a feature remains unfinished. Check the current implementation and the evaluation document’s status before starting work.
+
 **Sprint 1 goal:**
 Build the authenticated workspace foundation required for every later TokenScope feature.
 This document is architectural contract for the backend team: which modules, what each module owns, how request flow and which dependencies are allowed.

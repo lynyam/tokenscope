@@ -35,6 +35,7 @@ services:
 
     volumes:
       - ./backend:/app
+      - ./fixtures/evaluation:/fixtures/evaluation:ro
       - backend-test-node-modules:/app/node_modules
 
     command: >

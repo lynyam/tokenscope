@@ -7,6 +7,9 @@ import { AppModule } from "../../src/app.module";
 import { configureApp } from "../../src/configure-app";
 import { PrismaService } from "../../src/database/prisma.service";
 import { UsersService } from "../../src/users/users.service";
+import {
+  resetTestDatabase,
+} from "../support/reset-test-database";
 
 // The integration runner applies require-test-database.ts before this file.
 // Its guard restricts cleanup to the isolated tokenscope_test database.
@@ -45,10 +48,7 @@ describe("Authentication HTTP endpoints with PostgreSQL", () => {
 
   beforeEach(async () => {
     // Delete dependent records first because foreign keys are restrictive.
-    await prisma.project.deleteMany();
-    await prisma.membership.deleteMany();
-    await prisma.organization.deleteMany();
-    await prisma.user.deleteMany();
+    await resetTestDatabase(prisma);
   });
 
   afterEach(() => jest.restoreAllMocks());

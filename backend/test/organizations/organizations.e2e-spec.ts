@@ -135,9 +135,20 @@ describe("Organization HTTP contract with a test-only actor", () => {
       "id", "name", "slug", "currentUserRole", "createdAt", "updatedAt",
     ].sort());
     expect(prisma.organization.update).toHaveBeenCalledWith({
-      where: { id: organization.id, archivedAt: null, memberships: { some: { userId: actorId, role: "OWNER" } } },
-      data: { name: "Renamed" },
-    });
+		where: {
+		  id: organization.id,
+		  archivedAt: null,
+		  memberships: {
+			some: {
+			  userId: actorId,
+			  role: "OWNER",
+			},
+		  },
+		},
+		data: {
+		  name: "Renamed",
+		},
+	});
   });
 
   it("conceals membership removed between the two detail reads", async () => {

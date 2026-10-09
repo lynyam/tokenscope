@@ -2,6 +2,10 @@
 
 This document explains how to run TokenScope locally and how the development environment is structured.
 
+Current architecture and feature ownership are defined in [EVALUATION_ARCHITECTURE.md](./EVALUATION_ARCHITECTURE.md).
+
+Commands in this document describe implemented tooling unless explicitly marked as planned. Adding an architecture contract does not create its Make target, environment variable or test configuration.
+
 ## Requirements
 
 Install:
@@ -236,7 +240,8 @@ Real secrets must never be committed.
 make up
 ```
 
-create containers and Starts the local stack in the background.
+Builds the development targets and starts the local stack in the background.
+Use this command to return from evaluation mode to development mode.
 
 ---
 
@@ -341,7 +346,7 @@ http://localhost:5173
 Verify that:
 
 1. The frontend loads.
-2. The health-check action can call `/api/health/db`.
+2. The health-check action can call `/api/v1/health/db`.
 3. The backend responds successfully.
 4. The backend can communicate with PostgreSQL.
 
@@ -357,7 +362,9 @@ make logs
 
 ### Frontend
 
-From `frontend/`:
+Run these commands from `frontend/` with Node 24 installed locally,
+or inside the frontend development container after `make up`.
+The evaluation frontend runs Caddy and does not contain Node or npm.
 
 ```bash
 npm run check
@@ -396,27 +403,15 @@ assertions run. The flag lets jsdom provide isolated browser storage; no
 disk-backed storage file or custom storage mock is needed. Local checks use
 Node 24, matching the development containers.
 
-While implementing the shared foundation before the membership adapter and
-page, install only its two test files and run this checkpoint from `frontend/`:
+The shared authentication, organization, membership and project integrations are present in the Sprint 1 baseline. Run the complete frontend suite when changing their shared transport or session behavior.
 
-```bash
-npm run test -- test/api/http-client.test.ts test/context/AuthContext.test.tsx
-```
+New unit/component tests remain under `frontend/test/`. Real browser journeys belong under `frontend/test/e2e/` once browser-test infrastructure is introduced.
 
-Add `test/api/memberships.api.test.ts` and
-`test/pages/organizations/MembersPage.test.tsx` once their production code is
-implemented, then run the full suite above.
+Browser tests use Playwright; see "Browser end-to-end tests" below.
 
-The TSE-61 shared-client usage and remaining adapter responsibilities are
-documented in `SPRINT_1_ARCHITECTURE.md` under "Frontend integration reference".
+TSE-72 extends transport for multipart uploads, private binary responses and assistant streams while preserving current JSON callers.
 
-### Organization archive migration
-
-After pulling TSE-66, apply the new migration:
-
-```bash
-make db-setup
-```
+See `EVALUATION_ARCHITECTURE.md` for current integration boundaries and `SPRINT_1_ARCHITECTURE.md` for the existing client/session design.
 
 ### Browser end-to-end tests
 
@@ -466,8 +461,214 @@ For general project context and team onboarding, see:
 docs/ONBOARDING.md
 ```
 
-For system architecture, see:
+For the current architecture, see
+[Evaluation Architecture](./EVALUATION_ARCHITECTURE.md).
+
+## Evaluation setup and feature ownership
+
+TSE-65 implements HTTPS evaluation startup using the existing Compose stack.
+The ownership table below also includes separately delivered features;
+their configuration and commands must be documented when implemented.
+
+### Deployment ownership
+
+TSE-65 introduces evaluation mode using the existing `compose.yaml`, service names and PostgreSQL volume.
+
+The planned entry point is `make eval-up`, serving the built application at `https://localhost:8443`.
+
+Do not create a second application stack merely for evaluation. Development/evaluation mode switching preserves the database.
+
+TSE-65 provides `make eval-up`, serving the built application at `https://localhost:8443`.
+
+Development and evaluation use the same `compose.yaml`, service names, `.env` and PostgreSQL volume. Switching mode preserves database contents.
+
+See "Evaluation mode (HTTPS)" below for startup, certificate trust, readiness checks and mode switching.
+
+### Configuration ownership
+
+| Feature | Owner | Required integration |
+|---|---|---|
+| Evaluation mode and HTTPS | TSE-65 | Compose, Dockerfiles, proxy and Makefile |
+| Public-request limits | TSE-67 | Trusted proxy/IP configuration |
+| Realtime | TSE-73 | Origin allowlist and Socket.IO proxying |
+| Private files | TSE-78 | `DOCUMENT_STORAGE_ROOT` and persistent private volume |
+| Assistant | TSE-80 | `GEMINI_API_KEY`, `LLM_MODEL`, SSE proxy verification |
+| Evaluation seed | TSE-70 | Explicit opt-in, operator-supplied password and documented command |
+
+Backend configuration uses:
 
 ```text
-docs/ARCHITECTURE.md
+backend/src/config/env.validation.ts
+backend/src/config/configuration.module.ts
 ```
+
+Because configuration has `skipProcessEnv: true`, new settings must be included in the typed validated configuration returned to consumers. Adding them only to Compose does not make them available through `ConfigService`.
+
+Update `.env.example`, container environment mapping, validation, consumers and tests together. Commit placeholders only.
+
+Missing optional Gemini configuration must not prevent unrelated application features from starting. Assistant requests report their documented unavailable state.
+
+No secrets may use a frontend `VITE_` variable.
+
+### Migration and verification
+
+Use existing commands where applicable:
+
+```bash
+make db-generate
+make db-migration name=<migration_name>
+make db-status
+
+make test-backend
+make frontendcheck
+make frontendtest
+docker compose exec frontend npm run build
+```
+
+`db-migration` creates/applies a development migration against the configured development database. Use isolated disposable databases for migration-upgrade and destructive test scenarios.
+
+The existing backend gate runs type checks, builds, migrations, unit tests, HTTP tests and PostgreSQL integration tests through the test Compose configuration.
+
+New browser and seed commands must be documented when implemented. Do not substitute development data resets for isolated evaluation tests.
+
+## Evaluation mode (HTTPS)
+
+Development and evaluation use the same Compose project, `.env`,
+services and PostgreSQL volume.
+
+| Behavior | `make up` | `make eval-up` |
+|---|---|---|
+| Frontend | Vite development server | Production assets served by Caddy |
+| Backend | NestJS development mode | Compiled NestJS |
+| Address | `http://localhost:5173` by default | `https://localhost:8443` by default |
+| Source changes | Development reload | Run `make eval-up` again |
+| Database | Existing PostgreSQL volume | The same PostgreSQL volume |
+
+### Start evaluation mode
+
+Requirements: Docker, Docker Compose, Make, curl and OpenSSL.
+
+```sh
+make eval-up
+```
+
+Startup prepares `.env`, builds the images, waits for PostgreSQL,
+starts the backend, starts Caddy, exports the public CA certificate,
+and checks the frontend and database health endpoint over HTTPS.
+
+If `.env` is absent, it is copied from `.env.example`.
+A cryptographically random JWT secret is generated only when
+`JWT_SECRET` is missing or empty. Existing configured values are preserved.
+The backend still validates its configuration.
+
+The backend runs `prisma migrate deploy` before starting NestJS.
+A migration failure prevents NestJS from starting.
+Startup does not generate migrations, reset the database or seed data.
+
+Service readiness waits, certificate availability and each HTTPS
+readiness check have a 120-second limit. Image downloads and builds
+are separate and may take longer.
+
+The evaluation frontend serves assets from `/srv`.
+The evaluation backend runs from `/opt/tokenscope/backend`.
+Development bind mounts under `/app` do not replace these built files.
+
+Only the frontend publishes an evaluation port, bound to
+`127.0.0.1:8443`. Backend and PostgreSQL remain on the Docker network.
+
+To use another evaluation port:
+
+```sh
+EVAL_HTTPS_PORT=9443 make eval-up
+```
+
+### Trust the local certificate
+
+Caddy's CA persists in its Docker data volume.
+Startup exports only its public certificate:
+
+```text
+.local/eval/caddy-root.crt
+```
+
+On macOS, trust this certificate:
+
+```sh
+sudo security add-trusted-cert -d -r trustRoot \
+  -k /Library/Keychains/System.keychain \
+  .local/eval/caddy-root.crt
+```
+
+Restart the browser and open `https://localhost:8443`.
+The browser must accept the certificate without a warning.
+
+On Debian/Ubuntu, install the public certificate in the system trust store:
+
+```sh
+sudo cp .local/eval/caddy-root.crt \
+  /usr/local/share/ca-certificates/tokenscope-caddy-root.crt
+sudo update-ca-certificates
+```
+
+If a browser uses a separate certificate store, import the public
+certificate as a trusted certificate authority in its certificate settings.
+
+Do not use browser-warning bypasses or `curl -k` as successful verification.
+
+Verify the API with explicit CA verification:
+
+```sh
+curl --fail --show-error --max-time 10 \
+  --cacert .local/eval/caddy-root.crt \
+  https://localhost:8443/api/v1/health/db
+```
+
+Expected response:
+
+```json
+{"status":"healthy"}
+```
+
+### Switching modes and persistence
+
+Run `make up` to rebuild and return to development mode.
+Run `make eval-up` to rebuild and return to evaluation mode.
+
+Both modes retain the database. Browser sessions may differ because
+HTTP development and HTTPS evaluation are different browser origins.
+Signing in again after switching origins is expected.
+
+The evaluation frontend contains Caddy, not npm.
+Run frontend checks and tests locally or in development mode.
+
+```sh
+make ps
+make logs
+make stop
+make start
+make clean
+```
+
+`make start` resumes existing stopped containers; it does not switch mode.
+`make clean` removes containers and the network while preserving volumes.
+The database and Caddy CA survive container recreation.
+
+`make fullclean` deletes the project's volumes, including database data
+and the Caddy CA. A newly generated CA must be trusted again.
+
+### Troubleshooting
+
+| Stage | Action |
+|---|---|
+| prerequisites | Install the missing tool or start Docker. |
+| env | Correct the named setting; do not commit `.env`. |
+| build | Inspect the image build output. |
+| postgres | Inspect PostgreSQL logs and configuration. |
+| backend | Inspect backend logs for migration or configuration failure. |
+| frontend | Inspect Caddy startup and host-port availability. |
+| certificate | Inspect Caddy logs and its persistent data volume. |
+| readiness | Inspect service logs and retry the HTTPS health command above. |
+
+Use a separate checkout and a unique Compose project name for fresh-database
+and deliberate migration-failure tests. Never reset the working database
+to demonstrate evaluation startup.

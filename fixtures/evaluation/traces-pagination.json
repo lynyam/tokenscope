@@ -1,0 +1,971 @@
+[
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000100",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-001",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000101",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-002",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000102",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-003",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000103",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-004",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000104",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-005",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000105",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-006",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000106",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-007",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000107",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-008",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000108",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-009",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000109",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-010",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000110",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-011",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000111",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-012",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000112",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-013",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000113",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-014",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000114",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-015",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000115",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-016",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000116",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-017",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000117",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-018",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000118",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-019",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000119",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-020",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000120",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-021",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000121",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-022",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000122",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-023",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000123",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-024",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000124",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-025",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000125",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-026",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000126",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-027",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000127",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-028",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000128",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-029",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000129",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-030",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000130",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-031",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000131",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-032",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000132",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-033",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000133",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-034",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000134",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-035",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000135",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-036",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000136",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-037",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000137",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-038",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000138",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-039",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000139",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-040",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000140",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-041",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000141",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-042",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000142",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-043",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000143",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-044",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000144",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-045",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000145",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-046",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000146",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-047",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000147",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-048",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000148",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-049",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000149",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-050",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  },
+  {
+    "expectedSeedId": "50000000-0000-4000-8000-000000000150",
+    "projectId": "30000000-0000-4000-8000-000000000004",
+    "body": {
+      "externalId": "page-051",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 100,
+      "outputTokens": 20,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    }
+  }
+]

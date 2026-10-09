@@ -11,6 +11,9 @@ import type { EnvironmentVariables } from "../../src/config/env.validation";
 import { PrismaService } from "../../src/database/prisma.service";
 import { OrganizationAccessService } from "../../src/memberships/organization-access.service";
 import { OrganizationsService } from "../../src/organizations/organizations.service";
+import {
+  resetTestDatabase,
+} from "../support/reset-test-database";
 
 const ids = {
   owner: randomUUID(), admin: randomUUID(), member: randomUUID(), outsider: randomUUID(),
@@ -53,10 +56,7 @@ describe("Organization endpoints with PostgreSQL", () => {
 
   beforeEach(async () => {
     // Destructive cleanup is limited to the guarded, isolated test database.
-    await prisma.project.deleteMany();
-    await prisma.membership.deleteMany();
-    await prisma.organization.deleteMany();
-    await prisma.user.deleteMany();
+    await resetTestDatabase(prisma);
 
     await prisma.user.createMany({
       data: (["owner", "admin", "member", "outsider"] as const).map(name => ({

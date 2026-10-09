@@ -38,7 +38,11 @@ export class ProjectsService {
                 archivedAt: null,
                 organization: {
                     archivedAt: null,
-                    memberships: { some: { userId } },
+                    memberships: {
+                      some: {
+                        userId,
+                      },
+                    },
                 },
             },
             orderBy: [
@@ -194,10 +198,12 @@ export class ProjectsService {
             organization: {
                 archivedAt: null,
                 memberships: {
-                    some: {
-                        userId,
-                        role: { in: [...WRITE_ROLES] },
+                  some: {
+                    userId,
+                    role: {
+                      in: [...WRITE_ROLES],
                     },
+                  },
                 },
             },
         };

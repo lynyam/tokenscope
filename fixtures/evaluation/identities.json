@@ -1,0 +1,102 @@
+{
+  "users": [
+    {
+      "id": "10000000-0000-4000-8000-000000000001",
+      "email": "owner@demo.tokenscope.test",
+      "displayName": "Owner"
+    },
+    {
+      "id": "10000000-0000-4000-8000-000000000002",
+      "email": "admin@demo.tokenscope.test",
+      "displayName": "Admin"
+    },
+    {
+      "id": "10000000-0000-4000-8000-000000000003",
+      "email": "member@demo.tokenscope.test",
+      "displayName": "Member"
+    },
+    {
+      "id": "10000000-0000-4000-8000-000000000004",
+      "email": "outsider@demo.tokenscope.test",
+      "displayName": "Outsider"
+    }
+  ],
+  "organizations": [
+    {
+      "id": "20000000-0000-4000-8000-000000000001",
+      "name": "Acme Demo",
+      "slug": "acme-demo"
+    },
+    {
+      "id": "20000000-0000-4000-8000-000000000002",
+      "name": "Other Tenant",
+      "slug": "other-tenant"
+    }
+  ],
+  "memberships": [
+    {
+      "userId": "10000000-0000-4000-8000-000000000001",
+      "organizationId": "20000000-0000-4000-8000-000000000001",
+      "role": "OWNER"
+    },
+    {
+      "userId": "10000000-0000-4000-8000-000000000002",
+      "organizationId": "20000000-0000-4000-8000-000000000001",
+      "role": "ADMIN"
+    },
+    {
+      "userId": "10000000-0000-4000-8000-000000000003",
+      "organizationId": "20000000-0000-4000-8000-000000000001",
+      "role": "MEMBER"
+    },
+    {
+      "userId": "10000000-0000-4000-8000-000000000004",
+      "organizationId": "20000000-0000-4000-8000-000000000002",
+      "role": "OWNER"
+    }
+  ],
+  "projects": [
+    {
+      "id": "30000000-0000-4000-8000-000000000001",
+      "organizationId": "20000000-0000-4000-8000-000000000001",
+      "name": "Support Golden",
+      "slug": "support-golden",
+      "description": "Synthetic evaluation fixture",
+      "archivedAt": null
+    },
+    {
+      "id": "30000000-0000-4000-8000-000000000002",
+      "organizationId": "20000000-0000-4000-8000-000000000001",
+      "name": "Empty Project",
+      "slug": "empty-project",
+      "description": "Synthetic evaluation fixture",
+      "archivedAt": null
+    },
+    {
+      "id": "30000000-0000-4000-8000-000000000003",
+      "organizationId": "20000000-0000-4000-8000-000000000002",
+      "name": "Private Other Tenant",
+      "slug": "private-other-tenant",
+      "description": "Synthetic evaluation fixture",
+      "archivedAt": null
+    },
+    {
+      "id": "30000000-0000-4000-8000-000000000004",
+      "organizationId": "20000000-0000-4000-8000-000000000001",
+      "name": "Pagination Project",
+      "slug": "pagination-project",
+      "description": "Synthetic evaluation fixture",
+      "archivedAt": null
+    },
+    {
+      "id": "30000000-0000-4000-8000-000000000005",
+      "organizationId": "20000000-0000-4000-8000-000000000001",
+      "name": "Archived Project",
+      "slug": "archived-project",
+      "description": "Synthetic evaluation fixture",
+      "archivedAt": "2026-10-01T00:00:00.000Z"
+    }
+  ],
+  "passwordSource": "DEMO_PASSWORD environment variable; Argon2id at seed time; no placeholder hash",
+  "apiKeys": "Create at runtime through the key endpoint; never commit plaintext"
+}

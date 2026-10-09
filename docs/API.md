@@ -1,13 +1,17 @@
-# M1 HTTP API contract
+
+# TokenScope API contracts
 
 ## Purpose
 
-This document is the canonical frontend/backend contract for M1. Backend
-controllers, frontend API functions, tests, and demo commands must agree with
-it.
+This document owns TokenScope’s external contracts.
 
-M1 covers identity, organizations, memberships, and projects. API keys, traces,
-cost calculation, and dashboards are M2.
+The identity, organization, membership and project sections describe the Sprint 1 baseline present at `854da94`.
+
+The section “Evaluation extensions — agreed, not yet implemented” defines additional contracts awaiting implementation. Its presence does not mean the corresponding routes exist.
+
+See [EVALUATION_ARCHITECTURE.md](./EVALUATION_ARCHITECTURE.md) for feature ownership and integration boundaries.
+
+Controllers, frontend adapters, tests and examples must agree with these contracts. A feature PR must update its implementation status when the contract is delivered.
 
 ## Conventions
 
@@ -28,7 +32,7 @@ removing the prefix.
 
 ### JSON
 
-- Request and response bodies use `application/json`.
+- JSON endpoints use application/json. Explicitly documented multipart uploads, binary responses and SSE streams use their own content types.
 - Successful responses return the documented resource directly; M1 does not
   wrap them in a generic `data` envelope.
 - Dates are ISO-8601 UTC strings.
@@ -40,7 +44,7 @@ removing the prefix.
 
 ### Authentication
 
-Every endpoint except sign-up, sign-in, and health checks requires:
+Sprint 1 protected endpoints and evaluation browser APIs require a user JWT as shown below. Public trace endpoints instead require X-API-Key; their authentication contract is defined in the evaluation section. Sign-up, sign-in and health checks remain public.
 
 ```http
 Authorization: Bearer <access-token>
@@ -719,3 +723,554 @@ permission, slug rule, or archive rule must update:
 3. the frontend API/type layer;
 4. [SECURITY.md](./SECURITY.md) or [DATA_MODEL.md](./DATA_MODEL.md) when the changed behavior affects those
    contracts.
+
+## Evaluation extensions — agreed, not yet implemented
+
+Status at baseline `854da94`: the following extensions are planned.
+
+Existing Sprint 1 routes and response shapes remain compatible unless an explicit extension below changes their behavior.
+
+Paths below are relative to `/api/v1`.
+
+For project routes, `P` abbreviates:
+
+```text
+/organizations/:organizationId/projects/:projectId
+```
+
+`P` is documentation notation, not a literal URL segment.
+
+### Authentication and route ownership
+
+| Operation | Route | Authentication | Permission |
+|---|---|---|---|
+| Archive organization | `DELETE /organizations/:organizationId` | JWT | OWNER |
+| List/create API keys | `GET/POST P/api-keys` | JWT | OWNER, ADMIN |
+| Revoke API key | `DELETE P/api-keys/:apiKeyId` | JWT | OWNER, ADMIN |
+| Create/list traces | `POST/GET /public/traces` | `X-API-Key` | Verified project credential |
+| Read/replace/delete trace | `GET/PUT/DELETE /public/traces/:traceId` | `X-API-Key` | Verified project credential |
+| Browser trace list/detail | `GET P/traces`, `GET P/traces/:traceId` | JWT | Any organization member |
+| Analytics | `GET P/analytics` | JWT | Any organization member |
+| Assistant | `POST P/assistant` | JWT | Any organization member |
+| List documents | `GET P/documents` | JWT | Any organization member |
+| Upload document | `POST P/documents` | JWT | OWNER, ADMIN |
+| Read document bytes | `GET P/documents/:documentId/content` | JWT | Any organization member |
+| Delete document | `DELETE P/documents/:documentId` | JWT | OWNER, ADMIN |
+
+All project browser operations require current membership, an active organization and an active project belonging to that organization.
+
+JWTs and project API keys are not interchangeable.
+
+There is no backend dashboard-export endpoint.
+
+### Organization archive — TSE-66
+
+Request:
+
+```http
+DELETE /api/v1/organizations/:organizationId
+Content-Type: application/json
+Authorization: Bearer <JWT>
+```
+
+```json
+{
+  "confirmSlug": "acme-demo"
+}
+```
+
+Accept only the required `confirmSlug` string. Reject missing, empty,
+whitespace-only and non-string values with `400 VALIDATION_ERROR`.
+Reject unknown properties.
+
+Compare the submitted value exactly with the stored slug; do not trim
+or lowercase it into a match. A nonblank value that does not match
+returns `409 ORGANIZATION_CONFIRMATION_MISMATCH`.
+
+For stored `acme-demo`:
+
+- `acme-demo` matches.
+- `Acme-Demo` does not.
+- `acme-demo ` does not.
+
+After authentication and valid input, verify access and OWNER permission before comparing the confirmation.
+
+Results:
+
+- `204`: organization archived.
+- `400 VALIDATION_ERROR`: invalid input.
+- `403 INSUFFICIENT_ORGANIZATION_ROLE`: accessible organization, insufficient role.
+- `404 ORGANIZATION_NOT_FOUND`: missing, inaccessible or already archived organization.
+- `409 ORGANIZATION_CONFIRMATION_MISMATCH`: confirmation does not match.
+
+Retain children and files. There is no deletion-summary or restore endpoint.
+
+After archive, organization/member/project-collection routes conceal the organization. Individual project and project-resource routes conceal the project using `PROJECT_NOT_FOUND`.
+
+### API keys — TSE-67 / TSE-74
+
+Create with `{ "name": "Evaluation writer" }`.
+
+Trim the name and require 1–64 characters. Duplicate display names are allowed.
+
+```ts
+type ApiKeySummary = {
+  id: string;
+  projectId: string;
+  name: string;
+  keyPrefix: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+};
+
+type CreatedApiKey = ApiKeySummary & {
+  key: string;
+};
+```
+
+- Creation returns `201 CreatedApiKey`.
+- List returns `200 ApiKeySummary[]`, including revoked keys.
+- Order by `createdAt DESC`, then `id ASC`.
+- Revoke returns `204`; repeating an accessible revocation also returns `204` without changing its timestamp.
+- Missing/cross-project key returns `404 API_KEY_NOT_FOUND`.
+- Use `Cache-Control: no-store`.
+- Never return hashes.
+- Plaintext appears only in the creation response.
+
+Do not automatically retry creation after an uncertain network outcome. List metadata, revoke the uncertain credential and deliberately create another if needed.
+
+### Trace writes and historical values — TSE-68 / TSE-69
+
+Public clients send:
+
+```http
+X-API-Key: <project-key>
+```
+
+The verified key determines the project. Client-supplied tenant, project, actor, pricing and lifecycle fields are rejected.
+
+POST and PUT accept this writable shape:
+
+```ts
+type TraceInput = {
+  externalId: string;
+  provider: string;
+  model: string;
+  workflow: string;
+  inputTokens: number;
+  outputTokens: number;
+  latencyMs: number;
+  status: "SUCCESS" | "ERROR";
+  occurredAt: string;
+  metadata?: Record<string, string | number | boolean | null>;
+};
+```
+
+Validation:
+
+| Field | Rule |
+|---|---|
+| `externalId` | Trimmed, case-preserving, 1–128 ASCII letters/digits/`.`/`_`/`:`/`-` |
+| `provider` | Trimmed/lowercase, maximum 40, `[a-z0-9][a-z0-9._-]*` |
+| `model` | Trimmed/lowercase, maximum 100, `[a-z0-9][a-z0-9._:/-]*` |
+| `workflow` | Trimmed, case-preserving, 1–80, no control characters |
+| Token counters | JSON integers from 0 to 1,000,000,000 |
+| `latencyMs` | JSON integer from 0 to 86,400,000 |
+| `occurredAt` | Valid UTC instant ending in `Z`, at most millisecond precision, no more than five minutes in the future |
+| `metadata` | Flat object, maximum 20 keys; omitted means `{}` |
+
+Metadata keys contain 1–64 characters. String values contain at most 400 characters. Numeric values must be finite. Arrays and nested objects are rejected. Serialized metadata is limited to 4,096 UTF-8 bytes.
+
+The actual JSON request body is limited to 16 KiB.
+
+Creation and correction share normalization, hashing, historical-price selection and Decimal calculations.
+
+- New POST: `201`.
+- Identical normalized POST replay: `200`, preserving stored values.
+- Conflicting existing external ID: `409`.
+- External ID reserved by a deleted trace: `409 TRACE_DELETED`.
+- No applicable historical price: `400 MODEL_PRICE_NOT_FOUND`.
+
+Trace responses explicitly map IDs, normalized writable fields, `priceVersionId`, pricing, stored costs, version and timestamps. They exclude hashes, credentials and internal deletion state.
+
+Rates use six-decimal strings. Costs use twelve-decimal strings.
+
+Public POST, detail and PUT responses include the trace version:
+
+```http
+ETag: "1"
+```
+
+PUT is full replacement. `externalId` remains immutable. Omitted metadata replaces previous metadata with `{}`.
+
+PUT and DELETE require:
+
+```http
+If-Match: "1"
+```
+
+- Missing precondition: `428 TRACE_VERSION_REQUIRED`.
+- Malformed precondition: `400 VALIDATION_ERROR`.
+- Stale version: `412 TRACE_VERSION_CONFLICT`.
+- Inaccessible/deleted trace: `404 TRACE_NOT_FOUND`.
+
+A current-version no-op PUT preserves version, timestamps and historical pricing.
+
+An actual correction updates its values atomically and increments version once.
+
+DELETE sets `deletedAt`, increments version and returns `204`. Later GET/DELETE returns `404`. The external ID remains reserved.
+
+### Shared dates, filters and pagination
+
+Trace lists and analytics accept both dates or neither. When omitted, resolve the last seven days using one captured server time.
+
+The dashboard sends explicit resolved dates. The assistant requires explicit dates.
+
+Rules:
+
+- UTC ISO instants ending in `Z`.
+- `from < to`.
+- Maximum interval: 90 days.
+- Matching boundary: `from <= occurredAt < to`.
+- Deleted traces are excluded.
+- Unknown, repeated or incorrectly typed parameters are rejected.
+
+Shared filters:
+
+| Filter | Meaning |
+|---|---|
+| `q` | Trimmed, case-insensitive literal substring across workflow, external ID and model; maximum 100 |
+| `provider` | Exact normalized provider |
+| `model` | Exact normalized model |
+| `workflow` | Exact trimmed, case-sensitive workflow |
+| `status` | `SUCCESS` or `ERROR` |
+
+Search fields within `q` combine with OR. Different filters combine with AND. `%` and `_` are literal search characters.
+
+Trace lists additionally accept:
+
+- `page`: default 1.
+- `pageSize`: default 25, maximum 100.
+- `sortBy`: `occurredAt`, `estimatedCostUsd`, `latencyMs`, `inputTokens` or `outputTokens`.
+- `sortOrder`: `asc` or `desc`; default `desc`.
+- Default sort field: `occurredAt`.
+- Secondary order: `id ASC`.
+
+Response:
+
+```ts
+type Page<T> = {
+  items: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+```
+
+An empty collection has `totalPages: 0`. A page beyond the end returns empty items and actual totals.
+
+Count and rows use one consistent authorized read. Detail lookup does not apply the list’s default seven-day window.
+
+### Analytics — TSE-71
+
+`GET P/analytics` returns this object directly:
+
+```ts
+type AnalyticsSnapshot = {
+  snapshotId: string;
+  generatedAt: string;
+  projectId: string;
+
+  window: {
+    from: string;
+    to: string;
+    timezone: "UTC";
+    bucket: "hour" | "day";
+  };
+
+  filters: {
+    q: string | null;
+    provider: string | null;
+    model: string | null;
+    workflow: string | null;
+    status: "SUCCESS" | "ERROR" | null;
+  };
+
+  summary: {
+    traceCount: number;
+    inputTokens: string;
+    outputTokens: string;
+    totalTokens: string;
+    estimatedCostUsd: string;
+    errorCount: number;
+    errorRatePct: number | null;
+    averageLatencyMs: number | null;
+  };
+
+  series: Array<{
+    bucketStart: string;
+    traceCount: number;
+    inputTokens: string;
+    outputTokens: string;
+    estimatedCostUsd: string;
+  }>;
+
+  byModel: Array<{
+    provider: string;
+    model: string;
+    traceCount: number;
+    inputTokens: string;
+    outputTokens: string;
+    estimatedCostUsd: string;
+  }>;
+};
+```
+
+Requirements:
+
+- Aggregate every matching trace, independent of pagination.
+- Sum stored costs using exact arithmetic.
+- Serialize aggregate token totals as decimal integer strings.
+- Serialize costs with twelve fractional digits.
+- Count fields must remain safe JSON integers.
+- Round error rate to two decimals and average latency to three, half-up.
+- Include ERROR traces unless a filter excludes them.
+- Preserve legitimate zero latency.
+- Use `Cache-Control: no-store`.
+
+Default buckets are hourly for intervals up to 48 hours and daily otherwise. Accept an explicit valid `hour` or `day` bucket.
+
+Align buckets to UTC boundaries, include intersecting partial buckets and zero-fill gaps. Enforce the actual maximum of 2,160 hourly buckets.
+
+Order model groups by cost descending, provider ascending, model ascending.
+
+An empty matching set is a successful snapshot: zero counts, `"0"` token totals, `"0.000000000000"` cost, null average/rate, empty model groups and a zero-filled series.
+
+Internal project metadata and synthetic-pricing information used by the assistant are not added to this public response.
+
+### Realtime — TSE-73
+
+Use same-origin Socket.IO:
+
+- Namespace: `/realtime`.
+- Engine.IO path: `/socket.io`.
+- Handshake authentication: `{ token: "<JWT>" }`.
+
+Client events:
+
+```ts
+// project.subscribe
+{ organizationId: string; projectId: string }
+
+// Success acknowledgement
+{ ok: true; projectId: string }
+
+// Failure acknowledgement
+{ ok: false; error: { code: string; message: string } }
+
+// project.unsubscribe: no payload
+```
+
+One socket has at most one active project subscription. Leave the previous subscription before authorizing a replacement.
+
+Server events:
+
+```ts
+// traces.changed
+{
+  eventId: string;
+  projectId: string;
+  occurredAt: string; // Notification time, not trace occurrence time.
+}
+
+// access.revoked
+{
+  projectId: string;
+  code: "PROJECT_NOT_FOUND";
+}
+```
+
+`traces.changed` contains no trace contents or calculated totals.
+
+Publish only after committed creation, actual correction or deletion. Coalesce changes using the agreed fixed 150 ms window.
+
+Delivery is best effort. Subscription/reconnection must be followed by a fresh HTTP read.
+
+### Assistant — TSE-80 / TSE-81
+
+Request:
+
+```http
+POST P/assistant
+Content-Type: application/json
+Accept: text/event-stream
+Authorization: Bearer <JWT>
+```
+
+```ts
+type AssistantRequest = {
+  question: string;
+  from: string;
+  to: string;
+  filters: {
+    q?: string;
+    provider?: string;
+    model?: string;
+    workflow?: string;
+    status?: "SUCCESS" | "ERROR";
+  };
+};
+```
+
+Require a trimmed question of 1–2,000 characters, explicit dates and a filters object. `{}` means no additional filters.
+
+Limit the actual request body to 8 KiB. Reject unknown fields, trace IDs, raw traces, client totals, project metadata, pagination and sorting.
+
+The backend constructs:
+
+```ts
+type AssistantContext = Pick<
+  AnalyticsSnapshot,
+  | "snapshotId"
+  | "generatedAt"
+  | "window"
+  | "filters"
+  | "summary"
+  | "series"
+  | "byModel"
+> & {
+  project: {
+    id: string;
+    name: string;
+    description: string | null;
+  };
+  pricing: {
+    currency: "USD";
+    containsSyntheticPricing: boolean;
+  };
+};
+```
+
+Build this context from one consistent authorized read and finish the transaction before contacting Gemini.
+
+Maximum serialized context: 32 KiB.
+
+- No matching traces: `422 ASSISTANT_NO_DATA`.
+- Oversized context: `422 ASSISTANT_CONTEXT_TOO_LARGE`.
+
+Neither condition calls the provider. Do not silently truncate the matching dataset.
+
+SSE events contain JSON data:
+
+| Event | Payload |
+|---|---|
+| `start` | `{ requestId, provider: "gemini", model, context }` |
+| `delta` | `{ text }` |
+| `done` | `{ requestId, finishReason: "stop" \| "length", usage }` |
+| `error` | `{ requestId, code, message, retryable }` |
+
+`usage` contains provider-reported `{ inputTokens, outputTokens }` or `null`.
+
+A started stream has one `start` and one terminal `done` or `error`. Cancellation may close without a terminal event. Unexpected EOF is not success. Complete frames remain below 64 KiB.
+
+Before streaming, failures use the normal HTTP JSON envelope. After streaming starts, send a terminal SSE error and close.
+
+Provider configuration/authentication failures are not user `401` responses.
+
+The answer context stays fixed. Project/date/filter changes cancel and clear the old answer; same-selection dashboard refreshes do not.
+
+### Private documents — TSE-78 / TSE-79
+
+Upload accepts exactly one multipart file field named `file`, no extra fields, and 1–10,485,760 file bytes.
+
+Supported content:
+
+- PDF: `application/pdf`.
+- TXT: `text/plain`.
+- Markdown: `text/markdown`.
+
+Validate actual content, not only the extension or client MIME type.
+
+Original filenames are display data, limited to 255 UTF-8 bytes, and must pass the document filename checks. They never become filesystem paths.
+
+```ts
+type DocumentSummary = {
+  id: string;
+  projectId: string;
+  originalName: string;
+  mediaType: "application/pdf" | "text/plain" | "text/markdown";
+  sizeBytes: number;
+  createdAt: string;
+};
+```
+
+- Upload: `201 DocumentSummary`.
+- List: `200 Page<DocumentSummary>`, default page 1 and size 25, maximum 100.
+- List order: `createdAt DESC`, then `id ASC`.
+- Duplicate display filenames are allowed.
+- Content route returns bytes, not JSON or a public storage URL.
+- `download` accepts only `true` or `false`; default false.
+- Content headers include validated MIME, length, safe disposition, `no-store` and `nosniff`.
+- Delete has no body and returns `204`.
+- Repeated delete returns `404 DOCUMENT_NOT_FOUND`.
+
+Never expose storage keys, private paths or cleanup jobs.
+
+### Dashboard exports — TSE-77
+
+Exports are local browser operations using a captured input:
+
+```ts
+type DashboardExportInput = {
+  project: {
+    id: string;
+    name: string;
+  };
+  snapshot: AnalyticsSnapshot;
+};
+```
+
+Require matching project IDs, valid current access and a snapshot matching the applied selection.
+
+Export the captured snapshot even if a same-selection refresh completes during generation. Do not issue another analytics request.
+
+CSV header:
+
+```text
+section,snapshotId,projectId,projectName,from,to,generatedAt,timezone,bucket,q,filterProvider,filterModel,filterWorkflow,filterStatus,bucketStart,provider,model,traceCount,inputTokens,outputTokens,estimatedCostUsd,errorCount,errorRatePct,averageLatencyMs
+```
+
+Include one summary row, every series bucket and every model group. Repeat selection metadata on every row.
+
+Preserve exact numeric strings, escape CSV fields and neutralize formula-leading user-controlled text, including leading whitespace/control variants.
+
+PDF includes project identity, snapshot metadata, selection, summary and complete series/model tables. Support Unicode with bundled fonts and paginate without losing rows.
+
+Use the note:
+
+> Costs are recorded estimates, not invoices. Evaluation fixtures may use synthetic pricing.
+
+Do not infer synthetic pricing from model names.
+
+A valid empty snapshot remains exportable. Changed-selection loading/errors, sign-out and access loss disable export. Discard pending downloads after the originating session/project becomes obsolete.
+
+### Additional error behavior
+
+Continue using the existing error envelope and request IDs.
+
+Evaluation contracts additionally use:
+
+- `412`: stale trace version.
+- `413`: request/file size exceeded.
+- `415`: unsupported document media type.
+- `422`: supported request cannot be processed under the documented feature rule.
+- `428`: required trace version precondition missing.
+- `429`: local quota exceeded, with `Retry-After`.
+- `502`: provider failure.
+- `504`: provider deadline exceeded.
+
+Use explicit application codes. Do not assume the existing exception filter already supplies every new code.
+
+Only an authentication failure for the captured user session invalidates that session. Permission errors, missing resources, conflicts, rate limits, provider failures and network failures do not sign the user out.
