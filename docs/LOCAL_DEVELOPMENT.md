@@ -410,6 +410,8 @@ At baseline `854da94`, the frontend package has no Playwright dependency or brow
 
 TSE-72 extends transport for multipart uploads, private binary responses and assistant streams while preserving current JSON callers.
 
+For TSE-74, document that the returned key must remain only in transient UI memory.
+
 See `EVALUATION_ARCHITECTURE.md` for current integration boundaries and `SPRINT_1_ARCHITECTURE.md` for the existing client/session design.
 ---
 

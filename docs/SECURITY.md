@@ -617,6 +617,22 @@ Missing, invalid, revoked and archived-parent keys use the same `401 INVALID_API
 
 The key belongs to its project. Creator removal/demotion does not revoke it automatically; explicit revocation and parent archive invalidate it.
 
+API-key management uses current OWNER/ADMIN membership and active project/organization checks. Creation and revocation use bounded
+serializable transactions with at most three attempts. Every retry rechecks authorization using the transaction client.
+
+Public handlers use PublicApi(), which applies IP quota, API-key verification and verified-key quota in that order. Public documentation routes must not use this decorator.
+
+ApiKeyAuthService.assertActivePrincipal(principal, tx) revalidates the credential inside consumer database operations without consuming quota.
+
+The in-memory limiter holds at most 10,000 counters across namespaces.
+Expired counters are removed. Active counters are not evicted to make space; new identities are rejected when capacity is exhausted.
+Restart clears quotas. This implementation assumes one backend instance.
+
+Compose configures TRUSTED_PROXY_HOST=frontend. The limiter trusts forwarded identity only when the socket peer matches that service's resolved address. Vite and Caddy replace X-Forwarded-For with one socket client address. Other peers' forwarding headers are ignored. Failed proxy identity resolution fails closed.
+
+Request logs retain the existing allowlist of request IDs, methods, route templates, permitted resource IDs and outcomes. They do not
+record headers, request/response bodies, API-key secrets or hashes.
+
 ### Shared frontend session behavior
 
 Preserve `auth-session.ts` and its captured-session protection.

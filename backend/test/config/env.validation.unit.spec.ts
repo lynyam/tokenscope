@@ -82,4 +82,31 @@ describe("Environment configuration", () => {
     expect((caught as Error).message).not.toContain(value);
     expect((caught as Error).message).not.toContain("DO_NOT_EXPOSE_CONFIG_VALUE");
   });
+
+  it("accepts an optional trusted proxy hostname", () => {
+    expect(validateEnvironment({
+      ...VALID_ENV,
+      TRUSTED_PROXY_HOST: "frontend",
+    }).TRUSTED_PROXY_HOST).toBe("frontend");
+  });
+
+  it("leaves proxy trust disabled when empty", () => {
+    expect(validateEnvironment({
+      ...VALID_ENV,
+      TRUSTED_PROXY_HOST: "",
+    }).TRUSTED_PROXY_HOST).toBeUndefined();
+  });
+
+  it.each([
+    true,
+    "*",
+    "http://frontend",
+    " frontend ",
+    "frontend:5173",
+  ])("rejects invalid trusted proxy configuration %j", value => {
+    expect(() => validateEnvironment({
+      ...VALID_ENV,
+      TRUSTED_PROXY_HOST: value,
+    })).toThrow("TRUSTED_PROXY_HOST");
+  });
 });
