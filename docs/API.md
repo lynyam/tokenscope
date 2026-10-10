@@ -798,6 +798,25 @@ type CreatedApiKey = ApiKeySummary & {
 
 Do not automatically retry creation after an uncertain network outcome. List metadata, revoke the uncertain credential and deliberately create another if needed.
 
+Implementation status: TSE-67 implements key management and the reusable public authentication foundation. Trace operations belong to TSE-68/69.
+
+Public authentication uses exactly one X-API-Key header containing a canonical tsk_ secret. Query parameters, JSON fields, cookies and bearer JWTs are not alternative API-key locations.
+
+Missing, malformed, unknown, revoked and archived-parent credentials return 401 INVALID_API_KEY with the same message.
+
+Project credentials remain valid when their creator is removed or demoted. Current OWNER/ADMIN members manage them.
+
+lastUsedAt records best-effort successful authenticated admission, not successful trace persistence. It is updated at most once per minute.
+
+Public trace requests share:
+- 60 requests per trusted client IP per minute.
+- 120 requests per verified key ID per minute.
+
+Both use fixed 60-second windows beginning at the first counted request.
+429 responses contain RATE_LIMITED and an integer Retry-After header.
+Invalid credentials consume only the IP budget. Requests admitted by
+the guard consume quota even if later validation or business logic fails.
+
 ### Trace writes and historical values — TSE-68 / TSE-69
 
 Public clients send:

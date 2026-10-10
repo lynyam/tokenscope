@@ -8,7 +8,11 @@ localhost {
 	encode gzip
 
 	handle /api/* {
-		reverse_proxy backend:{$BACKEND_PORT:3000}
+		reverse_proxy backend:{$BACKEND_PORT:3000} {
+			header_up X-Forwarded-For {http.request.remote.host}
+			header_up -Forwarded
+			header_up -X-Real-IP
+		}
 	}
 
 	# Only frontend routes receive the SPA fallback.
