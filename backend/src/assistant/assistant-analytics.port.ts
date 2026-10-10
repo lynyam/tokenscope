@@ -15,8 +15,7 @@
  *  + Bind ASSISTANT_ANALYTICS to the real AnalyticsService in AssistantModule.
  *  + Delete everything below that duplicates TSE-71.
  */
-import type { Prisma } from '@prisma/client'; // ← use the path from prisma.service.ts
-
+import { Prisma} from "../generated/prisma/client";
 export const ASSISTANT_ANALYTICS = Symbol('ASSISTANT_ANALYTICS');
 
 /** Who is asking and about which project. Actor comes from the verified JWT. */

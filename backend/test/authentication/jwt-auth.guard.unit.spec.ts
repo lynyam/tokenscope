@@ -112,6 +112,7 @@ describe("JwtAuthGuard", () => {
     it("attaches ONLY { id } to request.user on success", () => {
       tokenService.verifyAccessToken.mockReturnValue({
         sub: "user-123",
+         exp: 1_900_000_000,
         iss: "tokenscope",
         aud: "tokenscope-web",
       } as never);
@@ -122,6 +123,8 @@ describe("JwtAuthGuard", () => {
 
       expect(guard.canActivate(buildContext(request))).toBe(true);
       expect(request.user).toEqual({ id: "user-123" });
+      // Verified expiry attached separately, converted to milliseconds.
+      expect(request.accessTokenExpiresAt).toBe(1_900_000_000_000);
     });
   });
 });

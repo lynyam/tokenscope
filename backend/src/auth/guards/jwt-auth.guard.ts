@@ -15,6 +15,7 @@ import { Reflector } from "@nestjs/core";
 import { ApiException } from "../../common/errors/api.exception";
 import { TokenService } from "../token.service";
 import { IS_PUBLIC_KEY } from "../../common/decorators/public.decorator";
+import type {AuthenticatedRequest} from "../../common/types/authenticated-request";
 
 /**
  * Registered globally via APP_GUARD in auth.module.ts,
@@ -45,7 +46,8 @@ export class JwtAuthGuard implements CanActivate {
       return true;
     }
 
-    const request = context.switchToHttp().getRequest();
+    const request = context.switchToHttp().getRequest()<AuthenticatedRequest>();
+
     const authHeader: string | undefined = request.headers["authorization"];
 
     // API.md case 1: header absent or not in "Bearer <token>" form.
@@ -66,6 +68,7 @@ export class JwtAuthGuard implements CanActivate {
       // "the JWT guard authenticates and attaches only the trusted user
       // identity". Anything else in the payload is untrusted input.
       request.user = { id: payload.sub };
+      request.accessTokenExpiresAt = payload.exp * 1000;
       return true;
     } catch (error) {
       // API.md case 2: expired. Distinguished from other failures

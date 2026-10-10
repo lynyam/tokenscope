@@ -9,10 +9,16 @@ export interface IssuedToken {
   expiresIn: number;
 }
 
+/**Indentiy and expired token */
+export interface VerifiedAccessToken {
+  sub: string;
+  /** Expiry in SECONDS since the Unix epoch (JWT standard). */
+  exp: number;
+}
+
 /**
  * JWT: string made of three base64url-encoded parts, joined by dots:
  * e.g. eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyLTEyMyJ9.4f8a
- *
  */
 
 /**
@@ -22,6 +28,7 @@ export interface IssuedToken {
  * against SECURITY.md's token requirements, and one place to change if
  * the algorithm or claim set ever changes.
  */
+
 @Injectable()
 export class TokenService {
   private readonly ttlSeconds: number;
@@ -67,7 +74,7 @@ export class TokenService {
 	This closes the gap where a correctly signed token with
 	missing sub or missing exp could previously pass verification.
 	*/
-	verifyAccessToken(token: string): { sub: string } {
+	verifyAccessToken(token: string): VerifiedAccessToken {
 		// AuthModule supplies signature algorithm, issuer, and audience checks.
 		// Existing expiration claims are also checked by the JWT library.
 		const payload: unknown = this.jwtService.verify(token);
@@ -91,7 +98,7 @@ export class TokenService {
 			throw new Error("Invalid access token claims.");
 		}
 
-		// Return only the identity consumed by the guard.
-		return { sub: payload.sub };
+		// Indentity and expiration are now guaranteed to exist and be well-typed.
+		return { sub: payload.sub, exp: payload.exp  };
 	}
 }

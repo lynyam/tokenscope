@@ -39,6 +39,8 @@ services:
       JWT_ISSUER: "${JWT_ISSUER}"
       JWT_AUDIENCE: "${JWT_AUDIENCE}"
       JWT_ACCESS_TTL_SECONDS: "${JWT_ACCESS_TTL_SECONDS}"
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      LLM_MODEL: "${LLM_MODEL:-gemini-3.5-flash-lite}"
     depends_on:
      postgres:
       condition: service_healthy

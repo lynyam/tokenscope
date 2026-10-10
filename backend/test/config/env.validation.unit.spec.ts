@@ -1,4 +1,4 @@
-import { validateEnvironment } from "../../src/config/env.validation";
+import { DEFAULT_LLM_MODEL, validateEnvironment } from "../../src/config/env.validation";
 
 const VALID_ENV = {
   BACKEND_PORT: "3000",
@@ -15,6 +15,9 @@ describe("Environment configuration", () => {
       ...VALID_ENV,
       BACKEND_PORT: 3000,
       JWT_ACCESS_TTL_SECONDS: 3600,
+      // Assistant settings are optional: absent → disabled key, default model.
+      GEMINI_API_KEY: null,
+      LLM_MODEL: DEFAULT_LLM_MODEL,
     });
   });
 
@@ -81,5 +84,43 @@ describe("Environment configuration", () => {
     expect((caught as Error).message).toContain(key);
     expect((caught as Error).message).not.toContain(value);
     expect((caught as Error).message).not.toContain("DO_NOT_EXPOSE_CONFIG_VALUE");
+  });
+});
+
+describe("Assistant configuration (TSE-80)", () => {
+  it("starts without a Gemini key: assistant disabled", () => {
+    expect(validateEnvironment({ ...VALID_ENV }).GEMINI_API_KEY).toBeNull();
+  });
+
+  // Each row: a malformed key that must disable the assistant, never crash startup.
+  it.each([["  "], ['"AIzaFakeKey123"'], ["AIza Fake"], [123]])(
+    "treats %p as an absent key, without failing startup",
+    (value) => {
+      expect(validateEnvironment({ ...VALID_ENV, GEMINI_API_KEY: value }).GEMINI_API_KEY).toBeNull();
+    },
+  );
+
+  // Both key formats issued by Google AI Studio (fake values only).
+  it.each(["AIzaFakeKey123", "AQ.FakeKey-123_abc"])("keeps a well-formed key %p", (key) => {
+    expect(validateEnvironment({ ...VALID_ENV, GEMINI_API_KEY: key }).GEMINI_API_KEY).toBe(key);
+  });
+
+  it("trims surrounding whitespace from a valid key", () => {
+    expect(validateEnvironment({ ...VALID_ENV, GEMINI_API_KEY: "  AIzaFakeKey123  " }).GEMINI_API_KEY)
+      .toBe("AIzaFakeKey123");
+  });
+
+  it("defaults the model when absent or empty", () => {
+    expect(validateEnvironment({ ...VALID_ENV }).LLM_MODEL).toBe(DEFAULT_LLM_MODEL);
+    expect(validateEnvironment({ ...VALID_ENV, LLM_MODEL: "" }).LLM_MODEL).toBe(DEFAULT_LLM_MODEL);
+  });
+
+  it("keeps a valid configured model", () => {
+    expect(validateEnvironment({ ...VALID_ENV, LLM_MODEL: "gemini-2.5-flash" }).LLM_MODEL)
+      .toBe("gemini-2.5-flash");
+  });
+
+  it("disables the assistant on a malformed model name", () => {
+    expect(validateEnvironment({ ...VALID_ENV, LLM_MODEL: "bad model!" }).LLM_MODEL).toBeNull();
   });
 });
