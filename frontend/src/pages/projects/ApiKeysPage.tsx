@@ -1,17 +1,19 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getOrganization } from "../../api/organizations.api";
 import { getOrganizationProject } from "../../api/projects.api";
-import { listProjectApiKeys } from "../../api/api-keys.api";
+import { createProjectApiKey, listProjectApiKeys } from "../../api/api-keys.api";
 import { ApiError, getApiErrorMessage, isAbortError } from "../../api/http-client";
 import type { ApiKeySummary } from "../../types/api-key.types";
 import type { MembershipRole, Project } from "../../types/workspace.types";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ApiKeySecretDialog, type RevealedApiKey } from "./ApiKeySecretDialog";
 
 export function ApiKeysPage() {
   const { organizationId, projectId } = useParams();
   if (!organizationId || !projectId) return <p role="alert">Missing organization or project.</p>;
-  // The key resets every piece of state when the route target changes.
+  // The key resets every piece of state, including any secret, when the route target changes.
   return <ApiKeys key={organizationId + "/" + projectId}
     organizationId={organizationId} projectId={projectId} />;
 }
@@ -37,8 +39,35 @@ function ApiKeys({ organizationId, projectId }: { organizationId: string; projec
   const [listLoading, setListLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
 
+  // Creation and one-time disclosure.
+  const mutation = useRef<AbortController | null>(null);
+  const pending = useRef(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [revealed, setRevealed] = useState<RevealedApiKey | null>(null);
+
   const canManage = project !== null && project.archivedAt === null
     && (role === "OWNER" || role === "ADMIN");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    mutation.current = controller;
+    // A response arriving after leaving this page is ignored: aborted signal.
+    return () => {
+      controller.abort();
+      mutation.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    // Losing permission clears the secret and the form.
+    if (!canManage) {
+      setRevealed(null);
+      setCreateOpen(false);
+    }
+  }, [canManage]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -92,6 +121,56 @@ function ApiKeys({ organizationId, projectId }: { organizationId: string; projec
     return () => controller.abort();
   }, [canManage, organizationId, projectId, listAttempt]);
 
+  function handleCreateOpenChange(open: boolean) {
+    if (pending.current) return;
+    setCreateError(null);
+    if (open) setNameDraft("");
+    setCreateOpen(open);
+  }
+
+  async function handleCreate(event: FormEvent) {
+    event.preventDefault();
+    const signal = mutation.current?.signal;
+    if (pending.current || !canManage || !signal || signal.aborted) return;
+
+    const name = nameDraft.trim();
+    if (name.length < 1 || name.length > 64) {
+      setCreateError("Use a name of 1–64 characters.");
+      return;
+    }
+
+    pending.current = true;
+    setIsCreating(true);
+    setCreateError(null);
+    try {
+      const created = await createProjectApiKey(organizationId, projectId, { name }, signal);
+      if (signal.aborted) return;
+      // The secret goes to the disclosure state only; the list gets the summary.
+      const { key, ...summary } = created;
+      setKeys(current => (current ? [summary, ...current] : current));
+      setRevealed({ name: summary.name, keyPrefix: summary.keyPrefix, key });
+      setCreateOpen(false);
+      setNameDraft("");
+      setListAttempt(value => value + 1); // reconcile with the server
+    } catch (failure) {
+      if (signal.aborted || isAbortError(failure)) return;
+      if (failure instanceof ApiError) {
+        const details = failure.details?.flatMap(detail => detail.messages).join(" ");
+        setCreateError(details || getApiErrorMessage(failure, "Failed to create API key."));
+      } else {
+        // The response may have been lost: never repeat the POST automatically.
+        setCreateError(
+          "The request did not complete, so the key may or may not have been created. "
+          + "Check the list below before trying again: revoke an unwanted key or create another.",
+        );
+        setListAttempt(value => value + 1);
+      }
+    } finally {
+      pending.current = false;
+      if (!signal.aborted) setIsCreating(false);
+    }
+  }
+
   if (contextLoading) return <p>Loading…</p>;
 
   if (contextError || !project || !role) {
@@ -131,6 +210,43 @@ function ApiKeys({ organizationId, projectId }: { organizationId: string; projec
     <section>
       <p><Link to={projectPath}>← {project.name}</Link></p>
       <h1>API keys</h1>
+
+      <Button type="button" onClick={() => handleCreateOpenChange(true)}>Create API key</Button>
+
+      <Dialog open={createOpen} onOpenChange={handleCreateOpenChange}>
+        <DialogContent className="rounded-lg" showCloseButton={!isCreating}>
+          <DialogHeader>
+            <DialogTitle>Create API key</DialogTitle>
+            <DialogDescription>
+              Name the key after the application that will use it.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleCreate} className="space-y-4">
+            <div className="space-y-1">
+              <label htmlFor="api-key-name" className="text-sm font-medium">Name</label>
+              <input
+                id="api-key-name"
+                value={nameDraft}
+                onChange={event => setNameDraft(event.target.value)}
+                disabled={isCreating}
+                autoComplete="off"
+                autoFocus
+                className="w-full rounded-md border p-2 text-sm"
+              />
+            </div>
+            {createError && <p role="alert" className="text-sm text-destructive">{createError}</p>}
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" disabled={isCreating}
+                onClick={() => handleCreateOpenChange(false)}>Cancel</Button>
+              <Button type="submit" disabled={isCreating}>
+                {isCreating ? "Creating…" : "Create key"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {revealed && <ApiKeySecretDialog revealed={revealed} onClose={() => setRevealed(null)} />}
 
       {listLoading && keys === null && <p>Loading API keys…</p>}
 
