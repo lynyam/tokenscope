@@ -408,10 +408,10 @@ test("an ADMIN demoted during the session loses the controls and the secret", as
   expect(stored).toBeUndefined();
 });
 
-test("Escape and an outside click ask before discarding the secret", async ({ page }) => {
+test("Escape asks before discarding the secret", async ({ page }) => {
   await signIn(page, ws.owner);
   await page.goto(keysUrl(ws.orgId, ws.projectId));
-  await createKeyInUi(page, "Dismiss " + RUN);
+  await createKeyInUi(page, "Escape " + RUN);
   const field = page.getByRole("textbox", { name: "API key", exact: true });
   await expect(field).toBeVisible();
 
@@ -421,12 +421,26 @@ test("Escape and an outside click ask before discarding the secret", async ({ pa
 
   await page.getByRole("button", { name: "Keep key visible" }).click();
   await expect(page.getByText("Close without saving?")).toBeHidden();
+  await expect(field).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Close and discard" }).click();
+  await expect(field).toHaveCount(0);
+});
+
+test("an outside click asks before discarding the secret", async ({ page }) => {
+  await signIn(page, ws.owner);
+  await page.goto(keysUrl(ws.orgId, ws.projectId));
+  await createKeyInUi(page, "Outside " + RUN);
+  const field = page.getByRole("textbox", { name: "API key", exact: true });
+  await expect(field).toBeVisible();
 
   // The corner of the viewport is on the backdrop, outside the dialog.
   await page.mouse.click(5, 5);
   await expect(page.getByText("Close without saving?")).toBeVisible();
   await expect(field).toBeVisible();
 
-  await page.getByRole("button", { name: "Close and discard" }).click();
-  await expect(field).toHaveCount(0);
+  await page.getByRole("button", { name: "Keep key visible" }).click();
+  await expect(page.getByText("Close without saving?")).toBeHidden();
+  await expect(field).toBeVisible();
 });
