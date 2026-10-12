@@ -5,6 +5,7 @@ import { AuthModule } from "./auth/auth.module";
 import { OrganizationsModule } from "./organizations/organizations.module";
 import { MembershipsModule } from "./memberships/memberships.module";
 import { ProjectsModule } from "./projects/projects.module";
+import { AssistantModule } from "./assistant/assistant.module";
 
 @Module({
 	imports: [
@@ -12,6 +13,7 @@ import { ProjectsModule } from "./projects/projects.module";
 		HealthModule,
 		AuthModule,
 		OrganizationsModule,
+		AssistantModule,
 		MembershipsModule,
 		ProjectsModule,
 	],
