@@ -75,6 +75,15 @@ async function signIn(page: Page, actor: Actor) {
   );
 }
 
+// Real sign-in through the form, used once in the main journey.
+async function signInThroughUi(page: Page, actor: Actor) {
+  await page.goto("/signin");
+  await page.getByLabel("Email").fill(actor.email);
+  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/organizations/);
+}
+
 // Records matching requests so a test can prove nothing was sent.
 function track(page: Page, match: (method: string, url: string) => boolean) {
   const seen: string[] = [];
@@ -132,7 +141,7 @@ test("OWNER sees the empty state on a new project", async ({ page }) => {
 
 test("OWNER creates a key, sees the secret once, then revokes it", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-  await signIn(page, ws.owner);
+  await signInThroughUi(page, ws.owner);
   const name = "Journey " + RUN;
   await page.goto(keysUrl(ws.orgId, ws.projectId));
   await createKeyInUi(page, name);
@@ -215,6 +224,15 @@ test("MEMBER is denied: no link, no controls, no key list request", async ({ pag
   await expect(page.getByText(/do not have permission/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Create API key" })).toHaveCount(0);
   expect(seen).toHaveLength(0);
+
+  // The backend stays authoritative: direct management requests are refused.
+  const list = await api.get(keysApi(ws.orgId, ws.projectId), { headers: auth(ws.member) });
+  expect(list.status()).toBe(403);
+  expect((await list.json()).code).toBe("INSUFFICIENT_ORGANIZATION_ROLE");
+  const create = await api.post(keysApi(ws.orgId, ws.projectId), {
+    headers: auth(ws.member), data: { name: "Denied " + RUN },
+  });
+  expect(create.status()).toBe(403);
 });
 
 test("OWNER reaches the page from the project detail link", async ({ page }) => {
