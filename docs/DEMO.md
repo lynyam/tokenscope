@@ -578,7 +578,7 @@ Use Alice (OWNER) and Bob (MEMBER) in two browser windows, as in section 3. Neve
 | 5 | Alice clicks **Revoke**, then **Cancel** | No request is sent (browser network tab) |
 | 6 | Alice clicks **Revoke**, then **Revoke key** | The row shows `Revoked` and a date after the list refresh |
 | 7 | Bob opens the same URL | A permission-denied message, no controls and no list request |
-| 8 | Alice archives the project and reopens the page | "This project is archived" and no list request |
+| 8 | Alice archives the project and reopens the page | "Project not found.", no key list and no controls (the backend answers 404 for an archived project) |
 | 9 | A client calls a public trace route with a fresh key | BLOCKED until TSE-68/69 are merged |
 
 Public clients send the key in exactly one header. A JWT is not accepted there, and the key is not accepted on browser workspace routes (see [API.md](./API.md)). This example is not executable until the trace routes exist:
