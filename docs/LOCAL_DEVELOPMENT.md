@@ -404,13 +404,13 @@ Node 24, matching the development containers.
 
 The shared authentication, organization, membership and project integrations are present in the Sprint 1 baseline. Run the complete frontend suite when changing their shared transport or session behavior.
 
-New unit/component tests remain under `frontend/test/`. Real browser journeys belong under `frontend/test/e2e/` once browser-test infrastructure is introduced.
+New unit/component tests remain under `frontend/test/`.
 
-At baseline `854da94`, the frontend package has no Playwright dependency or browser-test command. Do not present planned browser tests as an existing executable suite.
+Real browser journeys live under `frontend/test/e2e/` and run with Playwright through `npm run test:e2e` from `frontend/`. They need the full stack running (PostgreSQL, backend and the frontend proxying `/api` to the backend) and Chromium installed once with `npx playwright install chromium`. `E2E_BASE_URL` sets the frontend origin and defaults to `http://localhost:5173`. The journeys create disposable users, organizations and projects through the API and never use real credentials. Tracing, video and screenshots are disabled because the API-key journeys display one-time plaintext secrets; do not enable them for those tests. A journey that depends on routes that are not merged yet (public traces, TSE-68/69) is marked `test.fixme` and does not count as passing.
 
 TSE-72 extends transport for multipart uploads, private binary responses and assistant streams while preserving current JSON callers.
 
-For TSE-74, document that the returned key must remain only in transient UI memory.
+API keys (TSE-74): the plaintext key returned at creation exists only in the state of the one-time disclosure dialog. It is never written to browser storage, URLs, logs or test artifacts. Unit tests use obviously fake placeholder keys.
 
 See `EVALUATION_ARCHITECTURE.md` for current integration boundaries and `SPRINT_1_ARCHITECTURE.md` for the existing client/session design.
 ---
