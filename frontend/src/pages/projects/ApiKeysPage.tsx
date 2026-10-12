@@ -18,6 +18,12 @@ export function ApiKeysPage() {
     organizationId={organizationId} projectId={projectId} />;
 }
 
+// Published location of the public API contract.
+const PUBLIC_API_DOCS_URL =
+  "https://github.com/lynyam/tokenscope/blob/develop/docs/API.md#api-keys--tse-67--tse-74";
+// Placeholder only: the page never builds a command containing a real key.
+const CURL_TEMPLATE = 'curl "$TOKENSCOPE_ORIGIN/api/v1/public/traces" \\\n  -H "X-API-Key: <PROJECT_API_KEY>"';
+
 function formatDate(value: string) {
   return new Date(value).toLocaleString();
 }
@@ -401,6 +407,19 @@ function ApiKeys({ organizationId, projectId }: { organizationId: string; projec
           ))}
         </ul>
       )}
+
+      <section aria-labelledby="api-usage-heading" className="mt-8 space-y-2">
+        <h2 id="api-usage-heading" className="text-lg font-semibold">Use a key</h2>
+        <p className="text-sm">
+          This page and the other management pages use your signed-in session (a browser JWT).
+          Public trace endpoints use the project key in the <code>X-API-Key</code> header.
+          Never send your browser token in place of a project key.
+        </p>
+        <pre className="overflow-x-auto rounded-md border p-3 text-sm"><code>{CURL_TEMPLATE}</code></pre>
+        <p className="text-sm">
+          <a href={PUBLIC_API_DOCS_URL} target="_blank" rel="noreferrer">Public API documentation</a>
+        </p>
+      </section>
     </section>
   );
 }
