@@ -565,7 +565,7 @@ Do not reuse older test totals as fresh evidence.
 
 ### API keys management UI — TSE-74
 
-Status: NOT RUN. These steps are performed by hand: the frontend has no executable browser test suite yet (see [LOCAL_DEVELOPMENT.md](./LOCAL_DEVELOPMENT.md)).
+Status: NOT RUN. These steps can be performed by hand. `frontend/test/e2e/api-keys.spec.ts` automates the same journey against a running stack (see [LOCAL_DEVELOPMENT.md](./LOCAL_DEVELOPMENT.md)); a skipped journey is not a pass.
 
 Use Alice (OWNER) and Bob (MEMBER) in two browser windows, as in section 3. Never record a real key: take screenshots before the key is displayed or with the key field hidden, and keep it out of notes, logs and shared recordings.
 
