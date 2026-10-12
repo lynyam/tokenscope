@@ -563,6 +563,32 @@ Do not reuse older test totals as fresh evidence.
 | Browsers | Chrome, Firefox and Edge evidence |
 | Public pages | Accessible Privacy/Terms reflecting actual implementation |
 
+### API keys management UI — TSE-74
+
+Status: NOT RUN. These steps are performed by hand: the frontend has no executable browser test suite yet (see [LOCAL_DEVELOPMENT.md](./LOCAL_DEVELOPMENT.md)).
+
+Use Alice (OWNER) and Bob (MEMBER) in two browser windows, as in section 3. Never record a real key: take screenshots before the key is displayed or with the key field hidden, and keep it out of notes, logs and shared recordings.
+
+| # | Steps | Expected |
+|---|---|---|
+| 1 | Alice opens `UI Demo Project` and selects **API keys** | The list loads; with no key it reads "No API keys yet." |
+| 2 | Alice creates a key named `Demo writer` | A dialog shows the full key once, with a Copy button and the scope wording |
+| 3 | Alice clicks **Copy** and pastes into a scratch editor | "Copied to clipboard." appears only after the clipboard accepted the key; the pasted value is complete |
+| 4 | Alice closes the dialog and reloads the page | The list shows the name, the prefix and `Active`; the full key appears nowhere |
+| 5 | Alice clicks **Revoke**, then **Cancel** | No request is sent (browser network tab) |
+| 6 | Alice clicks **Revoke**, then **Revoke key** | The row shows `Revoked` and a date after the list refresh |
+| 7 | Bob opens the same URL | A permission-denied message, no controls and no list request |
+| 8 | Alice archives the project and reopens the page | "This project is archived" and no list request |
+| 9 | A client calls a public trace route with a fresh key | BLOCKED until TSE-68/69 are merged |
+
+Public clients send the key in exactly one header. A JWT is not accepted there, and the key is not accepted on browser workspace routes (see [API.md](./API.md)). This example is not executable until the trace routes exist:
+
+```sh
+curl "$TOKENSCOPE_ORIGIN/api/v1/public/traces" -H "X-API-Key: <PROJECT_API_KEY>"
+```
+
+For each row record the commit SHA, the environment, PASS, FAIL, BLOCKED or NOT RUN, and safe evidence only.
+
 ### Canonical analytics fixture
 
 Use the full UTC day:
