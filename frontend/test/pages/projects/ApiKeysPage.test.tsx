@@ -500,3 +500,15 @@ it("discards the secret only after an explicit confirmation", async () => {
   await waitFor(() => expect(screen.queryByRole("textbox", { name: "API key" })).toBeNull());
   expect(screen.queryByDisplayValue(created.key)).toBeNull();
 });
+
+it("asks for confirmation when the corner close button is used", async () => {
+  write = async () => { keys = [createdSummary, summary]; return json(created, 201); };
+  view();
+  submitName(await openCreate(), "New key");
+  await screen.findByRole("textbox", { name: "API key" });
+
+  fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+  expect(await screen.findByText("Close without saving?")).toBeInTheDocument();
+  expect(screen.getByRole("textbox", { name: "API key" })).toBeInTheDocument();
+});
