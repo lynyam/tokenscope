@@ -325,3 +325,126 @@ it("ignores a creation response that arrives after switching project", async () 
   expect(screen.queryByRole("textbox", { name: "API key" })).toBeNull();
   expect(document.body.textContent).not.toContain(created.key);
 });
+
+it("explains how to use a key without ever showing a real one", async () => {
+  view();
+
+  expect(await screen.findByRole("heading", { name: "Use a key" })).toBeInTheDocument();
+  expect(screen.getByText(/browser JWT/)).toBeInTheDocument();
+  expect(screen.getByText(/<PROJECT_API_KEY>/)).toBeInTheDocument();
+  const link = screen.getByRole("link", { name: "Public API documentation" });
+  expect(link).toHaveAttribute("href", expect.stringContaining("docs/API.md"));
+  expect(document.body.textContent).not.toContain("tsk_");
+});
+
+it("does not show the usage guidance to a MEMBER", async () => {
+  role = "MEMBER";
+  view();
+
+  expect(await screen.findByText(/do not have permission/)).toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "Use a key" })).toBeNull();
+});
+
+it("keeps the draft and the dialog when the server rejects the name", async () => {
+  write = async () => json({ code: "VALIDATION_ERROR", message: "Invalid request." }, 400);
+  view();
+  const input = await openCreate();
+
+  submitName(input, "Draft name");
+
+  expect(await screen.findByRole("alert")).toBeInTheDocument();
+  expect(screen.getByLabelText("Name")).toHaveValue("Draft name");
+  expect(writes()).toHaveLength(1);
+});
+
+it("shows loading, not an empty list, until the first answer arrives", async () => {
+  const original = fetchMock.getMockImplementation()!;
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  fetchMock.mockImplementation(async (url, options) => {
+    if (url === projectUrl + "/api-keys" && options?.method === "GET") await gate;
+    return original(url, options);
+  });
+  keys = [];
+  view();
+
+  expect(await screen.findByText("Loading API keys…")).toBeInTheDocument();
+  expect(screen.queryByText("No API keys yet.")).toBeNull();
+
+  await act(async () => { release(); });
+  expect(await screen.findByText("No API keys yet.")).toBeInTheDocument();
+});
+
+it("never turns a failed list request into an empty list, and Retry recovers", async () => {
+  const original = fetchMock.getMockImplementation()!;
+  let failing = true;
+  fetchMock.mockImplementation(async (url, options) => {
+    if (failing && url === projectUrl + "/api-keys" && options?.method === "GET") {
+      return json({ code: "INTERNAL_ERROR", message: "Server error." }, 500);
+    }
+    return original(url, options);
+  });
+  view();
+
+  expect(await screen.findByRole("alert")).toBeInTheDocument();
+  expect(screen.queryByText("No API keys yet.")).toBeNull();
+
+  failing = false;
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  expect(await screen.findByText("CI")).toBeInTheDocument();
+});
+
+it("keeps the revoke dialog open on a server error and retries only on a deliberate click", async () => {
+  let attempts = 0;
+  write = async () => {
+    attempts += 1;
+    if (attempts === 1) return json({ code: "INTERNAL_ERROR", message: "Server error." }, 500);
+    keys = [{ ...summary, revokedAt: "2026-09-02T00:00:00.000Z" }];
+    return new Response(null, { status: 204 });
+  };
+  view();
+  fireEvent.click(await screen.findByRole("button", { name: "Revoke" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Revoke key" }));
+
+  expect(await screen.findByRole("alert")).toBeInTheDocument();
+  expect(screen.getByText("Revoke this key?")).toBeInTheDocument();
+  expect(writes()).toHaveLength(1);
+
+  fireEvent.click(screen.getByRole("button", { name: "Revoke key" }));
+  expect(await screen.findByText(/^Revoked/)).toBeInTheDocument();
+  expect(writes()).toHaveLength(2);
+});
+
+it("keeps the key as revoked when the refresh after a confirmed revocation fails", async () => {
+  const original = fetchMock.getMockImplementation()!;
+  let failList = false;
+  fetchMock.mockImplementation(async (url, options) => {
+    if (failList && url === projectUrl + "/api-keys" && options?.method === "GET") {
+      return json({ code: "INTERNAL_ERROR", message: "Server error." }, 500);
+    }
+    return original(url, options);
+  });
+  write = async () => {
+    failList = true;
+    return new Response(null, { status: 204 });
+  };
+  view();
+  fireEvent.click(await screen.findByRole("button", { name: "Revoke" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Revoke key" }));
+
+  expect(await screen.findByRole("alert")).toBeInTheDocument();
+  expect(screen.getByText("Revoked")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Revoke" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+});
+
+it("clears the page and offers navigation when the project disappears during creation", async () => {
+  write = async () => json({ code: "PROJECT_NOT_FOUND", message: "Project not found." }, 404);
+  view();
+  submitName(await openCreate(), "Gone");
+
+  expect(await screen.findByText("Project not found.")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Back to projects" })).toBeInTheDocument();
+  expect(screen.queryByRole("textbox", { name: "API key" })).toBeNull();
+  expect(screen.queryByText("CI")).toBeNull();
+});
