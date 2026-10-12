@@ -580,6 +580,8 @@ Use Alice (OWNER) and Bob (MEMBER) in two browser windows, as in section 3. Neve
 | 7 | Bob opens the same URL | A permission-denied message, no controls and no list request |
 | 8 | Alice archives the project and reopens the page | "Project not found." and no list request (the backend would answer 404 for an archived project) |
 | 9 | A client calls a public trace route with a fresh key | BLOCKED until TSE-68/69 are merged |
+| 10 | Alice creates a key, then presses Escape on the secret dialog | "Close without saving?" appears and the key stays visible; a second Escape goes back to the key |
+| 11 | With the secret dialog open, Alice clicks outside it, then **Close and discard** | The same confirmation appears; after **Close and discard** the key is gone and cannot be shown again |
 
 Public clients send the key in exactly one header. A JWT is not accepted there, and the key is not accepted on browser workspace routes (see [API.md](./API.md)). This example is not executable until the trace routes exist:
 
