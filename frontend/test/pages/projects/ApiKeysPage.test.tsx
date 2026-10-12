@@ -448,3 +448,55 @@ it("clears the page and offers navigation when the project disappears during cre
   expect(screen.queryByRole("textbox", { name: "API key" })).toBeNull();
   expect(screen.queryByText("CI")).toBeNull();
 });
+
+it("asks for confirmation instead of discarding the secret on Escape", async () => {
+  write = async () => { keys = [createdSummary, summary]; return json(created, 201); };
+  view();
+  submitName(await openCreate(), "New key");
+  const field = await screen.findByRole("textbox", { name: "API key" });
+
+  fireEvent.keyDown(field, { key: "Escape" });
+
+  expect(await screen.findByText("Close without saving?")).toBeInTheDocument();
+  expect(screen.getByRole("textbox", { name: "API key" })).toBeInTheDocument();
+});
+
+it("goes back to the key when Escape is pressed again during the confirmation", async () => {
+  write = async () => { keys = [createdSummary, summary]; return json(created, 201); };
+  view();
+  submitName(await openCreate(), "New key");
+  const field = await screen.findByRole("textbox", { name: "API key" });
+  fireEvent.keyDown(field, { key: "Escape" });
+  await screen.findByText("Close without saving?");
+
+  fireEvent.keyDown(screen.getByRole("button", { name: "Keep key visible" }), { key: "Escape" });
+
+  await waitFor(() => expect(screen.queryByText("Close without saving?")).toBeNull());
+  expect(screen.getByRole("textbox", { name: "API key" })).toBeInTheDocument();
+});
+
+it("keeps the secret visible when the user chooses to keep it", async () => {
+  write = async () => { keys = [createdSummary, summary]; return json(created, 201); };
+  view();
+  submitName(await openCreate(), "New key");
+  const field = await screen.findByRole("textbox", { name: "API key" });
+  fireEvent.keyDown(field, { key: "Escape" });
+
+  fireEvent.click(await screen.findByRole("button", { name: "Keep key visible" }));
+
+  await waitFor(() => expect(screen.queryByText("Close without saving?")).toBeNull());
+  expect(screen.getByRole("textbox", { name: "API key" })).toHaveFocus();
+});
+
+it("discards the secret only after an explicit confirmation", async () => {
+  write = async () => { keys = [createdSummary, summary]; return json(created, 201); };
+  view();
+  submitName(await openCreate(), "New key");
+  const field = await screen.findByRole("textbox", { name: "API key" });
+  fireEvent.keyDown(field, { key: "Escape" });
+
+  fireEvent.click(await screen.findByRole("button", { name: "Close and discard" }));
+
+  await waitFor(() => expect(screen.queryByRole("textbox", { name: "API key" })).toBeNull());
+  expect(screen.queryByDisplayValue(created.key)).toBeNull();
+});
