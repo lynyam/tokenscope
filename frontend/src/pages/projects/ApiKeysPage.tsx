@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getOrganization } from "../../api/organizations.api";
 import { getOrganizationProject } from "../../api/projects.api";
-import { createProjectApiKey, listProjectApiKeys } from "../../api/api-keys.api";
+import { createProjectApiKey, listProjectApiKeys, revokeProjectApiKey } from "../../api/api-keys.api";
 import { ApiError, getApiErrorMessage, isAbortError } from "../../api/http-client";
 import type { ApiKeySummary } from "../../types/api-key.types";
 import type { MembershipRole, Project } from "../../types/workspace.types";
@@ -39,14 +39,23 @@ function ApiKeys({ organizationId, projectId }: { organizationId: string; projec
   const [listLoading, setListLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
 
-  // Creation and one-time disclosure.
+  // Mutations share one lock: creation and revocation never overlap.
   const mutation = useRef<AbortController | null>(null);
   const pending = useRef(false);
+
+  // Creation and one-time disclosure.
   const [createOpen, setCreateOpen] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [revealed, setRevealed] = useState<RevealedApiKey | null>(null);
+
+  // Revocation.
+  const [revokeTarget, setRevokeTarget] = useState<ApiKeySummary | null>(null);
+  const [isRevoking, setIsRevoking] = useState(false);
+  const [revokeError, setRevokeError] = useState<string | null>(null);
+  // Keys the server confirmed as revoked (204) even if the refresh fails afterwards.
+  const [confirmedRevoked, setConfirmedRevoked] = useState<ReadonlySet<string>>(new Set());
 
   const canManage = project !== null && project.archivedAt === null
     && (role === "OWNER" || role === "ADMIN");
@@ -62,10 +71,11 @@ function ApiKeys({ organizationId, projectId }: { organizationId: string; projec
   }, []);
 
   useEffect(() => {
-    // Losing permission clears the secret and the form.
+    // Losing permission clears the secret, the forms and the dialogs.
     if (!canManage) {
       setRevealed(null);
       setCreateOpen(false);
+      setRevokeTarget(null);
     }
   }, [canManage]);
 
@@ -171,6 +181,36 @@ function ApiKeys({ organizationId, projectId }: { organizationId: string; projec
     }
   }
 
+  function handleRevokeOpenChange(open: boolean) {
+    if (pending.current || open) return; // only closing is handled here
+    setRevokeError(null);
+    setRevokeTarget(null);
+  }
+
+  async function handleRevoke() {
+    const signal = mutation.current?.signal;
+    if (!revokeTarget || pending.current || !canManage || !signal || signal.aborted) return;
+
+    const target = revokeTarget;
+    pending.current = true;
+    setIsRevoking(true);
+    setRevokeError(null);
+    try {
+      await revokeProjectApiKey(organizationId, projectId, target.id, signal);
+      if (signal.aborted) return;
+      setConfirmedRevoked(current => new Set(current).add(target.id));
+      setRevokeTarget(null);
+      setListAttempt(value => value + 1); // the server decides revokedAt
+    } catch (failure) {
+      if (signal.aborted || isAbortError(failure)) return;
+      // The dialog stays open: pressing Revoke again is the retry.
+      setRevokeError(getApiErrorMessage(failure, "Failed to revoke the API key."));
+    } finally {
+      pending.current = false;
+      if (!signal.aborted) setIsRevoking(false);
+    }
+  }
+
   if (contextLoading) return <p>Loading…</p>;
 
   if (contextError || !project || !role) {
@@ -248,6 +288,30 @@ function ApiKeys({ organizationId, projectId }: { organizationId: string; projec
 
       {revealed && <ApiKeySecretDialog revealed={revealed} onClose={() => setRevealed(null)} />}
 
+      <Dialog open={revokeTarget !== null} onOpenChange={handleRevokeOpenChange}>
+        <DialogContent className="rounded-lg" showCloseButton={!isRevoking}>
+          <DialogHeader>
+            <DialogTitle>Revoke this key?</DialogTitle>
+            <DialogDescription>
+              Future requests using it will be rejected. Applications using this key will need a new one.
+            </DialogDescription>
+          </DialogHeader>
+          {revokeTarget && (
+            <p className="text-sm">
+              <strong>{revokeTarget.name}</strong> <code>{revokeTarget.keyPrefix}…</code>
+            </p>
+          )}
+          {revokeError && <p role="alert" className="text-sm text-destructive">{revokeError}</p>}
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" disabled={isRevoking}
+              onClick={() => handleRevokeOpenChange(false)}>Cancel</Button>
+            <Button type="button" variant="destructive" disabled={isRevoking} onClick={handleRevoke}>
+              {isRevoking ? "Revoking…" : "Revoke key"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {listLoading && keys === null && <p>Loading API keys…</p>}
 
       {listError && (
@@ -269,7 +333,17 @@ function ApiKeys({ organizationId, projectId }: { organizationId: string; projec
               <div>
                 {apiKey.lastUsedAt ? "Last used " + formatDate(apiKey.lastUsedAt) : "No recorded use."}
               </div>
-              <div>{apiKey.revokedAt ? "Revoked " + formatDate(apiKey.revokedAt) : "Active"}</div>
+              <div>
+                {apiKey.revokedAt
+                  ? "Revoked " + formatDate(apiKey.revokedAt)
+                  : confirmedRevoked.has(apiKey.id) ? "Revoked" : "Active"}
+              </div>
+              {!apiKey.revokedAt && !confirmedRevoked.has(apiKey.id) && (
+                <Button type="button" variant="outline" disabled={isRevoking || isCreating}
+                  onClick={() => { setRevokeError(null); setRevokeTarget(apiKey); }}>
+                  Revoke
+                </Button>
+              )}
             </li>
           ))}
         </ul>
