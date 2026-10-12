@@ -22,6 +22,19 @@ function formatDate(value: string) {
   return new Date(value).toLocaleString();
 }
 
+// Message for failures that do not change what the screen shows.
+function describeFailure(failure: unknown, fallback: string) {
+  if (failure instanceof ApiError) {
+    if (failure.statusCode === undefined) {
+      return "Unable to reach the server. Check your connection and try again.";
+    }
+    if (failure.statusCode === 429) {
+      return "Too many requests. Wait a moment, then try again.";
+    }
+  }
+  return getApiErrorMessage(failure, fallback);
+}
+
 function ApiKeys({ organizationId, projectId }: { organizationId: string; projectId: string }) {
   const projectPath = "/organizations/" + encodeURIComponent(organizationId)
     + "/projects/" + encodeURIComponent(projectId);
@@ -39,11 +52,9 @@ function ApiKeys({ organizationId, projectId }: { organizationId: string; projec
   const [listLoading, setListLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
 
-  // Mutations share one lock: creation and revocation never overlap.
+  // Creation and one-time disclosure.
   const mutation = useRef<AbortController | null>(null);
   const pending = useRef(false);
-
-  // Creation and one-time disclosure.
   const [createOpen, setCreateOpen] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
   const [isCreating, setIsCreating] = useState(false);
@@ -56,6 +67,7 @@ function ApiKeys({ organizationId, projectId }: { organizationId: string; projec
   const [revokeError, setRevokeError] = useState<string | null>(null);
   // Keys the server confirmed as revoked (204) even if the refresh fails afterwards.
   const [confirmedRevoked, setConfirmedRevoked] = useState<ReadonlySet<string>>(new Set());
+  const [notice, setNotice] = useState<string | null>(null);
 
   const canManage = project !== null && project.archivedAt === null
     && (role === "OWNER" || role === "ADMIN");
@@ -71,7 +83,7 @@ function ApiKeys({ organizationId, projectId }: { organizationId: string; projec
   }, []);
 
   useEffect(() => {
-    // Losing permission clears the secret, the forms and the dialogs.
+    // Losing permission clears the secret and the dialogs.
     if (!canManage) {
       setRevealed(null);
       setCreateOpen(false);
@@ -100,7 +112,7 @@ function ApiKeys({ organizationId, projectId }: { organizationId: string; projec
         // Do not reveal whether an inaccessible project exists.
         setContextError(failure instanceof ApiError && failure.statusCode === 404
           ? "Project not found."
-          : getApiErrorMessage(failure, "Failed to load project."));
+          : describeFailure(failure, "Failed to load project."));
       })
       .finally(() => {
         if (!controller.signal.aborted) setContextLoading(false);
@@ -122,14 +134,41 @@ function ApiKeys({ organizationId, projectId }: { organizationId: string; projec
       })
       .catch(failure => {
         if (controller.signal.aborted || isAbortError(failure)) return;
+        if (handleSharedFailure(failure)) return;
         // A failure is never turned into an empty list.
-        setListError(getApiErrorMessage(failure, "Failed to load API keys."));
+        setListError(describeFailure(failure, "Failed to load API keys."));
       })
       .finally(() => {
         if (!controller.signal.aborted) setListLoading(false);
       });
     return () => controller.abort();
   }, [canManage, organizationId, projectId, listAttempt]);
+
+  function dropContent() {
+    setRevealed(null); // the plaintext never survives a permission or project change
+    setCreateOpen(false);
+    setRevokeTarget(null);
+    setKeys(null);
+  }
+
+  // Failures that change what the whole screen may show. Returns true if handled.
+  function handleSharedFailure(failure: unknown): boolean {
+    if (!(failure instanceof ApiError)) return false;
+    if (failure.statusCode === 403 && failure.code === "INSUFFICIENT_ORGANIZATION_ROLE") {
+      dropContent();
+      setContextAttempt(value => value + 1); // re-read the role; the screen follows it
+      return true;
+    }
+    if (failure.statusCode === 404
+      && (failure.code === "PROJECT_NOT_FOUND" || failure.code === "ORGANIZATION_NOT_FOUND")) {
+      dropContent();
+      setRole(null);
+      setProject(null);
+      setContextError("Project not found.");
+      return true;
+    }
+    return false;
+  }
 
   function handleCreateOpenChange(open: boolean) {
     if (pending.current) return;
@@ -149,6 +188,7 @@ function ApiKeys({ organizationId, projectId }: { organizationId: string; projec
       return;
     }
 
+    setNotice(null);
     pending.current = true;
     setIsCreating(true);
     setCreateError(null);
@@ -164,11 +204,12 @@ function ApiKeys({ organizationId, projectId }: { organizationId: string; projec
       setListAttempt(value => value + 1); // reconcile with the server
     } catch (failure) {
       if (signal.aborted || isAbortError(failure)) return;
-      if (failure instanceof ApiError) {
+      if (handleSharedFailure(failure)) return;
+      if (failure instanceof ApiError && failure.statusCode !== undefined) {
         const details = failure.details?.flatMap(detail => detail.messages).join(" ");
-        setCreateError(details || getApiErrorMessage(failure, "Failed to create API key."));
+        setCreateError(details || describeFailure(failure, "Failed to create API key."));
       } else {
-        // The response may have been lost: never repeat the POST automatically.
+        // No HTTP answer (network cut): the key may exist. Never repeat the POST automatically.
         setCreateError(
           "The request did not complete, so the key may or may not have been created. "
           + "Check the list below before trying again: revoke an unwanted key or create another.",
@@ -192,6 +233,7 @@ function ApiKeys({ organizationId, projectId }: { organizationId: string; projec
     if (!revokeTarget || pending.current || !canManage || !signal || signal.aborted) return;
 
     const target = revokeTarget;
+    setNotice(null);
     pending.current = true;
     setIsRevoking(true);
     setRevokeError(null);
@@ -203,8 +245,17 @@ function ApiKeys({ organizationId, projectId }: { organizationId: string; projec
       setListAttempt(value => value + 1); // the server decides revokedAt
     } catch (failure) {
       if (signal.aborted || isAbortError(failure)) return;
+      if (handleSharedFailure(failure)) return;
+      if (failure instanceof ApiError && failure.statusCode === 404 && failure.code === "API_KEY_NOT_FOUND") {
+        // Already gone: nothing left to revoke. Close and reload the list only.
+        setRevokeError(null);
+        setRevokeTarget(null);
+        setNotice("This key no longer exists for this project. The list has been refreshed.");
+        setListAttempt(value => value + 1);
+        return;
+      }
       // The dialog stays open: pressing Revoke again is the retry.
-      setRevokeError(getApiErrorMessage(failure, "Failed to revoke the API key."));
+      setRevokeError(describeFailure(failure, "Failed to revoke the API key."));
     } finally {
       pending.current = false;
       if (!signal.aborted) setIsRevoking(false);
@@ -252,6 +303,8 @@ function ApiKeys({ organizationId, projectId }: { organizationId: string; projec
       <h1>API keys</h1>
 
       <Button type="button" onClick={() => handleCreateOpenChange(true)}>Create API key</Button>
+
+      {notice && <p role="status" className="text-sm">{notice}</p>}
 
       <Dialog open={createOpen} onOpenChange={handleCreateOpenChange}>
         <DialogContent className="rounded-lg" showCloseButton={!isCreating}>
