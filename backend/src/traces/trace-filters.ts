@@ -18,6 +18,7 @@ export const TRACE_FILTER_KEYS = [
 	"status",
 ] as const;
 
+
 export interface ResolvedTraceFilters {
 	from: Date;
 	to: Date;
