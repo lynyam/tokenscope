@@ -7,6 +7,7 @@ const VALID_ENV = {
   JWT_ISSUER: "tokenscope-test",
   JWT_AUDIENCE: "tokenscope-test-web",
   JWT_ACCESS_TTL_SECONDS: "3600",
+  DOCUMENT_STORAGE_ROOT: "/var/lib/tokenscope/documents",
 };
 
 describe("Environment configuration", () => {
