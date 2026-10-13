@@ -55,11 +55,13 @@
     "http-errors": "^2.0.1",
     "pg": "^8.22.0",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.2"
+    "rxjs": "^7.8.2",
+    "swagger-ui-express": "5.0.1"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.24",
     "@nestjs/testing": "^11.1.28",
+    "@redocly/cli": "2.63.0",
     "@types/express": "^5.0.6",
     "@types/http-errors": "^2.0.5",
     "@types/jest": "^30.0.0",
@@ -67,6 +69,7 @@
     "@types/node": "^26.1.1",
     "@types/pg": "^8.20.0",
     "@types/supertest": "^6.0.3",
+    "@types/swagger-ui-express": "4.1.8",
     "dotenv": "^17.4.2",
     "jest": "^30.5.1",
     "jsonwebtoken": "^9.0.3",
