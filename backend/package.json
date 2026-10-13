@@ -26,7 +26,8 @@
     "pretest": "prisma generate",
     "test": "npm run test:unit && npm run test:e2e",
     "test:unit": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config test/jest-unit.json --runInBand",
-    "test:integration": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config test/jest-integration.json --runInBand"
+    "test:integration": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config test/jest-integration.json --runInBand",
+    "pricing:load": "node dist/scripts/load-model-prices.js"
   },
   "repository": {
     "type": "git",

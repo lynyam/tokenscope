@@ -898,6 +898,27 @@ An actual correction updates its values atomically and increments version once.
 
 DELETE sets `deletedAt`, increments version and returns `204`. Later GET/DELETE returns `404`. The external ID remains reserved.
 
+### TSE-68 implementation status
+
+Implemented:
+
+- POST /api/v1/public/traces with X-API-Key authentication.
+- 201 creation and 200 identical replay.
+- ETag containing the quoted stored trace version.
+- Historical price selection and stored estimated costs.
+- GET /api/v1/model-prices with user JWT authentication.
+
+Trace GET, search, PUT and DELETE remain owned by TSE-69.
+
+The POST body is limited to 16,384 actual JSON bytes. Metadata is limited
+to 4,096 serialized UTF-8 bytes. Null characters and invalid Unicode
+sequences are rejected because PostgreSQL cannot represent them safely.
+
+POST replay compares the current normalized writable payload. It does not
+reprice the trace or modify its version/timestamps. A different payload
+returns TRACE_EXTERNAL_ID_CONFLICT; a retained deleted identity returns
+TRACE_DELETED.
+
 ### Shared dates, filters and pagination
 
 Trace lists and analytics accept both dates or neither. When omitted, resolve the last seven days using one captured server time.
