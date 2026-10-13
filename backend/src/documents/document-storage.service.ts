@@ -1,7 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { createReadStream, type ReadStream } from "node:fs";
-import { mkdir, open, rename, unlink } from "node:fs/promises";
+import { mkdir, open, readdir, rename, stat, unlink } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 
 export const DOCUMENT_STORAGE_ROOT = Symbol("DOCUMENT_STORAGE_ROOT");
@@ -55,6 +55,40 @@ export class DocumentStorageService {
 		} catch (error) {
 			if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
 		}
+	}
+
+	/** Throws when the bytes are missing or unreadable. Returns the size. */
+	async size(key: string): Promise<number> {
+		return (await stat(this.pathFor(key))).size;
+	}
+
+	/** Keys of stored files last modified before the cutoff (for the orphan sweep). */
+	async listKeysOlderThan(cutoffMs: number): Promise<string[]> {
+		const keys: string[] = [];
+		let shards: string[];
+		try {
+			shards = await readdir(this.root);
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "ENOENT") return keys;
+			throw error;
+		}
+
+		for (const shard of shards) {
+			if (!/^[0-9a-f]{2}$/.test(shard)) continue;
+			for (const name of await readdir(join(this.root, shard))) {
+				const key = `${shard}/${name}`;
+				const isTemp = name.endsWith(".tmp");
+				if (!isTemp && !KEY_PATTERN.test(key)) continue;
+				const info = await stat(join(this.root, key)).catch(() => null);
+				if (!info?.isFile() || info.mtimeMs >= cutoffMs) continue;
+				if (isTemp) {
+					await unlink(join(this.root, key)).catch(() => undefined);
+				} else {
+					keys.push(key);
+				}
+			}
+		}
+		return keys;
 	}
 
 	read(key: string): ReadStream {

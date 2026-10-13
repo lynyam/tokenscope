@@ -52,7 +52,7 @@
     "argon2": "^0.45.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
-    "content-disposition": "^3.0.0",
+    "content-disposition": "1.1.0",
     "http-errors": "^2.0.1",
     "multer": "^2.4.0",
     "pdf-parse": "^2.4.5",
