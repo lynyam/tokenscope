@@ -414,6 +414,20 @@ bounds also reject NaN.
 
 The document filename limit is enforced as 1–255 UTF-8 bytes.
 
+### Private documents: storage and lifecycle (TSE-78)
+
+Bytes are stored under `DOCUMENT_STORAGE_ROOT` as `<first 2 hex>/<uuid>`. The same string is `ProjectDocument.storageKey`. Writes go to a temporary file, are flushed, and are renamed into place with mode `0600`.
+
+Upload writes the bytes first and inserts the row second, so a row never points at missing bytes. If the insert fails with a known rollback (for example access lost during the upload) the bytes are removed immediately. If the outcome is unknown (lost connection around the commit) the bytes are kept, because the database is the source of truth.
+
+Individual deletion runs one serializable transaction: authorize, insert the `FileDeletionJob`, delete the row. The bytes are deleted after commit. A failed deletion leaves the job with an incremented `attempts`, a safe `lastErrorCode` and an exponential `nextAttemptAt` (30 s doubling, capped at 1 h). A worker retries due jobs every 30 s.
+
+Orphan sweep, hourly and at startup: a stored file older than one hour that has no `ProjectDocument` row (including rows of archived projects and organizations) and no pending job is removed. Stale `.tmp` files are removed too.
+
+Archiving a project or organization keeps rows and bytes and only denies access.
+
+Assumption: one backend instance and one local volume. Running several instances needs a shared volume and a distributed lock for the sweep and workers.
+
 Services remain responsible for normalized identifiers, exact
 cost calculation, price selection, generated UUID storage keys,
 file-content validation and authorization.

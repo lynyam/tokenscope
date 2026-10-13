@@ -480,6 +480,14 @@ See "Evaluation mode (HTTPS)" below for startup, certificate trust, readiness ch
 | Assistant | TSE-80 | `GEMINI_API_KEY`, `LLM_MODEL`, SSE proxy verification |
 | Evaluation seed | TSE-70 | Explicit opt-in, operator-supplied password and documented command |
 
+### Private document storage (TSE-78)
+
+`DOCUMENT_STORAGE_ROOT` is required and must be an absolute path. Compose sets it to `/var/lib/tokenscope/documents`, backed by the named volume `tokenscope_documents`, so uploads survive restarts. `make fullclean` removes that volume and therefore every uploaded file.
+
+Outside Compose, point it to a private directory that the backend user can write, for example `DOCUMENT_STORAGE_ROOT=$HOME/.tokenscope/documents`.
+
+Backend tests use a temporary directory and do not need the volume.
+
 Backend configuration uses:
 
 ```text

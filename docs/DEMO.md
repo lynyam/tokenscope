@@ -621,3 +621,22 @@ estimated cost.
 TSE-70 owns loading usable evaluation data. Fixture presence alone
 does not demonstrate implemented feature endpoints or live Gemini
 integration.
+
+## Private documents — TSE-78 manual check
+
+Replace the variables with a real organization, project and an owner access token.
+
+```bash
+P="http://localhost:5173/api/v1/organizations/$ORG_ID/projects/$PROJECT_ID/documents"
+H="Authorization: Bearer $TOKEN"
+
+printf 'hello' > /tmp/demo.txt
+curl -s -H "$H" -F "file=@/tmp/demo.txt" "$P"                # 201 summary, no storage key
+curl -s -H "$H" "$P"                                          # list, newest first
+curl -s -H "$H" "$P/$DOC_ID/content"                          # hello
+curl -s -D - -o /dev/null -H "$H" "$P/$DOC_ID/content?download=true"   # attachment, nosniff, no-store
+curl -s -X DELETE -o /dev/null -w '%{http_code}\n' -H "$H" "$P/$DOC_ID"  # 204
+curl -s -X DELETE -o /dev/null -w '%{http_code}\n' -H "$H" "$P/$DOC_ID"  # 404
+```
+
+Expected rejections: a `.docx` file gives `415`, a text file with invalid UTF-8 gives `422`, an 11 MiB file gives `413`, the sixth upload within a minute gives `429` with `Retry-After`, and a member token gives `403` on upload or delete.
