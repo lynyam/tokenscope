@@ -87,11 +87,40 @@ describe("validateDocumentContent", () => {
 		["truncated PDF", () => fixture("valid.pdf").subarray(0, 600)],
 		["header only", () => Buffer.from("%PDF-1.4")],
 		["not a PDF", () => Buffer.from("hello")],
-		["empty", () => Buffer.alloc(0)],
 	])("rejects %s", async (_label, make) => {
 		expect(
 			await failure(validateDocumentContent(make(), "application/pdf")),
 		).toEqual(invalid);
+	});
+
+	it("answers 400 for an empty file of any type", async () => {
+		for (const type of ["application/pdf", "text/plain", "text/markdown"] as const) {
+			expect(await failure(validateDocumentContent(Buffer.alloc(0), type))).toEqual({
+				status: 400,
+				code: "VALIDATION_ERROR",
+			});
+		}
+	});
+
+	it("gives up on a PDF that takes too long to inspect", async () => {
+		const destroy = jest.fn();
+		const stuck = {
+			getInfo: () => new Promise<never>(() => undefined),
+			destroy,
+		};
+		const started = Date.now();
+
+		expect(
+			await failure(
+				validateDocumentContent(fixture("valid.pdf"), "application/pdf", {
+					pdfTimeoutMs: 50,
+					openPdf: () => stuck,
+				}),
+			),
+		).toEqual(invalid);
+		expect(Date.now() - started).toBeLessThan(2000);
+		await new Promise((resolve) => setImmediate(resolve));
+		expect(destroy).toHaveBeenCalled();
 	});
 
 	it.each(["text/plain", "text/markdown"] as const)(
@@ -106,7 +135,6 @@ describe("validateDocumentContent", () => {
 	it.each([
 		["invalid UTF-8", Buffer.from([0xff, 0xfe, 0x41])],
 		["NUL byte", Buffer.from("a\0b")],
-		["empty", Buffer.alloc(0)],
 	])("rejects text with %s", async (_label, content) => {
 		expect(await failure(validateDocumentContent(content, "text/plain"))).toEqual(
 			invalid,

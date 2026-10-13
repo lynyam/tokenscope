@@ -737,5 +737,8 @@ Logs and test artifacts must exclude credentials, file contents, questions, comp
 - Downloads send the stored media type with `nosniff`, `no-store` and a safe `Content-Disposition`. There is no public storage URL.
 - Files are stored with mode `0600` in a private directory that must not be served by any web server.
 - Upload quota is 5 authorized uploads per user per minute. The limiter is an in-memory fixed window: a user can send up to 10 uploads across a window boundary, and counters reset when the process restarts. It is per process, so several backend instances multiply the limit.
-- PDFs are parsed in the backend process with pdf.js (through `pdf-parse`). Parsing untrusted PDFs is a known risk that is bounded here only by the size limit; it is not sandboxed.
+- PDFs are parsed in the backend process with pdf.js (through `pdf-parse`). Parsing untrusted PDFs is a known risk that is bounded here by the size limit and a 10-second deadline; it is not sandboxed, and a stuck parse may keep running in the background after the request is rejected.
+- Validation checks format and structure. It is not a guarantee that a file is free of malware, and no antivirus scan is performed.
+- Documents are only stored for users. They are not sent to the assistant, indexed, or used for retrieval.
+- Uploads are received on disk in a private `0700` directory, so memory use does not depend on file size.
 - Caddy rejects request bodies above 11 MiB on `/api/*` before they reach the backend. Caddy answers `413` itself, so that response does not use the JSON error envelope.

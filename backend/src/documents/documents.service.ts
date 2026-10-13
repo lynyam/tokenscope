@@ -1,6 +1,7 @@
 import { HttpStatus, Injectable } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import type { ReadStream } from "node:fs";
+import { readFile } from "node:fs/promises";
 import type { Request, Response } from "express";
 import { MembershipRole, Prisma } from "../generated/prisma/client";
 import { ApiException } from "../common/errors/api.exception";
@@ -18,7 +19,7 @@ import {
 	DOCUMENT_SUMMARY_SELECT,
 	toDocumentSummary,
 } from "./document.mapper";
-import { parseSingleFileUpload } from "./document-upload-parser";
+import { receiveSingleFile } from "./document-upload-parser";
 import type { DocumentSummary, Page } from "./documents.types";
 
 const MANAGEMENT_ROLES = [MembershipRole.OWNER, MembershipRole.ADMIN] as const;
@@ -79,49 +80,93 @@ export class DocumentsService {
 			);
 		}
 
-		// 3. Read and validate the file.
-		const file = await parseSingleFileUpload(request);
-		const originalName = validateDocumentName(file.originalName);
-		const mediaType = mediaTypeForName(originalName);
-		await validateDocumentContent(file.content, mediaType);
-
-		// 4. Bytes first, metadata second: a row never points at missing bytes.
-		const storageKey = this.storage.newKey();
-		try {
-			await this.storage.write(storageKey, file.content);
-		} catch {
-			throw this.storageUnavailable();
-		}
+		// 3. Receive the file into a private temporary file (disk, not memory).
+		const received = await receiveSingleFile(
+			request,
+			await this.storage.incomingDirectory(),
+		);
 
 		try {
-			const row = await this.runSerializable(async (tx) => {
-				// Access may have changed while the body was uploading.
-				await this.projectAccess.assertProjectAccess(
-					userId,
-					organizationId,
-					projectId,
-					MANAGEMENT_ROLES,
-					tx,
-				);
-				return tx.projectDocument.create({
-					data: {
-						projectId,
-						uploadedByUserId: userId,
+			// 4. Validate name, then actual content.
+			const originalName = validateDocumentName(received.originalName);
+			const mediaType = mediaTypeForName(originalName);
+			const content = await readFile(received.temporaryPath);
+			await validateDocumentContent(content, mediaType);
+			const sha256 = createHash("sha256").update(content).digest("hex");
+
+			// 5. Finalize: move + metadata commit run inside the storage critical
+			// section so the orphan sweep cannot delete the file in between.
+			const storageKey = this.storage.newKey();
+			const row = await this.storage.runExclusive(async () => {
+				try {
+					await this.storage.adopt(received.temporaryPath, storageKey);
+				} catch {
+					throw this.storageUnavailable();
+				}
+				return this.commitMetadata(
+					{ userId, organizationId, projectId },
+					{
 						originalName,
 						storageKey,
 						mediaType,
-						sizeBytes: file.content.length,
-						sha256: createHash("sha256").update(file.content).digest("hex"),
+						sizeBytes: content.length,
+						sha256,
 					},
-					select: DOCUMENT_SUMMARY_SELECT,
-				});
+				);
 			});
 			return toDocumentSummary(row);
+		} finally {
+			// Nothing to remove when the file was moved.
+			await this.storage.removeTemporary(received.temporaryPath);
+		}
+	}
+
+	/**
+	 * Inserts the metadata in one short transaction that re-checks access. The
+	 * final file is removed only when the rollback is certain (the callback or a
+	 * known API error failed). An unknown commit outcome keeps the bytes: the
+	 * database is the source of truth and the orphan sweep decides later.
+	 */
+	private async commitMetadata(
+		actor: { userId: string; organizationId: string; projectId: string },
+		data: {
+			originalName: string;
+			storageKey: string;
+			mediaType: string;
+			sizeBytes: number;
+			sha256: string;
+		},
+	) {
+		let callbackFailed = false;
+
+		try {
+			return await this.runSerializable(async (tx) => {
+				callbackFailed = false;
+				try {
+					// Access may have changed while the body was uploading.
+					await this.projectAccess.assertProjectAccess(
+						actor.userId,
+						actor.organizationId,
+						actor.projectId,
+						MANAGEMENT_ROLES,
+						tx,
+					);
+					return await tx.projectDocument.create({
+						data: {
+							projectId: actor.projectId,
+							uploadedByUserId: actor.userId,
+							...data,
+						},
+						select: DOCUMENT_SUMMARY_SELECT,
+					});
+				} catch (error) {
+					callbackFailed = true;
+					throw error;
+				}
+			});
 		} catch (error) {
-			// Only a known rollback may delete the bytes. For any other failure the
-			// commit outcome is unknown (lost response), so the orphan sweep decides.
-			if (error instanceof ApiException) {
-				await this.storage.delete(storageKey).catch(() => undefined);
+			if (error instanceof ApiException || callbackFailed) {
+				await this.storage.delete(data.storageKey).catch(() => undefined);
 			}
 			throw error;
 		}
@@ -278,7 +323,9 @@ export class DocumentsService {
 
 	private isTransactionConflict(error: unknown): boolean {
 		if (error instanceof Prisma.PrismaClientKnownRequestError) {
-			return error.code === "P2034";
+			// P2034: serialization failure. P2002: two deletes of the same document
+			// both inserted its cleanup job; the retry then finds it already gone.
+			return error.code === "P2034" || error.code === "P2002";
 		}
 		if (
 			typeof error !== "object" ||

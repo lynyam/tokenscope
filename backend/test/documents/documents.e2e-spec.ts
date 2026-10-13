@@ -14,7 +14,10 @@ import { ApiException } from "../../src/common/errors/api.exception";
 import { RateLimitClock } from "../../src/common/rate-limit/rate-limit.service";
 import { configureApp } from "../../src/configure-app";
 import { PrismaService } from "../../src/database/prisma.service";
-import { DocumentCleanupService } from "../../src/documents/document-cleanup.service";
+import {
+	DocumentCleanupService,
+	DocumentClock,
+} from "../../src/documents/document-cleanup.service";
 import {
 	DOCUMENT_STORAGE_ROOT,
 	DocumentStorageService,
@@ -50,6 +53,7 @@ describe("Private documents HTTP contract", () => {
 	let storage: DocumentStorageService;
 	let cleanup: DocumentCleanupService;
 	let now = 0;
+	let clockOffset = 0; // moves the cleanup worker's clock forward
 	let clock = 0;
 
 	const organizationId = randomUUID();
@@ -122,6 +126,7 @@ describe("Private documents HTTP contract", () => {
 			.overrideProvider(PrismaService).useValue(db)
 			.overrideProvider(ProjectAccessService).useValue(access)
 			.overrideProvider(DOCUMENT_STORAGE_ROOT).useValue(root)
+			.overrideProvider(DocumentClock).useValue({ now: () => Date.now() + clockOffset })
 			.overrideProvider(RateLimitClock).useValue({ now: () => now })
 			.compile();
 
@@ -135,6 +140,7 @@ describe("Private documents HTTP contract", () => {
 	});
 
 	beforeEach(async () => {
+		clockOffset = 0;
 		now += 60_001; // fresh rate-limit window
 		rows = [];
 		jobs = [];
@@ -191,7 +197,7 @@ describe("Private documents HTTP contract", () => {
 		it.each([
 			["unsupported extension", "a.docx", "hello", 415, "UNSUPPORTED_MEDIA_TYPE"],
 			["invalid UTF-8", "a.txt", Buffer.from([0xff, 0xfe]), 422, "INVALID_DOCUMENT_CONTENT"],
-			["empty file", "a.txt", "", 422, "INVALID_DOCUMENT_CONTENT"],
+			["empty file", "a.txt", "", 400, "VALIDATION_ERROR"],
 			["encrypted PDF", "a.pdf", fixture("enc_user.pdf"), 422, "INVALID_DOCUMENT_CONTENT"],
 			["fake PDF", "a.pdf", "not a pdf", 422, "INVALID_DOCUMENT_CONTENT"],
 		])("rejects %s without storing anything", async (_l, name, content, status, code) => {
@@ -268,7 +274,7 @@ describe("Private documents HTTP contract", () => {
 		});
 
 		it("answers 503 STORAGE_UNAVAILABLE when the disk write fails", async () => {
-			jest.spyOn(storage, "write").mockRejectedValueOnce(new Error("disk full"));
+			jest.spyOn(storage, "adopt").mockRejectedValueOnce(new Error("disk full"));
 			const response = await upload("a.txt", "x").expect(503);
 			expect(response.body.code).toBe("STORAGE_UNAVAILABLE");
 			expect(rows).toHaveLength(0);
@@ -410,7 +416,8 @@ describe("Private documents HTTP contract", () => {
 			expect(jobs[0]).toMatchObject({ attempts: 1, lastErrorCode: "EIO" });
 			expect(await files()).toHaveLength(1);
 
-			await cleanup.runOnce(new Date(Date.now() + 3_600_000));
+			clockOffset = 3_600_000;
+			await cleanup.runOnce();
 			expect(jobs).toHaveLength(0);
 			expect(await files()).toHaveLength(0);
 		});
@@ -426,9 +433,10 @@ describe("Private documents HTTP contract", () => {
 			jobs.push({ id: randomUUID(), storageKey: pending, attempts: 0, nextAttemptAt: new Date(), lastErrorCode: null });
 
 			// Too young: nothing is removed.
-			expect(await cleanup.sweepOrphans(Date.now())).toBe(0);
+			clockOffset = 0;
+			expect(await cleanup.sweepOrphans()).toBe(0);
 
-			expect(await cleanup.sweepOrphans(Date.now() + 2 * 3_600_000)).toBe(1);
+			expect((clockOffset = 2 * 3_600_000, await cleanup.sweepOrphans())).toBe(1);
 			const left = (await files()).length;
 			expect(left).toBe(2);
 			expect(a.body.id).toBeDefined();

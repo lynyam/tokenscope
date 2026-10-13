@@ -488,6 +488,8 @@ Outside Compose, point it to a private directory that the backend user can write
 
 Backend tests use a temporary directory and do not need the volume.
 
+Small fixtures for manual and automated checks live in `backend/test/fixtures/documents/` (`valid.pdf`, `valid.txt`, `valid.md`, and encrypted PDFs that must be rejected). Run the full backend suite, including the real PostgreSQL and filesystem tests, with `make test-backend`.
+
 Backend configuration uses:
 
 ```text

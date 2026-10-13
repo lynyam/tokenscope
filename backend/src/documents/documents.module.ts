@@ -4,7 +4,10 @@ import { RateLimitModule } from "../common/rate-limit/rate-limit.module";
 import type { EnvironmentVariables } from "../config/env.validation";
 import { DatabaseModule } from "../database/database.module";
 import { ProjectsModule } from "../projects/projects.module";
-import { DocumentCleanupService } from "./document-cleanup.service";
+import {
+	DocumentCleanupService,
+	DocumentClock,
+} from "./document-cleanup.service";
 import {
 	DOCUMENT_STORAGE_ROOT,
 	DocumentStorageService,
@@ -23,6 +26,7 @@ import { DocumentsService } from "./documents.service";
 				config.get("DOCUMENT_STORAGE_ROOT", { infer: true }),
 		},
 		DocumentStorageService,
+		DocumentClock,
 		DocumentCleanupService,
 		DocumentsService,
 	],

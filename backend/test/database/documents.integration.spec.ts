@@ -1,5 +1,6 @@
 import "reflect-metadata";
 import { randomUUID } from "node:crypto";
+import { connect } from "node:net";
 import { mkdtemp, readdir, rm, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,11 +13,16 @@ import { TokenService } from "../../src/auth/token.service";
 import { RateLimitClock } from "../../src/common/rate-limit/rate-limit.service";
 import { configureApp } from "../../src/configure-app";
 import { PrismaService } from "../../src/database/prisma.service";
-import { DocumentCleanupService } from "../../src/documents/document-cleanup.service";
+import {
+	DocumentCleanupService,
+	DocumentClock,
+} from "../../src/documents/document-cleanup.service";
 import {
 	DOCUMENT_STORAGE_ROOT,
 	DocumentStorageService,
 } from "../../src/documents/document-storage.service";
+import { ApiException } from "../../src/common/errors/api.exception";
+import { ProjectAccessService } from "../../src/projects/project-access.service";
 import { resetTestDatabase } from "../support/reset-test-database";
 
 describe("Private documents with PostgreSQL", () => {
@@ -27,6 +33,7 @@ describe("Private documents with PostgreSQL", () => {
 	let cleanup: DocumentCleanupService;
 	let root: string;
 	let now = 0;
+	let clockOffset = 0; // moves the cleanup worker's clock forward
 
 	const ids = {
 		owner: randomUUID(),
@@ -57,24 +64,34 @@ describe("Private documents with PostgreSQL", () => {
 	const fileCount = async () =>
 		(await readdir(root, { recursive: true, withFileTypes: true })).filter((e) => e.isFile()).length;
 
-	beforeAll(async () => {
-		root = await mkdtemp(join(tmpdir(), "tokenscope-docs-int-"));
+	async function bootApp(): Promise<INestApplication> {
 		const context = await Test.createTestingModule({ imports: [AppModule] })
 			.overrideProvider(DOCUMENT_STORAGE_ROOT).useValue(root)
+			.overrideProvider(DocumentClock).useValue({ now: () => Date.now() + clockOffset })
 			.overrideProvider(RateLimitClock).useValue({ now: () => now })
 			.compile();
 
-		app = context.createNestApplication({ logger: false });
-		configureApp(app);
-		await app.init();
+		const instance = context.createNestApplication({ logger: false });
+		configureApp(instance);
+		await instance.init();
+		return instance;
+	}
 
+	function bindApp(instance: INestApplication) {
+		app = instance;
 		db = app.get(PrismaService);
 		tokens = app.get(TokenService);
 		storage = app.get(DocumentStorageService);
 		cleanup = app.get(DocumentCleanupService);
+	}
+
+	beforeAll(async () => {
+		root = await mkdtemp(join(tmpdir(), "tokenscope-docs-int-"));
+		bindApp(await bootApp());
 	});
 
 	beforeEach(async () => {
+		clockOffset = 0;
 		now += 60_001;
 		await resetTestDatabase(db);
 		for (const entry of await readdir(root)) {
@@ -227,10 +244,12 @@ describe("Private documents with PostgreSQL", () => {
 			expect(await fileCount()).toBe(1);
 
 			// Not due yet: nothing happens.
-			await cleanup.runOnce(new Date());
+			clockOffset = 0;
+			await cleanup.runOnce();
 			expect(await db.fileDeletionJob.count()).toBe(1);
 
-			await cleanup.runOnce(new Date(Date.now() + 3_600_000));
+			clockOffset = 3_600_000;
+			await cleanup.runOnce();
 			expect(await db.fileDeletionJob.count()).toBe(0);
 			expect(await fileCount()).toBe(0);
 		});
@@ -261,14 +280,14 @@ describe("Private documents with PostgreSQL", () => {
 
 			expect(await db.projectDocument.count()).toBe(1);
 			expect(await fileCount()).toBe(1);
-			expect(await cleanup.sweepOrphans(Date.now() + 10 * 3_600_000)).toBe(0);
+			expect((clockOffset = 10 * 3_600_000, await cleanup.sweepOrphans())).toBe(0);
 			expect(await fileCount()).toBe(1);
 
 			// Archived organization, project not archived.
 			await db.project.update({ where: { id: ids.projectA }, data: { archivedAt: null } });
 			await db.organization.update({ where: { id: ids.orgA }, data: { archivedAt: new Date() } });
 			await get(`${path}/content`).expect(404);
-			expect(await cleanup.sweepOrphans(Date.now() + 10 * 3_600_000)).toBe(0);
+			expect((clockOffset = 10 * 3_600_000, await cleanup.sweepOrphans())).toBe(0);
 		});
 	});
 
@@ -317,6 +336,191 @@ describe("Private documents with PostgreSQL", () => {
 			["bad checksum", { sha256: "xyz" }],
 		])("rejects %s", async (_label, overrides) => {
 			await expect(db.projectDocument.create({ data: row(overrides) })).rejects.toThrow();
+		});
+	});
+
+	describe("access changes while a file is being uploaded", () => {
+		const duringFinalTransaction = (change: () => Promise<unknown>) => {
+			const access = app.get(ProjectAccessService);
+			const original = access.assertProjectAccess.bind(access);
+			let changed = false;
+
+			jest.spyOn(access, "assertProjectAccess").mockImplementation(
+				async (...args: Parameters<typeof original>) => {
+					// The first call is the early check; the one with a transaction
+					// client is the final re-check inside the metadata transaction.
+					if (args.length === 5 && !changed) {
+						changed = true;
+						await change();
+					}
+					return original(...args);
+				},
+			);
+		};
+
+		it("creates no document when membership is lost during the upload", async () => {
+			duringFinalTransaction(() => db.membership.deleteMany({ where: { userId: ids.admin } }));
+
+			const response = await upload("a.txt", "hello", ids.admin).expect(404);
+
+			expect(response.body.code).toBe("PROJECT_NOT_FOUND");
+			expect(await db.projectDocument.count()).toBe(0);
+			expect(await fileCount()).toBe(0);
+		});
+
+		it("creates no document when the project is archived during the upload", async () => {
+			duringFinalTransaction(() =>
+				db.project.update({ where: { id: ids.projectA }, data: { archivedAt: new Date() } }));
+
+			const response = await upload("a.txt", "hello").expect(404);
+
+			expect(response.body.code).toBe("PROJECT_NOT_FOUND");
+			expect(await db.projectDocument.count()).toBe(0);
+			expect(await fileCount()).toBe(0);
+		});
+
+		it("creates no document when the organization is archived during the upload", async () => {
+			duringFinalTransaction(() =>
+				db.organization.update({ where: { id: ids.orgA }, data: { archivedAt: new Date() } }));
+
+			await upload("a.txt", "hello").expect(404);
+
+			expect(await db.projectDocument.count()).toBe(0);
+			expect(await fileCount()).toBe(0);
+		});
+
+		it("cleans its file when the metadata transaction fails", async () => {
+			const access = app.get(ProjectAccessService);
+			const original = access.assertProjectAccess.bind(access);
+			jest.spyOn(access, "assertProjectAccess").mockImplementation(
+				async (...args: Parameters<typeof original>) => {
+					if (args.length === 5) throw new Error("simulated database failure");
+					return original(...args);
+				},
+			);
+
+			await upload("a.txt", "hello").expect(500);
+
+			expect(await db.projectDocument.count()).toBe(0);
+			expect(await fileCount()).toBe(0);
+		});
+	});
+
+	describe("interruptions", () => {
+		it("keeps a committed document when the response is lost", async () => {
+			const realTransaction = db.$transaction.bind(db) as (...args: unknown[]) => Promise<unknown>;
+			jest.spyOn(db, "$transaction").mockImplementationOnce(
+				(async (...args: unknown[]) => {
+					await realTransaction(...args); // the commit happens...
+					throw new Error("connection lost after commit"); // ...but the caller never learns
+				}) as never,
+			);
+
+			await upload("kept.txt", "hello").expect(500);
+
+			expect(await db.projectDocument.count()).toBe(1);
+			expect(await fileCount()).toBe(1);
+
+			// The sweep must not remove it either.
+			clockOffset = 10 * 3_600_000;
+			expect(await cleanup.sweepOrphans()).toBe(0);
+			const listed = await get(base()).expect(200);
+			expect(listed.body.items.map((i: { originalName: string }) => i.originalName)).toEqual(["kept.txt"]);
+		});
+
+		it("leaves no document or file behind when the client disconnects mid-upload", async () => {
+			await app.listen(0);
+			const { port } = app.getHttpServer().address() as { port: number };
+			const boundary = "----cut";
+			const head =
+				`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="cut.txt"\r\n` +
+				"Content-Type: text/plain\r\n\r\n" + "x".repeat(2000);
+
+			await new Promise<void>((resolve, reject) => {
+				const socket = connect(port, "127.0.0.1", () => {
+					socket.write(
+						`POST ${base()} HTTP/1.1\r\nHost: localhost\r\nAuthorization: ${bearer()}\r\n` +
+						`Content-Type: multipart/form-data; boundary=${boundary}\r\nContent-Length: 100000\r\n\r\n${head}`,
+						() => setTimeout(() => { socket.destroy(); resolve(); }, 100),
+					);
+				});
+				socket.on("error", reject);
+			});
+
+			// Wait (bounded) for the server to notice the broken connection.
+			for (let attempt = 0; attempt < 50 && (await fileCount()) > 0; attempt += 1) {
+				await new Promise((resolve) => setTimeout(resolve, 100));
+			}
+
+			expect(await fileCount()).toBe(0);
+			expect(await db.projectDocument.count()).toBe(0);
+		});
+	});
+
+	describe("restart", () => {
+		it("keeps metadata and readable bytes across a backend restart", async () => {
+			const created = await upload("persist.txt", "still here").expect(201);
+
+			await app.close();
+			bindApp(await bootApp());
+
+			const listed = await get(base()).expect(200);
+			expect(listed.body.total).toBe(1);
+			const content = await get(`${base()}/${created.body.id}/content`).expect(200);
+			expect(content.text).toBe("still here");
+		});
+
+		it("finishes a failed physical deletion after a restart", async () => {
+			const created = await upload("gone.txt", "bye").expect(201);
+			jest.spyOn(storage, "delete").mockRejectedValueOnce(Object.assign(new Error("io"), { code: "EIO" }));
+			await remove(`${base()}/${created.body.id}`).expect(204);
+			expect(await db.fileDeletionJob.count()).toBe(1);
+			expect(await fileCount()).toBe(1);
+
+			await app.close();
+			bindApp(await bootApp());
+
+			clockOffset = 3_600_000;
+			await cleanup.runOnce();
+			expect(await db.fileDeletionJob.count()).toBe(0);
+			expect(await fileCount()).toBe(0);
+		});
+	});
+
+	describe("orphan sweep safety", () => {
+		it("cannot delete a file between its final move and its metadata commit", async () => {
+			const key = storage.newKey();
+			await storage.write(key, Buffer.from("racing"));
+			const old = new Date(Date.now() - 2 * 3_600_000);
+			await utimes(join(root, key), old, old);
+
+			let sweep!: Promise<number>;
+			await storage.runExclusive(async () => {
+				// The sweep starts while "finalization" is in progress...
+				sweep = cleanup.sweepOrphans();
+				await new Promise((resolve) => setTimeout(resolve, 100));
+				// ...and only then does the metadata commit.
+				await db.projectDocument.create({
+					data: {
+						projectId: ids.projectA, uploadedByUserId: ids.owner, originalName: "race.txt",
+						storageKey: key, mediaType: "text/plain", sizeBytes: 6, sha256: "b".repeat(64),
+					},
+				});
+			});
+
+			expect(await sweep).toBe(0);
+			expect(await fileCount()).toBe(1);
+		});
+
+		it("deletes nothing when the database cannot be consulted", async () => {
+			const key = storage.newKey();
+			await storage.write(key, Buffer.from("orphan?"));
+			const old = new Date(Date.now() - 2 * 3_600_000);
+			await utimes(join(root, key), old, old);
+			jest.spyOn(db.projectDocument, "findUnique").mockRejectedValue(new Error("database down"));
+
+			expect(await cleanup.sweepOrphans()).toBe(0);
+			expect(await fileCount()).toBe(1);
 		});
 	});
 });

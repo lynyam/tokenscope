@@ -16,8 +16,8 @@ import contentDisposition = require("content-disposition");
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { UuidParam } from "../common/decorators/uuid-param.decorators";
 import type { AuthenticatedUser } from "../common/types/authenticated-user";
-import { DocumentContentQuery } from "./dto/content.query";
-import { ListDocumentsQuery } from "./dto/list-documents.query";
+import { DocumentContentQuery } from "./dto/document-content-query.dto";
+import { ListDocumentsQuery } from "./dto/list-documents-query.dto";
 import { DocumentsService } from "./documents.service";
 
 @Controller("organizations/:organizationId/projects/:projectId/documents")
@@ -73,7 +73,7 @@ export class DocumentsController {
 		response.setHeader("Cache-Control", "no-store");
 		response.setHeader("X-Content-Type-Options", "nosniff");
 
-		return new StreamableFile(content.stream, {
+		const file = new StreamableFile(content.stream, {
 			type: content.mediaType,
 			length: content.sizeBytes,
 			disposition: contentDisposition(content.originalName, {
@@ -82,6 +82,25 @@ export class DocumentsController {
 				fallback: content.originalName.replace(/[^\x20-\x7e]|["\\%]/g, "_"),
 			}),
 		});
+
+		// A read failure must never append a JSON body to partial file content and
+		// must never leak the raw filesystem error.
+		file.setErrorHandler((_error, handlerResponse) => {
+			const res = handlerResponse as unknown as Response;
+			if (res.headersSent) {
+				res.destroy();
+				return;
+			}
+			const requestId = res.getHeader("X-Request-Id");
+			res.status(503).json({
+				statusCode: 503,
+				code: "STORAGE_UNAVAILABLE",
+				error: "Service Unavailable",
+				message: "Document storage is temporarily unavailable.",
+				requestId: typeof requestId === "string" ? requestId : undefined,
+			});
+		});
+		return file;
 	}
 
 	@Delete(":documentId")

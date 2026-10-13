@@ -416,13 +416,15 @@ The document filename limit is enforced as 1–255 UTF-8 bytes.
 
 ### Private documents: storage and lifecycle (TSE-78)
 
-Bytes are stored under `DOCUMENT_STORAGE_ROOT` as `<first 2 hex>/<uuid>`. The same string is `ProjectDocument.storageKey`. Writes go to a temporary file, are flushed, and are renamed into place with mode `0600`.
+Bytes are stored under `DOCUMENT_STORAGE_ROOT` as `<first 2 hex>/<uuid>`. The same string is `ProjectDocument.storageKey`. Directories are created with mode `0700` and files with mode `0600`.
 
-Upload writes the bytes first and inserts the row second, so a row never points at missing bytes. If the insert fails with a known rollback (for example access lost during the upload) the bytes are removed immediately. If the outcome is unknown (lost connection around the commit) the bytes are kept, because the database is the source of truth.
+Upload sequence: the request is authorized and rate-limited, then the file is received into a temporary file `<root>/.incoming/<uuid>.tmp` on the same volume, so memory use does not grow with the file size. The file is then validated. Finalization (moving the file to its final key and committing the metadata in a short transaction that re-checks access) runs inside an in-process critical section shared with the orphan sweep. A row therefore never points at missing bytes, and the sweep cannot delete a file between its move and its commit.
 
-Individual deletion runs one serializable transaction: authorize, insert the `FileDeletionJob`, delete the row. The bytes are deleted after commit. A failed deletion leaves the job with an incremented `attempts`, a safe `lastErrorCode` and an exponential `nextAttemptAt` (30 s doubling, capped at 1 h). A worker retries due jobs every 30 s.
+If the metadata transaction certainly rolled back (access lost, validation error inside the transaction, or a failure before commit) the final file is removed at once. If the outcome is unknown (connection lost around the commit) the bytes are kept, because the database is the source of truth and a committed document must never be deleted because the response was lost.
 
-Orphan sweep, hourly and at startup: a stored file older than one hour that has no `ProjectDocument` row (including rows of archived projects and organizations) and no pending job is removed. Stale `.tmp` files are removed too.
+Individual deletion runs one serializable transaction: authorize, insert the `FileDeletionJob`, delete the row. The bytes are deleted after commit, and never while a document row still references the key. A worker polls every 10 s, handles at most 25 due jobs per run and never overlaps runs. A failed deletion keeps the job with an incremented `attempts`, a short error code (never a raw message or path) and the next attempt after 10 s, 30 s, 60 s and then every 5 minutes. Pending jobs survive restarts and are processed at startup. A missing file counts as success. Shutdown waits for a run in flight.
+
+Orphan sweep, at startup and hourly: a managed file older than one hour that has no `ProjectDocument` row (including rows under archived projects and organizations) and no pending job is removed. Symbolic links and files that do not match the server naming pattern are ignored. If the database cannot be consulted nothing is deleted. Abandoned temporary uploads older than one hour are removed too.
 
 Archiving a project or organization keeps rows and bytes and only denies access.
 

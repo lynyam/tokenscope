@@ -72,16 +72,42 @@ function assertText(content: Buffer): void {
 	}
 }
 
-async function assertPdf(content: Buffer): Promise<void> {
+export const PDF_VALIDATION_TIMEOUT_MS = 10_000;
+
+export type PdfInspector = {
+	getInfo(): Promise<{ permission?: unknown }>;
+	destroy(): Promise<unknown> | unknown;
+};
+
+export type ContentValidationOptions = {
+	pdfTimeoutMs?: number;
+	openPdf?: (data: Uint8Array) => PdfInspector;
+};
+
+async function assertPdf(
+	content: Buffer,
+	options: ContentValidationOptions,
+): Promise<void> {
 	if (!content.subarray(0, 1024).includes("%PDF-")) {
 		throw invalidContent("The file is not a PDF document.");
 	}
 
 	// pdf-parse takes ownership of the array: give it a copy.
-	const parser = new PDFParse({ data: new Uint8Array(content) });
+	const data = new Uint8Array(content);
+	const parser: PdfInspector = options.openPdf
+		? options.openPdf(data)
+		: new PDFParse({ data });
+
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const deadline = new Promise<never>((_resolve, reject) => {
+		timer = setTimeout(
+			() => reject(invalidContent("The PDF could not be validated in time.")),
+			options.pdfTimeoutMs ?? PDF_VALIDATION_TIMEOUT_MS,
+		);
+	});
 
 	try {
-		const info = await parser.getInfo();
+		const info = await Promise.race([parser.getInfo(), deadline]);
 		// Owner-password-only PDFs open without a password but are encrypted.
 		if (info.permission != null) {
 			throw invalidContent("Encrypted PDF files are not supported.");
@@ -94,19 +120,24 @@ async function assertPdf(content: Buffer): Promise<void> {
 		}
 		throw invalidContent("The PDF file is damaged or unreadable.");
 	} finally {
-		await parser.destroy().catch(() => undefined);
+		clearTimeout(timer);
+		// Never wait for a parser that may be stuck.
+		void Promise.resolve()
+			.then(() => parser.destroy())
+			.catch(() => undefined);
 	}
 }
 
 export async function validateDocumentContent(
 	content: Buffer,
 	mediaType: DocumentMediaType,
+	options: ContentValidationOptions = {},
 ): Promise<void> {
 	if (content.length === 0) {
-		throw invalidContent("The file is empty.");
+		throw validationError("The file must not be empty.");
 	}
 	if (mediaType === "application/pdf") {
-		await assertPdf(content);
+		await assertPdf(content, options);
 	} else {
 		assertText(content);
 	}

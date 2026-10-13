@@ -639,4 +639,17 @@ curl -s -X DELETE -o /dev/null -w '%{http_code}\n' -H "$H" "$P/$DOC_ID"  # 204
 curl -s -X DELETE -o /dev/null -w '%{http_code}\n' -H "$H" "$P/$DOC_ID"  # 404
 ```
 
+Member download and archive retention:
+
+```bash
+# Add a second user as MEMBER (see section 2), then:
+curl -s -H "Authorization: Bearer $MEMBER_TOKEN" "$P/$DOC_ID/content"        # 200, same bytes
+curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $MEMBER_TOKEN" -F "file=@/tmp/demo.txt" "$P"   # 403
+
+# Archive the project: access is denied, files are kept.
+curl -s -X DELETE -H "Authorization: Bearer $TOKEN" "http://localhost:5173/api/v1/organizations/$ORG_ID/projects/$PROJECT_ID"
+curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" "$P"   # 404 PROJECT_NOT_FOUND
+docker compose exec backend ls -R /var/lib/tokenscope/documents                    # the bytes are still there
+```
+
 Expected rejections: a `.docx` file gives `415`, a text file with invalid UTF-8 gives `422`, an 11 MiB file gives `413`, the sixth upload within a minute gives `429` with `Retry-After`, and a member token gives `403` on upload or delete.

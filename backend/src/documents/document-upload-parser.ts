@@ -1,28 +1,18 @@
 import { HttpStatus } from "@nestjs/common";
 import type { Request } from "express";
+import { randomUUID } from "node:crypto";
+import { rm } from "node:fs/promises";
+import { join } from "node:path";
 import multer = require("multer");
 import { ApiException } from "../common/errors/api.exception";
 import { MAX_DOCUMENT_BYTES } from "./documents.constants";
 
-export type UploadedDocument = {
+export type ReceivedUpload = {
 	originalName: string;
-	content: Buffer;
+	/** Temporary file inside the private incoming directory. */
+	temporaryPath: string;
+	sizeBytes: number;
 };
-
-const parser = multer({
-	storage: multer.memoryStorage(),
-	// Keep the raw name: we reject '/' and '\\' ourselves instead of silently
-	// stripping a path.
-	preservePath: true,
-	// multer decodes names as latin1 by default, which corrupts accents.
-	defParamCharset: "utf8",
-	limits: {
-		files: 1,
-		fields: 0,
-		// One byte of headroom: busboy flags a file that reaches the limit exactly.
-		fileSize: MAX_DOCUMENT_BYTES + 1,
-	},
-}).single("file");
 
 function tooLarge(): ApiException {
 	return new ApiException(
@@ -41,36 +31,104 @@ function invalidUpload(message: string): ApiException {
 	);
 }
 
-/** Runs multer by hand so access and quota checks happen before the body is read. */
-export function parseSingleFileUpload(
+type Tracker = { settled: Promise<unknown>[]; paths: string[] };
+
+function createParser(directory: string, tracker: Tracker) {
+	const disk = multer.diskStorage({
+		destination: directory,
+		filename: (_request, _file, callback) => {
+			const name = `${randomUUID()}.tmp`;
+			tracker.paths.push(join(directory, name));
+			callback(null, name);
+		},
+	});
+	// Wraps diskStorage so that, on any error, we can wait until every started
+	// write has ended before deleting its file (multer aborts without waiting).
+	const storage: multer.StorageEngine = {
+		_handleFile(request, file, callback) {
+			tracker.settled.push(
+				new Promise((done) => {
+					disk._handleFile(request, file, (error, info) => {
+						done(undefined);
+						callback(error, info);
+					});
+				}),
+			);
+		},
+		_removeFile(request, file, callback) {
+			disk._removeFile(request, file, callback);
+		},
+	};
+	return multer({
+		storage,
+		// multer decodes names as latin1 by default, which corrupts accents.
+		defParamCharset: "utf8",
+		// Keep the raw name: '/' and '\' are rejected later, never stripped.
+		preservePath: true,
+		limits: {
+			files: 1,
+			fields: 0,
+			headerPairs: 20,
+			fieldNameSize: 100,
+			// One byte of headroom: busboy flags a file that reaches the limit exactly.
+			fileSize: MAX_DOCUMENT_BYTES + 1,
+		},
+	}).single("file");
+}
+
+async function discard(tracker: Tracker): Promise<void> {
+	await Promise.race([
+		Promise.allSettled(tracker.settled),
+		new Promise((resolve) => setTimeout(resolve, 5000).unref()),
+	]);
+	await Promise.all(tracker.paths.map((path) => rm(path, { force: true })));
+}
+
+/**
+ * Runs multer by hand so access and quota checks happen before the body is read.
+ * The returned file is a temporary file the caller must adopt or remove.
+ */
+export function receiveSingleFile(
 	request: Request,
-): Promise<UploadedDocument> {
+	directory: string,
+): Promise<ReceivedUpload> {
+	const tracker: Tracker = { settled: [], paths: [] };
+	const parser = createParser(directory, tracker);
+
 	return new Promise((resolve, reject) => {
+		const fail = (exception: ApiException) => {
+			void discard(tracker).then(
+				() => reject(exception),
+				() => reject(exception),
+			);
+		};
 		parser(request, undefined as never, (error: unknown) => {
 			if (error instanceof multer.MulterError) {
-				if (error.code === "LIMIT_FILE_SIZE") {
-					return reject(tooLarge());
-				}
-				return reject(
+				if (error.code === "LIMIT_FILE_SIZE") return fail(tooLarge());
+				return fail(
 					invalidUpload(
 						"Send exactly one file in a multipart field named 'file', and no other fields.",
 					),
 				);
 			}
 			if (error) {
-				return reject(invalidUpload("The multipart body is malformed."));
+				return fail(invalidUpload("The multipart body is malformed."));
 			}
 
 			const file = request.file;
 			if (!file) {
-				return reject(
+				return fail(
 					invalidUpload("A multipart field named 'file' is required."),
 				);
 			}
-			if (file.buffer.length > MAX_DOCUMENT_BYTES) {
-				return reject(tooLarge());
+			if (file.size > MAX_DOCUMENT_BYTES) {
+				return fail(tooLarge());
 			}
-			resolve({ originalName: file.originalname, content: file.buffer });
+			resolve({
+				originalName: file.originalname,
+				temporaryPath: file.path,
+				sizeBytes: file.size,
+			});
 		});
 	});
 }

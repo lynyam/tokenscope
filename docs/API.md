@@ -1235,14 +1235,14 @@ Errors:
 
 | Status | Code | When |
 |---|---|---|
-| 400 | `VALIDATION_ERROR` | Bad multipart shape, bad file name, bad query |
+| 400 | `VALIDATION_ERROR` | Bad multipart shape, empty file, bad file name, bad query |
 | 403 | `INSUFFICIENT_ORGANIZATION_ROLE` | A member without OWNER/ADMIN uploads or deletes |
 | 404 | `PROJECT_NOT_FOUND` | Unknown, archived or inaccessible project or organization |
 | 404 | `DOCUMENT_NOT_FOUND` | Unknown document, document of another project, or already deleted |
 | 409 | `CONCURRENT_MODIFICATION` | Transaction conflict persisted after retries |
 | 413 | `PAYLOAD_TOO_LARGE` | File larger than 10,485,760 bytes |
 | 415 | `UNSUPPORTED_MEDIA_TYPE` | Extension is not `.pdf`, `.txt` or `.md` |
-| 422 | `INVALID_DOCUMENT_CONTENT` | Empty file, text that is not UTF-8 or contains NUL, PDF that is damaged, password-protected or permission-encrypted |
+| 422 | `INVALID_DOCUMENT_CONTENT` | Text that is not UTF-8 or contains NUL; PDF that is damaged, password-protected, permission-encrypted or not inspectable within 10 seconds |
 | 429 | `RATE_LIMITED` | More than 5 authorized uploads per minute per user; `Retry-After` is set |
 | 503 | `STORAGE_UNAVAILABLE` | Bytes cannot be written or are missing |
 
