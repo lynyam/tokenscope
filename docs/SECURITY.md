@@ -664,6 +664,17 @@ Use bounded bookkeeping. Do not introduce Redis for the single-backend evaluatio
 
 Do not trust arbitrary forwarded IP headers. Configure the known proxy boundary and preserve it in tests.
 
+Trace ingestion obtains project scope exclusively from the verified
+API-key principal. Every transaction attempt revalidates the key and its
+active project/organization through ApiKeyAuthService.
+
+Incoming project IDs, actor identity, pricing and computed costs are not
+accepted as writable trace fields.
+
+Logs must not contain complete trace payloads, metadata, API keys or raw
+database errors. Post-commit notification failure is logged safely and
+does not turn a committed ingestion into an HTTP failure.
+
 ### Realtime access
 
 Verify JWT signature and expiry using the existing token service.

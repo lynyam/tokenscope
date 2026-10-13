@@ -354,6 +354,17 @@ must not replace them with current catalogue rates.
 The Prisma schema is authoritative for exact persisted field names:
 [backend/prisma/schema.prisma](../backend/prisma/schema.prisma).
 
+TSE-68 computes payloadHash as SHA-256 over a fixed ordered tuple of
+normalized writable fields. Metadata entries are sorted by key before
+hashing. Server-generated IDs, costs, price identity, version and
+creation/update timestamps are excluded.
+
+Provider/model identifiers are trimmed and lowercased. Occurrence
+timestamps are normalized to millisecond UTC precision before hashing.
+
+The selected ModelPrice identity and rate snapshots are persisted with
+the trace. Replays return those persisted values without price lookup.
+
 ### Private documents
 
 File bytes live outside PostgreSQL in private storage.

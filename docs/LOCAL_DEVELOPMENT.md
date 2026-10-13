@@ -641,6 +641,26 @@ The database and Caddy CA survive container recreation.
 `make fullclean` deletes the project's volumes, including database data
 and the Caddy CA. A newly generated CA must be trusted again.
 
+
+### Explicit price catalogue loading
+
+Catalogue loading is never automatic.
+
+For the development backend:
+
+docker compose exec backend npm run build
+docker compose cp fixtures/evaluation/model-prices.json backend:/tmp/model-prices.json
+docker compose exec backend npm run pricing:load -- --file /tmp/model-prices.json
+
+Repeating an identical catalogue is a no-op. Existing identities cannot
+be overwritten. Add a new effective date for a new price version.
+
+The complete catalogue is limited to 1,000 rows and input files to 1 MiB.
+Rates must be decimal strings. Non-synthetic entries require an HTTPS
+pricing source and an explicit effective date.
+
+Price catalogue loading never runs during normal application startup. The evaluation setup command loads the canonical synthetic catalogue before seeding traces. The standalone pricing:load command remains available for deliberate catalogue imports.(TSE-70 connects it to the evaluation setup)
+
 ### Troubleshooting
 
 | Stage | Action |
