@@ -8,6 +8,11 @@ import type { ApiKeySummary } from "../../types/api-key.types";
 import type { MembershipRole, Project } from "../../types/workspace.types";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { CircleAlert, FolderX, ArrowLeft, Key, Plus } from "lucide-react";
 import { ApiKeySecretDialog, type RevealedApiKey } from "./ApiKeySecretDialog";
 
 export function ApiKeysPage() {
@@ -268,49 +273,99 @@ function ApiKeys({ organizationId, projectId }: { organizationId: string; projec
     }
   }
 
-  if (contextLoading) return <p>Loading…</p>;
+  if (contextLoading) {
+    return (
+      <div className="flex flex-col gap-2 max-w-md mx-auto">
+        <Skeleton className="h-8 w-48 mb-4" />
+        {Array.from({ length: 3 }).map((_, index) => (
+          <Skeleton key={index} className="h-16 w-full" />
+        ))}
+      </div>
+    );
+  }
 
   if (contextError || !project || !role) {
     return (
-      <section>
-        <p role="alert">{contextError ?? "Project not found."}</p>
-        {contextError !== "Project not found." && (
-          <Button type="button" onClick={() => setContextAttempt(n => n + 1)}>Retry</Button>
-        )}
-        <p><Link to={"/organizations/" + encodeURIComponent(organizationId) + "/projects"}>
-          Back to projects
-        </Link></p>
-      </section>
+      <div className="flex h-full flex-col items-center justify-center gap-1 text-center mb-6">
+        <FolderX className="h-12 w-12 text-muted-foreground" />
+        <p className="mt-4 text-xl font-semibold">
+          {contextError ?? "Project not found."}
+        </p>
+        <div className="mt-5 flex gap-2">
+          {contextError !== "Project not found." && (
+            <Button variant="outline" className="rounded-lg" onClick={() => setContextAttempt(n => n + 1)}>
+              Retry
+            </Button>
+          )}
+          <Link
+            to={"/organizations/" + encodeURIComponent(organizationId) + "/projects"}
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-transparent hover:bg-muted h-10 px-6 text-sm font-medium normal-case transition-all"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to projects
+          </Link>
+        </div>
+      </div>
     );
   }
 
   if (project.archivedAt !== null) {
     return (
-      <section>
-        <p role="alert">This project is archived. API keys are not available.</p>
-        <p><Link to={projectPath}>Back to project</Link></p>
-      </section>
+      <div className="flex h-full flex-col items-center justify-center gap-1 text-center mb-6">
+        <CircleAlert className="h-12 w-12 text-muted-foreground" />
+        <p className="mt-4 text-xl font-semibold">Project archived</p>
+        <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+          API keys are not available for archived projects.
+        </p>
+        <Link
+          to={projectPath}
+          className="mt-5 inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-transparent hover:bg-muted h-10 px-6 text-sm font-medium normal-case transition-all"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to project
+        </Link>
+      </div>
     );
   }
 
   if (role === "MEMBER") {
     return (
-      <section>
-        <h1>API keys</h1>
-        <p role="alert">You do not have permission to manage API keys for this project.</p>
-        <p><Link to={projectPath}>Back to project</Link></p>
-      </section>
+      <div className="flex h-full flex-col items-center justify-center gap-1 text-center mb-6">
+        <CircleAlert className="h-12 w-12 text-muted-foreground" />
+        <p className="mt-4 text-xl font-semibold">API keys</p>
+        <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+          You do not have permission to manage API keys for this project.
+        </p>
+        <Link
+          to={projectPath}
+          className="mt-5 inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-transparent hover:bg-muted h-10 px-6 text-sm font-medium normal-case transition-all"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to project
+        </Link>
+      </div>
     );
   }
 
   return (
-    <section>
-      <p><Link to={projectPath}>← {project.name}</Link></p>
-      <h1>API keys</h1>
+    <div className="max-w-md mx-auto">
+      <Link to={projectPath} className="text-sm text-muted-foreground hover:text-foreground">
+        ← {project.name}
+      </Link>
 
-      <Button type="button" onClick={() => handleCreateOpenChange(true)}>Create API key</Button>
+      <div className="mt-2 mb-6 flex items-center justify-between">
+        <h1 className="text-2xl font-bold">API keys</h1>
+        <Button className="rounded-lg" onClick={() => handleCreateOpenChange(true)}>
+          <Plus className="h-4 w-4" />
+          Create
+        </Button>
+      </div>
 
-      {notice && <p role="status" className="text-sm">{notice}</p>}
+      {notice && (
+        <p role="status" className="mb-4 text-sm text-muted-foreground">
+          {notice}
+        </p>
+      )}
 
       <Dialog open={createOpen} onOpenChange={handleCreateOpenChange}>
         <DialogContent className="rounded-lg" showCloseButton={!isCreating}>
@@ -320,24 +375,25 @@ function ApiKeys({ organizationId, projectId }: { organizationId: string; projec
               Name the key after the application that will use it.
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleCreate} className="space-y-4">
-            <div className="space-y-1">
-              <label htmlFor="api-key-name" className="text-sm font-medium">Name</label>
-              <input
+          <form onSubmit={handleCreate} className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="api-key-name">Name</Label>
+              <Input
                 id="api-key-name"
                 value={nameDraft}
-                onChange={event => setNameDraft(event.target.value)}
+                onChange={(event) => setNameDraft(event.target.value)}
                 disabled={isCreating}
                 autoComplete="off"
                 autoFocus
-                className="w-full rounded-md border p-2 text-sm"
               />
             </div>
             {createError && <p role="alert" className="text-sm text-destructive">{createError}</p>}
             <div className="flex gap-2">
-              <Button type="button" variant="outline" disabled={isCreating}
-                onClick={() => handleCreateOpenChange(false)}>Cancel</Button>
-              <Button type="submit" disabled={isCreating}>
+              <Button type="button" variant="outline" className="rounded-lg" disabled={isCreating}
+                onClick={() => handleCreateOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" className="rounded-lg" disabled={isCreating}>
                 {isCreating ? "Creating…" : "Create key"}
               </Button>
             </div>
@@ -357,69 +413,102 @@ function ApiKeys({ organizationId, projectId }: { organizationId: string; projec
           </DialogHeader>
           {revokeTarget && (
             <p className="text-sm">
-              <strong>{revokeTarget.name}</strong> <code>{revokeTarget.keyPrefix}…</code>
+              <strong>{revokeTarget.name}</strong>{" "}
+              <code className="text-muted-foreground">{revokeTarget.keyPrefix}…</code>
             </p>
           )}
           {revokeError && <p role="alert" className="text-sm text-destructive">{revokeError}</p>}
           <div className="flex gap-2">
-            <Button type="button" variant="outline" disabled={isRevoking}
-              onClick={() => handleRevokeOpenChange(false)}>Cancel</Button>
-            <Button type="button" variant="destructive" disabled={isRevoking} onClick={handleRevoke}>
+            <Button type="button" variant="outline" className="rounded-lg" disabled={isRevoking}
+              onClick={() => handleRevokeOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button type="button" variant="destructive" className="rounded-lg" disabled={isRevoking} onClick={handleRevoke}>
               {isRevoking ? "Revoking…" : "Revoke key"}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {listLoading && keys === null && <p>Loading API keys…</p>}
-
-      {listError && (
-        <div role="alert">
-          <p>{listError}</p>
-          <Button type="button" onClick={() => setListAttempt(n => n + 1)}>Retry</Button>
+      {listLoading && keys === null && (
+        <div className="flex flex-col gap-2">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <Skeleton key={index} className="h-20 w-full" />
+          ))}
         </div>
       )}
 
-      {keys !== null && keys.length === 0 && <p>No API keys yet.</p>}
+      {listError && (
+        <div role="alert" className="flex flex-col items-start gap-2 rounded-lg border p-4">
+          <p className="text-sm text-destructive">{listError}</p>
+          <Button variant="outline" className="rounded-lg" onClick={() => setListAttempt(n => n + 1)}>
+            Retry
+          </Button>
+        </div>
+      )}
+
+      {keys !== null && keys.length === 0 && (
+        <p className="text-muted-foreground">No API keys yet.</p>
+      )}
 
       {keys !== null && keys.length > 0 && (
-        <ul aria-label="API keys">
-          {keys.map(apiKey => (
-            <li key={apiKey.id}>
-              <strong>{apiKey.name}</strong>{" "}
-              <code>{apiKey.keyPrefix}…</code>
-              <div>Created {formatDate(apiKey.createdAt)}</div>
-              <div>
-                {apiKey.lastUsedAt ? "Last used " + formatDate(apiKey.lastUsedAt) : "No recorded use."}
+        <ul aria-label="API keys" className="flex flex-col gap-2">
+          {keys.map((apiKey) => (
+            <li key={apiKey.id} className="rounded-lg border p-4">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Key className="h-4 w-4 text-muted-foreground" />
+                  <span className="font-medium">{apiKey.name}</span>
+                </div>
+                {!apiKey.revokedAt && !confirmedRevoked.has(apiKey.id) && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="rounded-lg"
+                    disabled={isRevoking || isCreating}
+                    onClick={() => {
+                      setRevokeError(null);
+                      setRevokeTarget(apiKey);
+                    }}
+                  >
+                    Revoke
+                  </Button>
+                )}
               </div>
-              <div>
-                {apiKey.revokedAt
-                  ? "Revoked " + formatDate(apiKey.revokedAt)
-                  : confirmedRevoked.has(apiKey.id) ? "Revoked" : "Active"}
+              <code className="text-sm text-muted-foreground">{apiKey.keyPrefix}…</code>
+              <div className="mt-2 flex flex-col gap-0.5 text-xs text-muted-foreground">
+                <span>Created {formatDate(apiKey.createdAt)}</span>
+                <span>
+                  {apiKey.lastUsedAt ? "Last used " + formatDate(apiKey.lastUsedAt) : "No recorded use."}
+                </span>
+                <span>
+                  {apiKey.revokedAt
+                    ? "Revoked " + formatDate(apiKey.revokedAt)
+                    : confirmedRevoked.has(apiKey.id) ? "Revoked" : "Active"}
+                </span>
               </div>
-              {!apiKey.revokedAt && !confirmedRevoked.has(apiKey.id) && (
-                <Button type="button" variant="outline" disabled={isRevoking || isCreating}
-                  onClick={() => { setRevokeError(null); setRevokeTarget(apiKey); }}>
-                  Revoke
-                </Button>
-              )}
             </li>
           ))}
         </ul>
       )}
 
-      <section aria-labelledby="api-usage-heading" className="mt-8 space-y-2">
-        <h2 id="api-usage-heading" className="text-lg font-semibold">Use a key</h2>
-        <p className="text-sm">
-          This page and the other management pages use your signed-in session (a browser JWT).
-          Public trace endpoints use the project key in the <code>X-API-Key</code> header.
-          Never send your browser token in place of a project key.
-        </p>
-        <pre className="overflow-x-auto rounded-md border p-3 text-sm"><code>{CURL_TEMPLATE}</code></pre>
-        <p className="text-sm">
-          <a href={PUBLIC_API_DOCS_URL} target="_blank" rel="noreferrer">Public API documentation</a>
-        </p>
-      </section>
-    </section>
+      <Card className="mt-8 rounded-lg">
+        <CardHeader>
+          <CardTitle className="text-lg">Use a key</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-2">
+          <p className="text-sm text-muted-foreground">
+            This page and the other management pages use your signed-in session (a browser JWT).
+            Public trace endpoints use the project key in the <code>X-API-Key</code> header.
+            Never send your browser token in place of a project key.
+          </p>
+          <pre className="overflow-x-auto rounded-md border p-3 text-sm"><code>{CURL_TEMPLATE}</code></pre>
+          <a href={PUBLIC_API_DOCS_URL} target="_blank" rel="noreferrer" className="text-sm underline">
+            Public API documentation
+          </a>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

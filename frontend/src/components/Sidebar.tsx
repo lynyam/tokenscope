@@ -2,19 +2,19 @@ import { OrganizationSwitcher } from "./OrganizationSwitcher";
 import { UserMenu } from "./UserMenu";
 import { CollapsibleNavItem } from "./ProjectMenu";
 import { Separator } from "../components/ui/separator";
-import { Link } from "react-router-dom";
-import { useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import { useOrganizationProjects } from "../hooks/useOrganizationProjects";
-
+import { Activity, Key, LayoutDashboard } from "lucide-react";
 
 export function Sidebar() {
-  const { organizationId } = useParams();
-  const {
-    projects,
-    isLoading,
-    error,
-    reload,
-  } = useOrganizationProjects(organizationId);
+  const { organizationId, projectId } = useParams();
+  const { pathname } = useLocation();
+  const { projects, isLoading, error, reload } =
+    useOrganizationProjects(organizationId);
+
+  const currentProject = projects.find((project) => project.id === projectId);
+  const apiKeysPath = `/organizations/${organizationId}/projects/${projectId}/api-keys`;
+  const isApiKeysActive = pathname === apiKeysPath;
 
   return (
     <aside className="flex h-full w-56 flex-col border-r p-4">
@@ -41,11 +41,7 @@ export function Sidebar() {
             {error && (
               <div className="px-3 text-sm">
                 <p role="alert">{error}</p>
-                <button
-                  type="button"
-                  onClick={reload}
-                  className="underline"
-                >
+                <button type="button" onClick={reload} className="underline">
                   Retry projects
                 </button>
               </div>
@@ -60,6 +56,43 @@ export function Sidebar() {
               organizationId={organizationId}
             />
           </>
+        )}
+
+        {organizationId && projectId && currentProject && (
+          <div className="mt-4 flex flex-col gap-1">
+            <span className="truncate px-3 py-2 text-sm font-medium">
+              {currentProject.name}
+            </span>
+            <Separator className="mb-1" />
+
+            <Link
+              to={apiKeysPath}
+              className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
+                isApiKeysActive
+                  ? "bg-muted font-medium text-foreground"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+            >
+              <Key className="h-4 w-4" />
+              API keys
+            </Link>
+
+            <span
+              aria-disabled="true"
+              className="flex cursor-not-allowed items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground opacity-50"
+            >
+              <Activity className="h-4 w-4" />
+              Traces
+            </span>
+
+            <span
+              aria-disabled="true"
+              className="flex cursor-not-allowed items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground opacity-50"
+            >
+              <LayoutDashboard className="h-4 w-4" />
+              Dashboard
+            </span>
+          </div>
         )}
       </nav>
 
