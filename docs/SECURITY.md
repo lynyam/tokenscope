@@ -740,5 +740,5 @@ Logs and test artifacts must exclude credentials, file contents, questions, comp
 - PDFs are parsed in the backend process with pdf.js (through `pdf-parse`). Parsing untrusted PDFs is a known risk that is bounded here by the size limit and a 10-second deadline; it is not sandboxed, and a stuck parse may keep running in the background after the request is rejected.
 - Validation checks format and structure. It is not a guarantee that a file is free of malware, and no antivirus scan is performed.
 - Documents are only stored for users. They are not sent to the assistant, indexed, or used for retrieval.
-- Uploads are received on disk in a private `0700` directory, so memory use does not depend on file size.
+- Uploads are received on disk in a private `0700` directory, so reception does not buffer the body in memory. Validation then reads the file into memory: at most one 10 MiB file per upload, plus one extra copy while a PDF is parsed.
 - Caddy rejects request bodies above 11 MiB on `/api/*` before they reach the backend. Caddy answers `413` itself, so that response does not use the JSON error envelope.

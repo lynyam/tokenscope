@@ -349,7 +349,7 @@ describe("Private documents HTTP contract", () => {
 		it("streams the bytes with safe headers, inline by default", async () => {
 			const response = await get().expect(200);
 			expect(response.text).toBe(content);
-			expect(response.headers["content-type"]).toMatch(/^text\/plain/);
+			expect(response.headers["content-type"]).toBe("text/plain; charset=utf-8");
 			expect(response.headers["content-length"]).toBe(String(content.length));
 			expect(response.headers["cache-control"]).toBe("no-store");
 			expect(response.headers["x-content-type-options"]).toBe("nosniff");

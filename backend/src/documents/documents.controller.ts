@@ -74,7 +74,10 @@ export class DocumentsController {
 		response.setHeader("X-Content-Type-Options", "nosniff");
 
 		const file = new StreamableFile(content.stream, {
-			type: content.mediaType,
+			// Text is validated as UTF-8 on upload; say so, or browsers may guess a legacy charset.
+			type: content.mediaType.startsWith("text/")
+				? `${content.mediaType}; charset=utf-8`
+				: content.mediaType,
 			length: content.sizeBytes,
 			disposition: contentDisposition(content.originalName, {
 				type: query.download === "true" ? "attachment" : "inline",
