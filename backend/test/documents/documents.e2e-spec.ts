@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Readable } from "node:stream";
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request = require("supertest");
@@ -379,6 +380,20 @@ describe("Private documents HTTP contract", () => {
 			await storage.delete(rows[0].storageKey);
 			const response = await get().expect(503);
 			expect(response.body.code).toBe("STORAGE_UNAVAILABLE");
+		});
+
+		it("sends the 503 as JSON without file headers when the stream fails to open", async () => {
+			jest.spyOn(storage, "read").mockReturnValueOnce(
+				new Readable({
+					read() {
+						this.destroy(new Error("EIO"));
+					},
+				}) as never,
+			);
+			const response = await get("?download=true").expect(503);
+			expect(response.body.code).toBe("STORAGE_UNAVAILABLE");
+			expect(response.headers["content-type"]).toMatch(/^application\/json/);
+			expect(response.headers["content-disposition"]).toBeUndefined();
 		});
 	});
 

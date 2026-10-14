@@ -94,6 +94,10 @@ export class DocumentsController {
 				res.destroy();
 				return;
 			}
+			// The file headers were set before piping; the JSON body must not inherit them.
+			res.removeHeader("Content-Disposition");
+			res.removeHeader("Content-Length");
+			res.removeHeader("Content-Type");
 			const requestId = res.getHeader("X-Request-Id");
 			res.status(503).json({
 				statusCode: 503,

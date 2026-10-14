@@ -624,10 +624,15 @@ integration.
 
 ## Private documents — TSE-78 manual check
 
-Replace the variables with a real organization, project and an owner access token.
+Replace the variables with a real organization and an owner access token.
 
 ```bash
-P="http://localhost:5173/api/v1/organizations/$ORG_ID/projects/$PROJECT_ID/documents"
+# Use a fresh, active project: the archive step above made the earlier $PROJECT_ID inaccessible.
+PROJECT_ID=$(curl --fail --silent -X POST "$DEMO_API_BASE/organizations/$ORG_ID/projects" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"name": "Documents demo"}' | jq -r '.id')
+
+P="$DEMO_API_BASE/organizations/$ORG_ID/projects/$PROJECT_ID/documents"
 H="Authorization: Bearer $TOKEN"
 
 printf 'hello' > /tmp/demo.txt
@@ -635,18 +640,26 @@ curl -s -H "$H" -F "file=@/tmp/demo.txt" "$P"                # 201 summary, no s
 curl -s -H "$H" "$P"                                          # list, newest first
 curl -s -H "$H" "$P/$DOC_ID/content"                          # hello
 curl -s -D - -o /dev/null -H "$H" "$P/$DOC_ID/content?download=true"   # attachment, nosniff, no-store
-curl -s -X DELETE -o /dev/null -w '%{http_code}\n' -H "$H" "$P/$DOC_ID"  # 204
-curl -s -X DELETE -o /dev/null -w '%{http_code}\n' -H "$H" "$P/$DOC_ID"  # 404
 ```
 
-Member download and archive retention:
+Member access (before the document is deleted):
 
 ```bash
 # Add a second user as MEMBER (see section 2), then:
 curl -s -H "Authorization: Bearer $MEMBER_TOKEN" "$P/$DOC_ID/content"        # 200, same bytes
 curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $MEMBER_TOKEN" -F "file=@/tmp/demo.txt" "$P"   # 403
 
-# Archive the project: access is denied, files are kept.
+curl -s -o /dev/null -w '%{http_code}\n' -X DELETE -H "Authorization: Bearer $MEMBER_TOKEN" "$P/$DOC_ID"   # 403
+```
+
+Delete, then archive retention:
+
+```bash
+curl -s -X DELETE -o /dev/null -w '%{http_code}\n' -H "$H" "$P/$DOC_ID"  # 204
+curl -s -X DELETE -o /dev/null -w '%{http_code}\n' -H "$H" "$P/$DOC_ID"  # 404
+
+# Upload one more document, then archive the project: access is denied, files are kept.
+curl -s -o /dev/null -H "$H" -F "file=@/tmp/demo.txt" "$P"
 curl -s -X DELETE -H "Authorization: Bearer $TOKEN" "http://localhost:5173/api/v1/organizations/$ORG_ID/projects/$PROJECT_ID"
 curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" "$P"   # 404 PROJECT_NOT_FOUND
 docker compose exec backend ls -R /var/lib/tokenscope/documents                    # the bytes are still there

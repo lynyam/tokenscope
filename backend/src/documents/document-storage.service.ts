@@ -68,9 +68,44 @@ export class DocumentStorageService {
 		}
 
 		const target = this.pathFor(key);
-		await mkdir(dirname(target), { recursive: true, mode: 0o700 });
+		const targetDirectory = dirname(target);
+		await mkdir(targetDirectory, { recursive: true, mode: 0o700 });
 		await chmod(source, 0o600);
+
+		// multer does not flush: make the bytes durable before the row is committed.
+		const file = await open(source, "r");
+		try {
+			await file.sync();
+		} finally {
+			await file.close();
+		}
+
 		await rename(source, target);
+
+		for (const directory of new Set([
+			dirname(source),
+			targetDirectory,
+			this.root,
+		])) {
+			await this.syncDirectory(directory);
+		}
+	}
+
+	/** Flushes a directory entry. Platforms that cannot open directories skip it. */
+	private async syncDirectory(directory: string): Promise<void> {
+		let handle;
+		try {
+			handle = await open(directory, "r");
+		} catch (error) {
+			const code = (error as NodeJS.ErrnoException).code;
+			if (code === "EISDIR" || code === "EPERM" || code === "EINVAL") return;
+			throw error;
+		}
+		try {
+			await handle.sync();
+		} finally {
+			await handle.close();
+		}
 	}
 
 	/** Atomic: bytes are fsynced in a temp file, then renamed into place. */

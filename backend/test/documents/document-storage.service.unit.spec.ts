@@ -3,6 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DocumentStorageService } from "../../src/documents/document-storage.service";
 
+// The real module object, so a spy sees the calls made by the service.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const fsPromises: typeof import("node:fs/promises") = require("node:fs/promises");
+
 describe("DocumentStorageService", () => {
 	let root: string;
 	let storage: DocumentStorageService;
@@ -72,6 +76,29 @@ describe("DocumentStorageService", () => {
 			expect((await read(key)).toString()).toBe("payload");
 			expect((await stat(join(root, key))).mode & 0o777).toBe(0o600);
 			await expect(stat(temporary)).rejects.toMatchObject({ code: "ENOENT" });
+		});
+
+		it("flushes the file and its directories around the rename", async () => {
+			const incoming = await storage.incomingDirectory();
+			const temporary = join(incoming, "22222222-2222-4222-8222-222222222222.tmp");
+			await writeFile(temporary, "payload");
+			const key = storage.newKey();
+			const opened: string[] = [];
+			const original = fsPromises.open;
+			const spy = jest.spyOn(fsPromises, "open").mockImplementation(((path: string, ...rest: unknown[]) => {
+				opened.push(String(path));
+				return (original as (...a: unknown[]) => Promise<unknown>)(path, ...rest);
+			}) as never);
+			try {
+				await storage.adopt(temporary, key);
+			} finally {
+				spy.mockRestore();
+			}
+
+			expect(opened[0]).toBe(temporary);
+			expect(opened).toEqual(
+				expect.arrayContaining([incoming, join(root, key.slice(0, 2)), root]),
+			);
 		});
 
 		it("refuses to adopt or remove a path outside the incoming directory", async () => {
