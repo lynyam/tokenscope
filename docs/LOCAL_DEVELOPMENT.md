@@ -781,3 +781,14 @@ Price catalogue loading never runs during normal application startup. The evalua
 Use a separate checkout and a unique Compose project name for fresh-database
 and deliberate migration-failure tests. Never reset the working database
 to demonstrate evaluation startup.
+
+## Trace Explorer checks
+
+```sh
+make frontendcheck
+make frontendtest
+docker compose exec frontend npm run build
+```
+
+The screen is read-only and uses only existing backend endpoints. Contract, shared filters and limitations:
+`docs/FRONTEND_TRACE_EXPLORER.md`.
