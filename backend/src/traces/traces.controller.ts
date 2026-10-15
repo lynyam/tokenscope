@@ -9,10 +9,7 @@ import { CurrentUser } from "../common/decorators/current-user.decorator";
 import type { AuthenticatedUser } from "../common/types/authenticated-user";
 import { UuidParam } from "../common/decorators/uuid-param.decorators";
 import { ProjectReadLimitInterceptor } from "../common/rate-limit/project-read-limit.interceptor";
-import {
-	TraceQueryPipe,
-	type TraceListQuery,
-} from "./dto/trace-query.dto";
+import { TraceQueryPipe, type TraceListQuery, } from "./dto/trace-query.dto";
 import { TraceReadsService } from "./trace-reads.service";
 
 @Controller("organizations/:organizationId/projects/:projectId/traces")
