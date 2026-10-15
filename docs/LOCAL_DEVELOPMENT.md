@@ -425,8 +425,35 @@ After pulling a branch that adds or upgrades the dependency, run `npm ci` in
 lazily, so it is only fetched when a PDF preview is opened.
 
 The Vitest suite mocks PDF.js at its boundary (`src/pages/documents/pdf-preview.ts`).
-Real PDF rendering must be checked in a browser through the document journey in
-`docs/DEMO.md`. A Playwright suite is not part of the repository yet.
+Real PDF rendering is covered by the Playwright suite below.
+
+### Browser tests (Playwright)
+
+`frontend/test/e2e/*.spec.ts` drive a real browser against a running stack (frontend,
+backend, PostgreSQL, private storage). Each test signs up its own disposable users and
+creates its own organization and projects through the API, so no demo account or
+storage volume is touched. Small input files come from `fixtures/evaluation/uploads/`.
+
+They run on the host, not in the Alpine frontend container (Playwright's browsers do not
+run there). Node 24 is required on the host.
+
+```bash
+make up                      # development stack: http://localhost:5173
+make frontende2e-setup       # once: npm ci + Chromium download
+make frontende2e             # all browser tests
+
+# Evaluation mode through Caddy (HTTPS, local certificate):
+make eval-up
+E2E_BASE_URL=https://localhost:8443 make frontende2e
+
+# One suite or test:
+E2E_ARGS="-g 'rapid double submission'" make frontende2e
+```
+
+`E2E_CHROMIUM_PATH=/path/to/chromium` uses an installed Chromium instead of the downloaded one.
+Uploads are limited to 5 per minute per user; every test uses fresh users, so keep one
+test below that limit. Failed tests keep a trace in `frontend/test-results/`
+(`npx playwright show-trace <trace.zip>`).
 
 ### Backend
 
