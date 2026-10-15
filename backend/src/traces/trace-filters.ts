@@ -125,7 +125,7 @@ export function resolveTraceFilters(
 	return result;
 }
 
-// PostgreSQL LIKE/ILIKE treats these characters specially.
+// PostgreSQL LIKE/ILIKE treats these characters specially
 // Escape the escape character itself before using literal search.
 export function escapeTraceSearch(value: string): string {
 	return value.replace(/[\\%_]/g, character => "\\" + character);
