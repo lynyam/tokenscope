@@ -208,6 +208,39 @@ Trace listing, analytics and assistant context share matching semantics:
 
 Pagination and sorting belong to trace lists. They must not limit analytics or assistant context.
 
+### Shared filtering implementation — TSE-69
+
+TSE-69 implements the reusable filter foundation in:
+
+- backend/src/traces/trace-filters.ts
+- backend/src/traces/dto/trace-query.dto.ts
+- backend/src/traces/trace-scope.ts
+
+trace-filters.ts owns shared date resolution, filter normalization and matching
+conditions. trace-query.dto.ts adds trace-list pagination and sorting.
+trace-scope.ts builds API-key and browser access conditions for trace queries.
+
+Public and browser trace lists reuse these matching rules.
+Trace detail uses access scope and trace identity without the list's default
+date window.
+
+TSE-71 must reuse shared filter validation and matching semantics when
+implementing analytics. It must aggregate all matching traces rather than
+calling the paginated trace-list operation or applying its skip/take values.
+
+Browser trace list and detail share the browser-project-reads quota for each
+user/project pair. TSE-71 must join that same budget for analytics.
+
+TSE-69 reads place authorization, count and rows in one short Repeatable Read
+transaction. Each HTTP request obtains a new database snapshot; separate
+pagination requests remain live.
+
+This implementation status covers trace reads, shared filtering and public
+trace CRUD. It does not mark analytics calculations, the dashboard,
+Trace Explorer UI or WebSocket delivery implemented.
+
+### Analytics integration — TSE-71
+
 TSE-71 calculates all matching data in a short Repeatable Read transaction. Summary, series, model groups, authorized project metadata and internal pricing information must use the same transaction when needed together.
 
 Its transaction-aware entry point must authorize the caller itself. It does not accept an authorization-bypass flag.

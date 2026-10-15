@@ -334,11 +334,27 @@ Do not add indexes for every possible sort without an actual query need.
 
 A referenced price cannot be deleted. New price versions do not reprice existing traces.
 
-An actual correction updates the trace’s writable data, historical-price association, rate snapshots, costs, hash and version atomically.
+A genuinely changed PUT updates writable data, historical-price association,
+rate snapshots, input/output/total costs, payloadHash, updatedAt and version
+atomically in one transaction. It selects historical pricing using the
+replacement's occurredAt and increments version exactly once.
+The trace ID, project ID, externalId and createdAt remain unchanged.
 
-A read, POST replay or no-op PUT preserves stored history.
+An identical normalized POST replay and a current-version no-op PUT preserve
+stored pricing, costs, payloadHash, version, createdAt and updatedAt.
+They do not consult newly available catalogue prices.
+A stale PUT fails even when its content matches the current trace.
 
-Trace deletion retains the row and external ID while excluding it from ordinary reads and aggregates.
+Reads return stored historical values without repricing or mutation.
+
+Trace deletion is soft deletion: it sets deletedAt, advances version and
+updates updatedAt while retaining the database row and externalId.
+The existing unique constraint on (projectId, externalId) continues to reserve
+that identity, including after deletion.
+
+Deleted traces are excluded from ordinary list/detail queries and aggregates.
+Subsequent public GET/DELETE returns TRACE_NOT_FOUND; POST reusing the retained
+identity returns TRACE_DELETED. No restoration endpoint is provided.
 
 The persisted historical rate snapshots on Trace are named:
 

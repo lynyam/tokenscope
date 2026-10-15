@@ -4,6 +4,7 @@ import { ApiExceptionFilter } from "./common/filters/api-exception.filter";
 import { createValidationPipe } from "./common/validation/create-validation";
 import { requestLoggingMiddleware } from "./common/middleware/request.middleware";
 import { API_PREFIX } from "./common/constants/http.constants";
+import { setupPublicDocs } from "./public-docs/setup-public-docs";
 
 export function configureApp(app: INestApplication): void {
 	app.use(requestIdMiddleware);
@@ -11,4 +12,5 @@ export function configureApp(app: INestApplication): void {
 	app.setGlobalPrefix(API_PREFIX);
 	app.useGlobalFilters(new ApiExceptionFilter());
 	app.useGlobalPipes(createValidationPipe());
+	setupPublicDocs(app);
 }
