@@ -620,7 +620,21 @@ The key belongs to its project. Creator removal/demotion does not revoke it auto
 API-key management uses current OWNER/ADMIN membership and active project/organization checks. Creation and revocation use bounded
 serializable transactions with at most three attempts. Every retry rechecks authorization using the transaction client.
 
-Public handlers use PublicApi(), which applies IP quota, API-key verification and verified-key quota in that order. Public documentation routes must not use this decorator.
+Public trace handlers use PublicApi(), which applies IP quota, API-key
+verification and verified-key quota in that order.
+
+GET /api/v1/public/openapi.json and the Swagger UI/assets under
+/api/v1/public/docs/ are intentionally accessible without JWT or API key.
+They do not use PublicApi() and do not consume trace-operation quotas.
+
+Public documentation access does not grant access to trace data.
+All five /api/v1/public/traces operations continue to require X-API-Key,
+including when invoked through Swagger UI.
+
+Swagger UI uses locally served assets, disables the external Swagger
+validator and does not persist authorization. Users must enter a disposable
+project key deliberately; no key is embedded in the specification or examples.
+Interactive requests execute real operations and consume the normal quotas.
 
 ApiKeyAuthService.assertActivePrincipal(principal, tx) revalidates the credential inside consumer database operations without consuming quota.
 
@@ -651,7 +665,8 @@ Abort, permission, not-found, conflict, rate-limit and network failures do not i
 |---|---|
 | Public trace routes before key authentication | 60 requests/minute per trusted client IP |
 | Public trace routes after key authentication | 120 requests/minute per verified key |
-| Browser trace-list/analytics budget | Shared 60 requests/minute per user/project |
+| Browser trace list/detail | Shared 60 requests/minute per authenticated user/project |
+| Analytics integration — TSE-71 target | Reuse the same browser user/project budget |
 | Authorized document uploads | 5/minute per user |
 | Realtime connections | 5 simultaneous sockets per user |
 | Realtime subscribe attempts | 10 per 10 seconds per socket |
@@ -659,6 +674,22 @@ Abort, permission, not-found, conflict, rate-limit and network failures do not i
 | Assistant accepted requests | 5/minute per user and 30/minute per project |
 
 Public trace quotas apply across public trace routes. Database retries do not consume another HTTP quota.
+
+ProjectReadLimitInterceptor applies one shared browser-read budget to trace
+list and detail. Its counter uses the browser-project-reads namespace and the
+authenticated user ID plus project ID. It is distinct from the public
+client-IP and API-key budgets.
+
+The interceptor runs after JWT authentication and before parameter pipes and
+service-level project authorization. Malformed project UUIDs are left to the
+UUID pipe without consuming this budget. Requests with a valid project UUID
+consume capacity even if subsequent validation or authorization fails.
+
+Quota exhaustion returns 429 RATE_LIMITED with Retry-After in seconds.
+It does not clear the user's authentication session.
+
+TSE-71 must reuse this budget for analytics rather than introducing a separate
+60-request allowance. Analytics is not marked implemented by this change.
 
 Use bounded bookkeeping. Do not introduce Redis for the single-backend evaluation deployment.
 

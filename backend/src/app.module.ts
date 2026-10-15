@@ -7,6 +7,7 @@ import { MembershipsModule } from "./memberships/memberships.module";
 import { ProjectsModule } from "./projects/projects.module";
 import { ApiKeysModule } from "./api-keys/api-keys.module";
 import { TracesModule } from "./traces/traces.module";
+import { PublicDocsModule } from "./public-docs/public-docs.module";
 
 @Module({
 	imports: [
@@ -18,6 +19,7 @@ import { TracesModule } from "./traces/traces.module";
 		ProjectsModule,
 		ApiKeysModule,
 		TracesModule,
+		PublicDocsModule,
 	],
 })
 export class AppModule {}

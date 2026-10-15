@@ -430,6 +430,110 @@ npm run build
 
 ---
 
+### Public API documentation — TSE-69
+
+The public trace guide is [PUBLIC_API.md](./PUBLIC_API.md).
+
+After starting development mode with `make up`, open:
+
+```text
+http://localhost:5173/api/v1/public/docs/
+```
+
+After building evaluation mode with `make eval-up`, open:
+
+```text
+https://localhost:8443/api/v1/public/docs/
+```
+
+Use the configured application port if different.
+Trust the evaluation certificate as described below.
+
+The specification is served at:
+
+```text
+/api/v1/public/openapi.json
+```
+
+The generator is:
+
+```text
+backend/scripts/generate-public-api.cjs
+```
+
+It writes two committed copies:
+
+- backend/src/public-docs/public-api.json
+- docs/openapi/public-api.json
+
+Edit the generator and regenerate both copies. Do not edit generated JSON
+directly.
+
+With Node 24 installed on the host, run from the repository root:
+
+```bash
+cd backend
+npm run docs:generate
+npm run docs:check
+node scripts/generate-public-api.cjs --check
+cd ..
+```
+
+The direct `--check` command verifies both generated copies.
+The package `docs:check` command checks the backend copy and runs OpenAPI
+linting; it does not prove that endpoint behavior matches the document.
+
+Alternatively, generate and compare both copies without host Node.
+Run from the repository root:
+
+```bash
+docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  --mount "type=bind,source=$PWD,target=/repo" \
+  --workdir /repo/backend \
+  node:24-alpine \
+  node scripts/generate-public-api.cjs
+
+docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  --mount "type=bind,source=$PWD,target=/repo" \
+  --workdir /repo/backend \
+  node:24-alpine \
+  node scripts/generate-public-api.cjs --check
+```
+
+In development mode, run linting and compilation through the backend container:
+
+```bash
+docker compose exec backend npm run docs:check
+docker compose exec backend npm run build
+docker compose exec backend test -s dist/public-docs/public-api.json
+```
+
+The development backend container mounts only backend/ at /app.
+Do not run generation of both copies there: the repository's docs/ directory
+is outside that mount. Use host Node or the repository-mounted Docker command
+above.
+
+Swagger UI and its specification are accessible without credentials.
+Executing trace operations through the UI requires a project API key and
+uses real endpoints and quotas. Use a disposable project and key.
+
+Before executing fixture requests, follow
+[Explicit price catalogue loading](#explicit-price-catalogue-loading).
+Use explicit fixture dates for list queries; historical examples may fall
+outside the default last-seven-days window.
+
+After changing documentation or endpoint contracts, run:
+
+```bash
+make test-backend
+git diff --check
+```
+
+Rebuild evaluation mode after source changes before verifying the documentation
+and trace operations through HTTPS.
+
 ## Development workflow
 
 Once the local environment works, follow:
