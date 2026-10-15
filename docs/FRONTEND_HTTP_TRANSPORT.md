@@ -1,4 +1,4 @@
-# Frontend shared transport (TSE-72)
+# Frontend HTTP transport
 
 All browser API calls go through `frontend/src/api/http-client.ts`:
 **Page → domain API adapter → shared transport → same-origin backend.**
