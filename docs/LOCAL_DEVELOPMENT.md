@@ -404,9 +404,7 @@ Node 24, matching the development containers.
 
 The shared authentication, organization, membership and project integrations are present in the Sprint 1 baseline. Run the complete frontend suite when changing their shared transport or session behavior.
 
-New unit/component tests remain under `frontend/test/`. Real browser journeys belong under `frontend/test/e2e/` once browser-test infrastructure is introduced.
-
-At baseline `854da94`, the frontend package has no Playwright dependency or browser-test command. Do not present planned browser tests as an existing executable suite.
+New unit/component tests remain under `frontend/test/`. Real browser journeys live under `frontend/test/e2e/` and run with Playwright (see "Browser tests (Playwright)" below).
 
 TSE-72 extends transport for multipart uploads, private binary responses and assistant streams while preserving current JSON callers.
 

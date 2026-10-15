@@ -580,16 +580,15 @@ describe("preview entry point", () => {
     expect(content).toHaveBeenCalledWith(org, proj, "t1", { signal: expect.any(AbortSignal) });
   });
 
-  it("closes the preview when its document is deleted", async () => {
-    content.mockResolvedValue(new Blob(["hello"], { type: "text/plain" }));
-    list.mockResolvedValue(page([doc("t1", "note.txt", { mediaType: "text/plain" })]));
-    remove.mockResolvedValue(undefined);
+  it("closes the preview and reconciles the list when its document is gone", async () => {
+    list.mockResolvedValueOnce(page([doc("t1", "note.txt", { mediaType: "text/plain" })]));
+    content.mockRejectedValue(apiError(404, "DOCUMENT_NOT_FOUND"));
     view();
     await screen.findByText("note.txt");
+    list.mockResolvedValueOnce(page([]));
     await userEvent.click(screen.getByRole("button", { name: /^Preview note\.txt/ }));
-    await screen.findByText("hello");
-    // The preview is modal: close it, reopen nothing, delete from the row after confirming no stale preview remains.
-    await userEvent.keyboard("{Escape}");
-    await waitFor(() => expect(screen.queryByText("hello")).not.toBeInTheDocument());
+    expect(await screen.findByText(/no longer available\. The list has been refreshed/)).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText("note.txt")).not.toBeInTheDocument());
   });
 });
