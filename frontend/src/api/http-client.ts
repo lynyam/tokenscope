@@ -149,18 +149,13 @@ async function request<T>(
   const headers = requestHeaders("application/json", session);
   if (data !== undefined) headers.set("Content-Type", "application/json");
 
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      method,
-      headers,
-      body: data === undefined ? undefined : JSON.stringify(data),
-      signal: options.signal,
-    });
-  } catch (error) {
-    if (isAbortError(error)) throw error;
-    throw networkError();
-  }
+  // "manual" keeps a login/SSO redirect from being followed with credentials; fetchApi rejects it.
+  const response = await fetchApi(url, {
+    method,
+    headers,
+    body: data === undefined ? undefined : JSON.stringify(data),
+    redirect: "manual",
+  }, session, options);
 
   invalidateOn401(response.status, session);
 

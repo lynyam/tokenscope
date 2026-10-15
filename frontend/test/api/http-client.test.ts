@@ -179,6 +179,13 @@ describe("requestBlob", () => {
     expect(fetchMock.mock.calls[0][1]?.redirect).toBe("manual");
   });
 
+  it("JSON requests do not follow a redirect either", async () => {
+    fetchMock.mockResolvedValue(Object.defineProperty(new Response(null), "type", { value: "opaqueredirect" }));
+    await expect(apiGet("/organizations")).rejects.toMatchObject({ code: "INVALID_API_RESPONSE" });
+    expect(fetchMock.mock.calls[0][1]?.redirect).toBe("manual");
+    expect(getAccessToken()).toBe("alice-token");
+  });
+
   it("a non-JSON 401 invalidates the session; an old-session 401 cannot sign out a newer one", async () => {
     fetchMock.mockResolvedValue(new Response("<html>x</html>", { status: 401 }));
     await expect(requestBlob("/d")).rejects.toMatchObject({ statusCode: 401 });
