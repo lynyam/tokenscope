@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { apiDelete, apiGet, apiPatch, apiPost, ApiError } from "@/api/http-client";
+import { apiDelete, apiGet, apiPatch, apiPost, ApiError, requestBlob } from "@/api/http-client";
 import { clearAuthSession, getAccessToken, saveAccessToken, subscribeToAuthInvalidation } from "@/api/auth-session";
 
 const fetchMock = vi.fn<typeof fetch>();
@@ -145,5 +145,109 @@ describe("shared M1 HTTP client", () => {
     expect(getAccessToken()).toBeNull();
     expect(localStorage.getItem("theme")).toBe("dark");
     expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+describe("requestBlob", () => {
+  const bytes = (type = "application/pdf") => new Response(new Uint8Array([37, 80, 68, 70]), { status: 200, headers: { "Content-Type": type } });
+
+  it("returns the bytes with the real media type over an authenticated same-origin GET", async () => {
+    fetchMock.mockResolvedValue(bytes());
+    const blob = await requestBlob("/organizations/o/projects/p/documents/d/content?download=false");
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/organizations/o/projects/p/documents/d/content?download=false");
+    const init = fetchMock.mock.calls[0][1]!;
+    expect(init.method).toBe("GET");
+    expect(new Headers(init.headers).get("Authorization")).toBe("Bearer alice-token");
+    expect(blob.type).toBe("application/pdf");
+    expect(blob.size).toBe(4);
+  });
+
+  it("handles a JSON error before converting to a Blob", async () => {
+    fetchMock.mockResolvedValue(json({ code: "DOCUMENT_NOT_FOUND", message: "Document not found.", requestId: "r-1" }, 404));
+    await expect(requestBlob("/d")).rejects.toMatchObject({ statusCode: 404, code: "DOCUMENT_NOT_FOUND", requestId: "r-1" });
+    expect(getAccessToken()).toBe("alice-token");
+  });
+
+  it("does not turn an HTML login page into a document", async () => {
+    fetchMock.mockResolvedValue(new Response("<html>Sign in</html>", { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } }));
+    await expect(requestBlob("/d")).rejects.toMatchObject({ code: "INVALID_API_RESPONSE" });
+  });
+
+  it("does not follow a redirect carrying credentials", async () => {
+    fetchMock.mockResolvedValue(Object.defineProperty(new Response(null), "type", { value: "opaqueredirect" }));
+    await expect(requestBlob("/d")).rejects.toMatchObject({ code: "INVALID_API_RESPONSE" });
+    expect(fetchMock.mock.calls[0][1]?.redirect).toBe("manual");
+  });
+
+  it("a non-JSON 401 invalidates the session; an old-session 401 cannot sign out a newer one", async () => {
+    fetchMock.mockResolvedValue(new Response("<html>x</html>", { status: 401 }));
+    await expect(requestBlob("/d")).rejects.toMatchObject({ statusCode: 401 });
+    expect(getAccessToken()).toBeNull();
+
+    saveAccessToken("alice-token");
+    let finish!: (r: Response) => void;
+    fetchMock.mockReturnValue(new Promise(resolve => { finish = resolve; }));
+    const pending = requestBlob("/d");
+    saveAccessToken("bob-token");
+    finish(json({ code: "ACCESS_TOKEN_EXPIRED" }, 401));
+    await expect(pending).rejects.toBeInstanceOf(ApiError);
+    expect(getAccessToken()).toBe("bob-token");
+  });
+
+  it.each([403, 404, 409, 422, 429, 500, 503])("HTTP %i keeps the session", async status => {
+    fetchMock.mockResolvedValue(json({ code: "E", message: "m" }, status));
+    await expect(requestBlob("/d")).rejects.toMatchObject({ statusCode: status });
+    expect(getAccessToken()).toBe("alice-token");
+  });
+
+  it("keeps network failure and cancellation distinguishable", async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    await expect(requestBlob("/d")).rejects.toMatchObject({ statusCode: undefined, code: "NETWORK_ERROR" });
+    fetchMock.mockRejectedValueOnce(new DOMException("Aborted", "AbortError"));
+    await expect(requestBlob("/d")).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchMock).toHaveBeenCalledTimes(2); // No automatic retry.
+  });
+
+  it("forwards the signal and treats cancellation while reading as AbortError", async () => {
+    const controller = new AbortController();
+    const response = bytes();
+    vi.spyOn(response, "blob").mockRejectedValue(new DOMException("Aborted", "AbortError"));
+    fetchMock.mockResolvedValue(response);
+    await expect(requestBlob("/d", { signal: controller.signal })).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchMock.mock.calls[0][1]?.signal).toBe(controller.signal);
+  });
+
+  it("reports a failure while reading the body as a network error", async () => {
+    const response = bytes();
+    vi.spyOn(response, "blob").mockRejectedValue(new TypeError("terminated"));
+    fetchMock.mockResolvedValue(response);
+    await expect(requestBlob("/d")).rejects.toMatchObject({ code: "NETWORK_ERROR" });
+  });
+
+  it.each(["https://evil.test/d", "//evil.test/d", "d"])("never sends credentials to %s", async path => {
+    await expect(requestBlob(path)).rejects.toBeInstanceOf(TypeError);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("omits the bearer for auth: none", async () => {
+    fetchMock.mockResolvedValue(bytes());
+    await requestBlob("/d", { auth: "none" });
+    expect(new Headers(fetchMock.mock.calls[0][1]?.headers).has("Authorization")).toBe(false);
+  });
+});
+
+describe("shared request regressions", () => {
+  it("keeps bodyless DELETE with 204 working and sends no content type", async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+    await expect(apiDelete("/organizations/o/projects/p")).resolves.toBeUndefined();
+    const init = fetchMock.mock.calls[0][1]!;
+    expect(init.method).toBe("DELETE");
+    expect(init.body).toBeUndefined();
+    expect(new Headers(init.headers).has("Content-Type")).toBe(false);
+  });
+
+  it.each(["https://evil.test/a", "//evil.test/a", "organizations"])("JSON helpers also refuse %s", async path => {
+    await expect(apiGet(path)).rejects.toBeInstanceOf(TypeError);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
