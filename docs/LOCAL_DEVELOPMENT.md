@@ -415,6 +415,19 @@ For TSE-74, document that the returned key must remain only in transient UI memo
 See `EVALUATION_ARCHITECTURE.md` for current integration boundaries and `SPRINT_1_ARCHITECTURE.md` for the existing client/session design.
 ---
 
+### Frontend PDF preview (PDF.js)
+
+The Documents page renders the first page of a PDF with `pdfjs-dist`. Nothing is
+loaded from a CDN: Vite bundles the matching worker locally
+(`pdfjs-dist/legacy/build/pdf.worker.min.mjs?url`, emitted as `dist/assets/pdf.worker.min-*.mjs`). The *legacy* build is used on purpose: the default build of pdfjs-dist 6 needs very recent JavaScript features and fails in browsers that lack them.
+After pulling a branch that adds or upgrades the dependency, run `npm ci` in
+`frontend/` (or restart the frontend container after `make up`). PDF.js is loaded
+lazily, so it is only fetched when a PDF preview is opened.
+
+The Vitest suite mocks PDF.js at its boundary (`src/pages/documents/pdf-preview.ts`).
+Real PDF rendering must be checked in a browser through the document journey in
+`docs/DEMO.md`. A Playwright suite is not part of the repository yet.
+
 ### Backend
 
 From `backend/`:

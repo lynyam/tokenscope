@@ -41,3 +41,11 @@ const reader = response.body!.getReader();
 Run: `make frontendcheck`, `make frontendtest`, `docker compose exec frontend npm run build`.
 
 Integration with real consumers (TSE-79 upload/download, TSE-81 live stream/Stop) is **pending**: controlled doubles do not prove it.
+
+## Documents UI: resources, roles and late responses (TSE-79)
+- `documents.api.ts` is the only document network boundary: JSON list/DELETE use `apiGet`/`apiDelete`, upload uses `uploadMultipart`, bytes use `requestBlob`. It validates the document shapes (the transport only proves JSON).
+- The role comes from `GET /organizations/:id` (`currentUserRole`), never from storage or the JWT. `OWNER`/`ADMIN` manage; `MEMBER` reads. While the role is unknown nothing is shown; a `403 INSUFFICIENT_ORGANIZATION_ROLE` hides management controls, aborts an active upload and re-reads the role. The backend stays authoritative.
+- Every request is guarded twice: an `AbortController` (cancellation) and a scope check before applying a response (mounted, same organization/project because the page is keyed by them, same authentication session snapshot, latest list request). A response that had already resolved when the user navigated is therefore still ignored.
+- Cleanup on close, document change, project change, sign-out and unmount: pending retrievals are aborted, PDF.js rendering is cancelled and its document destroyed, the canvas is zeroed, text and Blob references are dropped, and temporary download object URLs are revoked. Intentional aborts are handled and never reach the user as errors.
+- Preview text is rendered with `<pre>` only (no HTML/Markdown conversion) and limited to the first 100 KiB; the cut never leaves a broken UTF-8 character.
+- `Retry-After` for `429` is not shown: `ApiError` does not carry response headers, so the UI gives generic retry guidance.

@@ -16,6 +16,7 @@ import { OrganizationDetailPage } from "../pages/organizations/OrganizationDetai
 import { MembersPage } from "../pages/organizations/MembersPage";
 import { ProjectsPage } from "../pages/projects/ProjectsPage";
 import { ProjectDetailPage } from "../pages/projects/ProjectDetailPage";
+import { DocumentsPage } from "../pages/documents/DocumentsPage";
 import { LandingPage } from "../pages/LandingPage";
 
 //Root redirection
@@ -72,6 +73,11 @@ export function AppRouter()
                     <Route
                     path="/organizations/:organizationId/projects/:projectId"
                     element={<ProjectDetailPage />}
+                    />
+
+                    <Route
+                    path="/organizations/:organizationId/projects/:projectId/documents"
+                    element={<DocumentsPage />}
                     />
                 </Route>
 
