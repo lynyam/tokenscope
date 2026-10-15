@@ -73,6 +73,15 @@ frontendcheck:
 frontendtest:
 	$(COMPOSE) exec $(FRONTEND) npm run test
 
+# Real-browser suite. It runs on the host (Playwright's browsers do not run in the Alpine frontend
+# container) against a stack that is already up: `make up` (http://localhost:5173, the default)
+# or `make eval-up` (E2E_BASE_URL=https://localhost:8443).
+frontende2e-setup:
+	cd frontend && npm ci --no-audit --no-fund && npx playwright install chromium
+
+frontende2e:
+	cd frontend && E2E_BASE_URL=$${E2E_BASE_URL:-http://localhost:5173} npm run e2e -- $(E2E_ARGS)
+
 backendcheck:
 	$(COMPOSE) exec $(BACKEND) npm run check
 
@@ -149,9 +158,12 @@ help:
 	@echo "  make fullclean                     Also remove volumes/local images"
 	@echo "  make test-backend                  Check, build, unit, E2E and isolated database tests"
 	@echo "  make frontendtest                  Run frontend Vitest suite"
+	@echo "  make frontende2e-setup             Install host dependencies and Chromium for browser tests"
+	@echo "  make frontende2e                   Run Playwright browser tests (E2E_BASE_URL, E2E_ARGS)"
 	@echo ""
 
 .PHONY: \
 	up eval-up start stop restart logs ps shell \
 	db-shell db-generate db-migrate db-migration db-seed db-status db-studio db-setup \
-	clean fullclean help test-db test-db-clean test-db-fresh test-backend frontendtest
+	clean fullclean help test-db test-db-clean test-db-fresh test-backend frontendtest \
+	frontende2e frontende2e-setup
