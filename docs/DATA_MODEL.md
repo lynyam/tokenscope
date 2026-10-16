@@ -347,6 +347,16 @@ A stale PUT fails even when its content matches the current trace.
 
 Reads return stored historical values without repricing or mutation.
 
+TSE-71 sums stored estimatedCostUsd values using PostgreSQL numeric
+arithmetic. Aggregate token totals are serialized as decimal integer
+strings; aggregate costs use twelve fractional digits.
+
+The assistant's internal containsSyntheticPricing value follows the
+ModelPrice rows referenced by matching traces through priceVersionId.
+It does not inspect only the newest catalogue version.
+
+Analytics introduces no persistent snapshot table or schema migration.
+
 Trace deletion is soft deletion: it sets deletedAt, advances version and
 updates updatedAt while retaining the database row and externalId.
 The existing unique constraint on (projectId, externalId) continues to reserve

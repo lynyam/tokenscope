@@ -665,7 +665,7 @@ Abort, permission, not-found, conflict, rate-limit and network failures do not i
 |---|---|
 | Public trace routes before key authentication | 60 requests/minute per trusted client IP |
 | Public trace routes after key authentication | 120 requests/minute per verified key |
-| Browser trace list/detail | Shared 60 requests/minute per authenticated user/project |
+| Browser trace list/detail and analytics | Shared 60 requests/minute per authenticated user/project |
 | Analytics integration — TSE-71 target | Reuse the same browser user/project budget |
 | Authorized document uploads | 5/minute per user |
 | Realtime connections | 5 simultaneous sockets per user |
@@ -676,7 +676,7 @@ Abort, permission, not-found, conflict, rate-limit and network failures do not i
 Public trace quotas apply across public trace routes. Database retries do not consume another HTTP quota.
 
 ProjectReadLimitInterceptor applies one shared browser-read budget to trace
-list and detail. Its counter uses the browser-project-reads namespace and the
+list, trace detail and analytics. Its counter uses the browser-project-reads namespace and the
 authenticated user ID plus project ID. It is distinct from the public
 client-IP and API-key budgets.
 
@@ -688,8 +688,7 @@ consume capacity even if subsequent validation or authorization fails.
 Quota exhaustion returns 429 RATE_LIMITED with Retry-After in seconds.
 It does not clear the user's authentication session.
 
-TSE-71 must reuse this budget for analytics rather than introducing a separate
-60-request allowance. Analytics is not marked implemented by this change.
+TSE-71 reuses this budget through the HTTP interceptor. Internal analytics calls do not consume browser quota; the assistant owns its separate limits. Analytics is not marked implemented by this change.
 
 Use bounded bookkeeping. Do not introduce Redis for the single-backend evaluation deployment.
 
@@ -705,6 +704,25 @@ accepted as writable trace fields.
 Logs must not contain complete trace payloads, metadata, API keys or raw
 database errors. Post-commit notification failure is logged safely and
 does not turn a committed ingestion into an HTTP failure.
+
+### Analytics snapshot authorization — TSE-71
+
+Analytics requires current organization membership and active project and
+organization records. Authorization and aggregate queries use the same
+transaction client. Aggregate SQL also includes tenant, membership,
+active-parent and deleted-trace conditions.
+
+A Repeatable Read snapshot established before a concurrent revocation can
+still reflect the earlier authorized state. A new snapshot established
+after revocation commits must reject access. Repeating a read inside the
+old snapshot does not discover the new revocation.
+
+Assistant pre-dispatch and streaming access checks must therefore use
+fresh reads after its analytics transaction has completed.
+
+SQL values are parameterized. Search escaping preserves literal percent,
+underscore and backslash characters. Analytics responses exclude raw
+trace metadata and credentials. Database failures use the existing safe error envelope.
 
 ### Realtime access
 

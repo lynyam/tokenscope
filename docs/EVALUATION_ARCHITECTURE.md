@@ -224,23 +224,34 @@ Public and browser trace lists reuse these matching rules.
 Trace detail uses access scope and trace identity without the list's default
 date window.
 
-TSE-71 must reuse shared filter validation and matching semantics when
-implementing analytics. It must aggregate all matching traces rather than
-calling the paginated trace-list operation or applying its skip/take values.
+TSE-71 reuses the shared filter parser and adds parameterized SQL matching
+adapters alongside the Prisma adapters. Integration tests compare trace
+listing and analytics for the same selection. Analytics aggregates every
+matching trace independently of pagination.
 
-Browser trace list and detail share the browser-project-reads quota for each
-user/project pair. TSE-71 must join that same budget for analytics.
+Browser trace list, trace detail and analytics share the browser-project-reads quota for each authenticated user/project pair.
 
 TSE-69 reads place authorization, count and rows in one short Repeatable Read
 transaction. Each HTTP request obtains a new database snapshot; separate
 pagination requests remain live.
 
-This implementation status covers trace reads, shared filtering and public
-trace CRUD. It does not mark analytics calculations, the dashboard,
-Trace Explorer UI or WebSocket delivery implemented.
+TSE-69 delivers trace reads, shared filtering and public trace CRUD.
+TSE-71 adds analytics calculations. Dashboard UI, Trace Explorer UI,
+exports, assistant integration and WebSocket delivery remain separately
+owned features.
 
 ### Analytics integration — TSE-71
+The implementation is registered through AnalyticsModule, which exports
+AnalyticsService.
 
+getSnapshot(scope, query) owns a short Repeatable Read transaction.
+readSnapshotInTransaction(tx, scope, query) uses a caller-owned Repeatable
+Read transaction and returns snapshot, authorized project metadata and
+historical synthetic-pricing information.
+
+The internal method always authorizes access itself. Its transaction must
+finish before any assistant provider request. The analytics module has no
+dependency on the assistant or realtime modules.
 TSE-71 calculates all matching data in a short Repeatable Read transaction. Summary, series, model groups, authorized project metadata and internal pricing information must use the same transaction when needed together.
 
 Its transaction-aware entry point must authorize the caller itself. It does not accept an authorization-bypass flag.

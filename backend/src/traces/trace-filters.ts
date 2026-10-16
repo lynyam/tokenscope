@@ -1,4 +1,4 @@
-import type { Prisma } from "../generated/prisma/client";
+import { Prisma } from "../generated/prisma/client";
 import {
 	assertDatabaseText,
 	invalidUsage,
@@ -158,4 +158,64 @@ export function traceMatchingWhere(
 	}
 
 	return where;
+}
+
+// SQL equivalent of traceMatchingWhere.
+// The trace table alias is always t.
+//
+// Keep both adapters aligned; list/analytics parity is tested
+// with PostgreSQL.
+export function traceMatchingSql(
+	filters: ResolvedTraceFilters,
+): Prisma.Sql {
+	const parts = [
+		Prisma.sql`t."deletedAt" IS NULL`,
+
+		// Prisma DateTime columns are timestamp(3), containing UTC values.
+		// Binding the normalized ISO string and casting explicitly prevents
+		// the database session timezone from shifting the selection.
+		Prisma.sql`
+			t."occurredAt" >= ${filters.from.toISOString()}::timestamp
+		`,
+
+		Prisma.sql`
+			t."occurredAt" < ${filters.to.toISOString()}::timestamp
+		`,
+	];
+
+	if (filters.provider !== undefined) {
+		parts.push(
+			Prisma.sql`t.provider = ${filters.provider}`,
+		);
+	}
+
+	if (filters.model !== undefined) {
+		parts.push(
+			Prisma.sql`t.model = ${filters.model}`,
+		);
+	}
+
+	if (filters.workflow !== undefined) {
+		parts.push(
+			Prisma.sql`t.workflow = ${filters.workflow}`,
+		);
+	}
+
+	if (filters.status !== undefined) {
+		parts.push(
+			Prisma.sql`t.status = ${filters.status}::"TraceStatus"`,
+		);
+	}
+
+	if (filters.q !== undefined) {
+		const pattern = `%${escapeTraceSearch(filters.q)}%`;
+
+		parts.push(Prisma.sql`(
+			t.workflow ILIKE ${pattern}
+			OR t."externalId" ILIKE ${pattern}
+			OR t.model ILIKE ${pattern}
+		)`);
+	}
+
+	return Prisma.join(parts, " AND ");
 }
