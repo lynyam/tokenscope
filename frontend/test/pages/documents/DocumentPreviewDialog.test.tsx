@@ -210,6 +210,8 @@ describe("PDF preview", () => {
     startPdf.mockReturnValue({ pageCount: pageCount.promise, destroy });
     const { rerenderWith } = open(pdfDoc);
     await screen.findByText("Rendering preview…");
+    // The renderer module is imported lazily: wait until rendering has really started before closing.
+    await waitFor(() => expect(startPdf).toHaveBeenCalledTimes(1));
     rerenderWith(null);
     expect(destroy).toHaveBeenCalledTimes(1);
     await act(async () => pageCount.reject(new DOMException("closed", "AbortError")));
