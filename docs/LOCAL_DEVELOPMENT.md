@@ -534,6 +534,30 @@ git diff --check
 Rebuild evaluation mode after source changes before verifying the documentation
 and trace operations through HTTPS.
 
+### Project analytics — TSE-71
+
+Run the existing backend gate from the repository root:
+
+```bash
+  make test-backend
+```
+
+Analytics uses the existing schema and price/trace records. No additional
+migration or automatic seed is introduced.
+
+Canonical inputs and expected responses are in:
+
+- fixtures/evaluation/traces-golden.json
+- fixtures/evaluation/responses/analytics-golden.json
+- fixtures/evaluation/responses/analytics-empty.json
+
+The golden selection is explicitly:
+2026-10-01T00:00:00.000Z through 2026-10-02T00:00:00.000Z.
+
+These historical records are not guaranteed to be inside a moving
+last-seven-days window. The database tests load fixtures only into the
+guarded test database; they do not seed development data.
+
 ## Development workflow
 
 Once the local environment works, follow:
