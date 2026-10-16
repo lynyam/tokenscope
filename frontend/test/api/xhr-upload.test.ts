@@ -33,6 +33,30 @@ describe("uploadMultipart", () => {
     await expect(upload).resolves.toEqual(created);
   });
 
+  it("accepts a response whose final URL is the requested one", async () => {
+    const upload = uploadMultipart("/organizations/o/projects/p/documents", form());
+    FakeXhr.last.responseURL = new URL("/api/v1/organizations/o/projects/p/documents", window.location.href).href;
+    FakeXhr.last.respond(201, JSON.stringify(created));
+    await expect(upload).resolves.toEqual(created);
+  });
+
+  it("rejects a redirected response as INVALID_API_RESPONSE, even a JSON 2xx one", async () => {
+    const upload = uploadMultipart("/organizations/o/projects/p/documents", form());
+    const failure = upload.catch(error => error);
+    FakeXhr.last.responseURL = new URL("/api/v1/somewhere/else", window.location.href).href;
+    FakeXhr.last.respond(201, JSON.stringify(created));
+    expect(await failure).toMatchObject({ code: "INVALID_API_RESPONSE" });
+  });
+
+  it("does not let a redirected 401 invalidate the session", async () => {
+    const upload = uploadMultipart("/x", form());
+    const failure = upload.catch(error => error);
+    FakeXhr.last.responseURL = new URL("/login", window.location.href).href;
+    FakeXhr.last.respond(401, JSON.stringify({ code: "UNAUTHENTICATED", message: "no" }));
+    expect(await failure).toBeInstanceOf(ApiError);
+    expect(getAccessToken()).toBe("alice-token");
+  });
+
   it("omits the bearer for auth: none", async () => {
     const upload = uploadMultipart("/x", form(), { auth: "none" });
     expect(FakeXhr.last.requestHeaders.authorization).toBeUndefined();

@@ -16,6 +16,7 @@ export class FakeXhr {
   aborted = false;
   status = 0;
   responseText = "";
+  responseURL = "";
   requestHeaders: Record<string, string> = {};
   private responseHeaders: Record<string, string> = {};
 

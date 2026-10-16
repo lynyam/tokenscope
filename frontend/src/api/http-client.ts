@@ -329,8 +329,14 @@ export function uploadMultipart<T>(path: string, body: FormData, options: Upload
       try { onProgress(progress); } catch { /* A faulty observer must not change the upload outcome. */ }
     };
     xhr.onload = () => settle(() => {
-      invalidateOn401(xhr.status, session);
       const requestId = xhr.getResponseHeader("X-Request-Id");
+      // XHR follows redirects transparently and cannot be told not to. A redirected response is not the
+      // answer to this request: reject it before it can be read or invalidate the session.
+      if (isRedirected(xhr.responseURL, url)) {
+        reject(invalidResponse(xhr.status, requestId ?? undefined));
+        return;
+      }
+      invalidateOn401(xhr.status, session);
       let parsed: unknown;
       try { parsed = JSON.parse(xhr.responseText); } catch { /* Handled below. */ }
       if (xhr.status < 200 || xhr.status >= 300) {
@@ -349,6 +355,16 @@ export function uploadMultipart<T>(path: string, body: FormData, options: Upload
 
     xhr.send(body);
   });
+}
+
+/** True when the final URL of an XHR differs from the requested one. An unavailable responseURL is not a redirect. */
+function isRedirected(responseUrl: string | undefined, requestUrl: string): boolean {
+  if (!responseUrl) return false;
+  try {
+    return new URL(responseUrl).href !== new URL(requestUrl, window.location.href).href;
+  } catch {
+    return true;
+  }
 }
 
 export function apiGet<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {

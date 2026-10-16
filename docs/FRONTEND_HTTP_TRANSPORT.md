@@ -24,7 +24,7 @@ const blob = await requestBlob(`${base}/documents/${id}/content?download=false`,
 ```
 
 ### `uploadMultipart<T>(path, formData, options?) → Promise<T>`
-XHR multipart POST (XHR is used because only it reports upload progress). The browser sets the multipart `Content-Type` and boundary. `options.onProgress({ loaded, total? })`; `total` is absent when the length is not computable (indeterminate). The promise resolves **only** after a 2xx `application/json` response: 100 % sent is not "saved" (show "Processing" until then). `signal` aborts the XHR; an already aborted signal sends nothing. Settles once; listeners removed on every exit path.
+XHR multipart POST (XHR is used because only it reports upload progress). The browser sets the multipart `Content-Type` and boundary. `options.onProgress({ loaded, total? })`; `total` is absent when the length is not computable (indeterminate). The promise resolves **only** after a 2xx `application/json` response: 100 % sent is not "saved" (show "Processing" until then). `signal` aborts the XHR; an already aborted signal sends nothing. XHR follows redirects on its own, so the final `responseURL` is compared with the requested URL: a mismatch is `INVALID_API_RESPONSE` (checked before a 401 can invalidate the session). Settles once; listeners removed on every exit path.
 ```ts
 const doc = await uploadMultipart<DocumentSummary>(`${base}/documents`, form, { signal, onProgress });
 ```
