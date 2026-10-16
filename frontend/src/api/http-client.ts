@@ -15,6 +15,8 @@ export class ApiError extends Error {
     message: string,
     public readonly details?: ApiErrorDetail[],
     public readonly requestId?: string,
+    // Seconds the server asked the client to wait (Retry-After); undefined when absent or unusable.
+    public readonly retryAfterSeconds?: number,
   ) {
     super(message);
     this.name = "ApiError";
@@ -37,6 +39,17 @@ export function getApiErrorMessage(error: unknown, fallback: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Retry-After is either delta-seconds or an HTTP date. Anything else is ignored. */
+export function parseRetryAfter(value: string | null, now: number = Date.now()): number | undefined {
+  if (value === null) return undefined;
+  const text = value.trim();
+  if (/^\d{1,6}$/.test(text)) return Number(text);
+  // An HTTP date contains letters ("Fri, 16 Oct 2026 ... GMT"); this also keeps values like "-5" out.
+  if (!/^[A-Za-z]{3},/.test(text)) return undefined;
+  const date = Date.parse(text);
+  return Number.isNaN(date) ? undefined : Math.max(0, Math.ceil((date - now) / 1000));
 }
 
 function errorDetails(value: unknown): ApiErrorDetail[] | undefined {
@@ -94,6 +107,7 @@ async function request<T>(
       typeof envelope.message === "string" ? envelope.message : "The request failed. Please try again.",
       errorDetails(envelope.details),
       typeof envelope.requestId === "string" ? envelope.requestId : requestId,
+      parseRetryAfter(response.headers.get("Retry-After")),
     );
   }
 

@@ -61,7 +61,7 @@ Rules (identical to the backend):
 - A page beyond `totalPages` is replaced once by `Math.max(1, totalPages)`.
 - Errors: empty result ≠ failure; 400 shows the server message; 401 uses the shared session invalidation;
   404 `PROJECT_NOT_FOUND`/`ORGANIZATION_NOT_FOUND` (and archiving the project in this tab) show an unavailable state;
-  404 `TRACE_NOT_FOUND` affects only the detail; 429 disables Retry for a fixed 10 s countdown (no automatic retry);
+  404 `TRACE_NOT_FOUND` affects only the detail; 429 disables Retry for the server's `Retry-After` (10 s when the header is absent or unusable), with a visible countdown and no automatic retry;
   network/server errors offer Retry.
 - The detail page shows metadata as escaped text and labels synthetic pricing. Its return link keeps the list query;
   a direct visit returns to the default list.
@@ -70,6 +70,4 @@ Rules (identical to the backend):
 
 - Realtime refresh: pending integration. The shared realtime hook from the realtime ticket does not exist yet;
   no WebSocket client is created here.
-- `Retry-After` on 429 is not displayed: the shared `ApiError` does not carry response headers.
-  A fixed cooldown is used instead.
 - Archiving the project from another browser is detected on the next request (404), not live.

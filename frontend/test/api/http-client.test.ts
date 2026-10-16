@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { apiDelete, apiGet, apiPatch, apiPost, ApiError } from "@/api/http-client";
+import { apiDelete, apiGet, apiPatch, apiPost, ApiError, parseRetryAfter } from "@/api/http-client";
 import { clearAuthSession, getAccessToken, saveAccessToken, subscribeToAuthInvalidation } from "@/api/auth-session";
 
 const fetchMock = vi.fn<typeof fetch>();
@@ -145,5 +145,28 @@ describe("shared M1 HTTP client", () => {
     expect(getAccessToken()).toBeNull();
     expect(localStorage.getItem("theme")).toBe("dark");
     expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+describe("Retry-After", () => {
+  it("reads delta-seconds and HTTP dates, and ignores anything else", () => {
+    const now = Date.parse("2026-10-16T10:00:00.000Z");
+    expect(parseRetryAfter("7")).toBe(7);
+    expect(parseRetryAfter(" 0 ")).toBe(0);
+    expect(parseRetryAfter("Fri, 16 Oct 2026 10:00:30 GMT", now)).toBe(30);
+    expect(parseRetryAfter("Fri, 16 Oct 2026 09:00:00 GMT", now)).toBe(0);
+    expect(parseRetryAfter(null)).toBeUndefined();
+    expect(parseRetryAfter("soon")).toBeUndefined();
+    expect(parseRetryAfter("-5")).toBeUndefined();
+    expect(parseRetryAfter("1.5")).toBeUndefined();
+  });
+
+  it("is carried by the ApiError of a rejected request", async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ code: "RATE_LIMITED", message: "slow" }), {
+      status: 429, headers: { "Content-Type": "application/json", "Retry-After": "12" },
+    }));
+    const error = await apiGet("/x").catch(failure => failure);
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ statusCode: 429, code: "RATE_LIMITED", retryAfterSeconds: 12 });
   });
 });

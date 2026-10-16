@@ -1,17 +1,17 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { RATE_LIMIT_COOLDOWN_SECONDS, type TraceFailure } from "./trace-failure";
+import type { TraceFailure } from "./trace-failure";
 
 /**
- * Failure feedback with a manual Retry. After a 429 the button stays disabled for a fixed cooldown
- * (the base ApiError does not expose Retry-After); nothing retries automatically.
+ * Failure feedback with a manual Retry. After a 429 the button stays disabled for the server's
+ * Retry-After (a short default when it is absent); nothing retries automatically.
  */
 export function TraceFailureNotice({ failure, onRetry }: { failure: TraceFailure; onRetry: () => void }) {
-  const [seconds, setSeconds] = useState(failure.kind === "rate-limit" ? RATE_LIMIT_COOLDOWN_SECONDS : 0);
+  const [seconds, setSeconds] = useState(failure.kind === "rate-limit" ? failure.retryAfterSeconds : 0);
 
   useEffect(() => {
     if (failure.kind !== "rate-limit") { setSeconds(0); return; }
-    setSeconds(RATE_LIMIT_COOLDOWN_SECONDS);
+    setSeconds(failure.retryAfterSeconds);
     const timer = setInterval(() => setSeconds(value => Math.max(0, value - 1)), 1000);
     return () => clearInterval(timer);
   }, [failure]);

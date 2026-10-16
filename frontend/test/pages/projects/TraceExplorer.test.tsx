@@ -209,6 +209,17 @@ it("waits out a rate limit without retrying on its own", async () => {
   expect(listMock).toHaveBeenCalledTimes(1);
 });
 
+it("uses the server's Retry-After for the cooldown", async () => {
+  vi.useFakeTimers();
+  listMock.mockRejectedValueOnce(new ApiError(429, "RATE_LIMITED", "slow", undefined, undefined, 3));
+  renderAt(path("p1"));
+  await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+  expect(screen.getByRole("button", { name: "Retry in 3s" })).toBeDisabled();
+  await act(async () => { await vi.advanceTimersByTimeAsync(3_100); });
+  expect(screen.getByRole("button", { name: "Retry" })).toBeEnabled();
+  expect(listMock).toHaveBeenCalledTimes(1);
+});
+
 it("shows an unavailable state for a missing project and when it is archived here", async () => {
   listMock.mockRejectedValueOnce(new ApiError(404, "PROJECT_NOT_FOUND", "nope"));
   const first = renderAt(path("p1"));
