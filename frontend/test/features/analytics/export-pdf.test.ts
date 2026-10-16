@@ -1,6 +1,4 @@
 // @vitest-environment node
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { describe, expect, it } from "vitest";
 import {
@@ -20,12 +18,13 @@ import type {
   AnalyticsSnapshot,
   DashboardExportInput,
 } from "../../../src/features/analytics/export.types";
+import { DEJAVU_SANS_BASE64 } from "../../../src/features/analytics/fonts/dejavu-sans.font";
 import goldenJson from "./fixtures/analytics-golden.json";
 import emptyJson from "./fixtures/analytics-empty.json";
 
 // ---------------------------------------------------------------- helpers
 
-// Ce fichier tourne dans Node (lecture de la police + pdf.js), où localStorage
+// Ce fichier tourne dans Node (pdf.js relit le PDF généré), où localStorage
 // n'existe pas. Le setup global du projet appelle localStorage.clear() après
 // chaque test : on lui fournit un localStorage vide pour ce fichier seulement.
 if (typeof globalThis.localStorage === "undefined") {
@@ -57,10 +56,8 @@ const emptyInput: DashboardExportInput = {
   snapshot: empty,
 };
 
-// Police lue depuis le disque : en test on n'a pas besoin de l'import dynamique.
-const FONT = readFileSync(
-  fileURLToPath(new URL("../../../src/features/analytics/fonts/DejaVuSans.ttf", import.meta.url)),
-).toString("base64");
+// Même police embarquée que l'application (import direct, sans chargement dynamique).
+const FONT = DEJAVU_SANS_BASE64;
 
 const clone = <T>(v: T): T => structuredClone(v);
 
@@ -74,7 +71,7 @@ function deepFreeze<T>(obj: T): T {
 /** Fixture longue : 300 buckets, 40 modèles, textes longs → plusieurs pages. */
 function longInput(): DashboardExportInput {
   const snapshot = clone(golden);
-  snapshot.window.bucket = "minute";
+  snapshot.window.bucket = "hour";
   snapshot.filters = {
     q: "refund <script>alert(1)</script>",
     provider: "fixture-a",
@@ -83,7 +80,7 @@ function longInput(): DashboardExportInput {
     status: "ERROR",
   };
   snapshot.series = Array.from({ length: 300 }, (_, i) => ({
-    bucketStart: new Date(Date.UTC(2026, 9, 1, 0, i)).toISOString(),
+    bucketStart: new Date(Date.UTC(2026, 9, 1, i)).toISOString(),
     traceCount: i % 3,
     inputTokens: String(i * 1000),
     outputTokens: "123456789012345678901234567890",

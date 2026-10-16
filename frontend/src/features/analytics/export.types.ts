@@ -1,22 +1,23 @@
-// ⚠️ Ce type reproduit la forme de responses/analytics-golden.json.
-// Dans ton repo, supprime-le et importe le vrai `AnalyticsSnapshot` de TSE-71.
 export type AnalyticsSnapshot = {
   snapshotId: string;
   generatedAt: string;
   projectId: string;
+
   window: {
     from: string;
     to: string;
-    timezone: string;
-    bucket: string;
+    timezone: "UTC";
+    bucket: "hour" | "day";
   };
+
   filters: {
     q: string | null;
     provider: string | null;
     model: string | null;
     workflow: string | null;
-    status: string | null;
+    status: "SUCCESS" | "ERROR" | null;
   };
+
   summary: {
     traceCount: number;
     inputTokens: string;
@@ -27,6 +28,7 @@ export type AnalyticsSnapshot = {
     errorRatePct: number | null;
     averageLatencyMs: number | null;
   };
+
   series: Array<{
     bucketStart: string;
     traceCount: number;
@@ -34,6 +36,7 @@ export type AnalyticsSnapshot = {
     outputTokens: string;
     estimatedCostUsd: string;
   }>;
+
   byModel: Array<{
     provider: string;
     model: string;
@@ -44,7 +47,10 @@ export type AnalyticsSnapshot = {
   }>;
 };
 
-/** Copie figée au moment du clic. Les générateurs n'utilisent que ça. */
+/**
+ * Entrée capturée au clic (contrat : docs/API.md, « Dashboard exports — TSE-77 »).
+ * Les générateurs n'utilisent que ça.
+ */
 export type DashboardExportInput = Readonly<{
   project: Readonly<{ id: string; name: string }>;
   snapshot: AnalyticsSnapshot;
