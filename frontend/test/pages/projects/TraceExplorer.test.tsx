@@ -107,6 +107,36 @@ it("debounces search into one request and resets the page", async () => {
   expect(url()).not.toContain("page=");
 });
 
+it("keeps a filter chosen while the search timer is pending", async () => {
+  listMock.mockResolvedValue(page([trace(1)]));
+  renderAt(path("p1"));
+  await screen.findByText("$0.0018");
+  vi.useFakeTimers();
+  fireEvent.change(screen.getByLabelText("Search"), { target: { value: "SUPPORT" } });
+  fireEvent.change(screen.getByLabelText("Status"), { target: { value: "SUCCESS" } });
+  await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+  expect(url()).toContain("status=SUCCESS");
+  expect(url()).toContain("q=SUPPORT");
+  expect(lastQuery()).toMatchObject({ q: "SUPPORT", status: "SUCCESS" });
+});
+
+it("keeps the search when the workflow timer fires after it", async () => {
+  listMock.mockResolvedValue(page([trace(1)]));
+  renderAt(path("p1"));
+  await screen.findByText("$0.0018");
+  vi.useFakeTimers();
+  fireEvent.change(screen.getByLabelText("Search"), { target: { value: "SUPPORT" } });
+  await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+  fireEvent.change(screen.getByLabelText("Workflow"), { target: { value: "billing" } });
+  // The search timer fires first and the page renders before the workflow timer does.
+  await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+  expect(url()).toContain("q=SUPPORT");
+  await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+  expect(url()).toContain("q=SUPPORT");
+  expect(url()).toContain("workflow=billing");
+  expect(lastQuery()).toMatchObject({ q: "SUPPORT", workflow: "billing" });
+});
+
 it("clears the model when the provider changes", async () => {
   listMock.mockResolvedValue(page([trace(1)]));
   renderAt(path("p1", GOLDEN + "&provider=fixture-a&model=demo-fast"));

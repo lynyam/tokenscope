@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -40,6 +40,8 @@ export function TraceFilterForm({ query, choices, onChange, onReset, onRetryChoi
   const [fromDraft, setFromDraft] = useState(toInput(query.from));
   const [toDraft, setToDraft] = useState(toInput(query.to));
   const [periodError, setPeriodError] = useState<string | null>(null);
+  const onChangeRef = useRef(onChange);
+  useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
 
   // Back/Forward, Reset and canonicalization update the controls.
   useEffect(() => { setQDraft(query.q ?? ""); }, [query.q]);
@@ -49,17 +51,15 @@ export function TraceFilterForm({ query, choices, onChange, onReset, onRetryChoi
   useEffect(() => {
     const value = qDraft.trim();
     if (value === (query.q ?? "")) return;
-    const timer = setTimeout(() => onChange({ q: value || undefined }, { replace: true }), SEARCH_DEBOUNCE_MS);
+    const timer = setTimeout(() => onChangeRef.current({ q: value || undefined }, { replace: true }), SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qDraft, query.q]);
 
   useEffect(() => {
     const value = workflowDraft.trim();
     if (value === (query.workflow ?? "")) return;
-    const timer = setTimeout(() => onChange({ workflow: value || undefined }, { replace: true }), SEARCH_DEBOUNCE_MS);
+    const timer = setTimeout(() => onChangeRef.current({ workflow: value || undefined }, { replace: true }), SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflowDraft, query.workflow]);
 
   function applyPeriod(event: FormEvent) {
