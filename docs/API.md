@@ -348,7 +348,49 @@ Errors:
 - `403 INSUFFICIENT_ORGANIZATION_ROLE`;
 - `404 ORGANIZATION_NOT_FOUND`.
 
-Organization deletion is not part of M1.
+### DELETE /organizations/:organizationId
+
+Soft-archives an organization. The organization row is kept and marked with an
+internal `archivedAt` timestamp; nothing is physically deleted. There is no
+restore endpoint.
+
+Required role: `OWNER`.
+
+Request:
+
+```json
+{
+  "confirmSlug": "acme"
+}
+```
+
+`confirmSlug` is required, must be a non-empty string that is not only
+whitespace, and is compared exactly with the organization slug (no trimming,
+no case folding). Any other property is rejected.
+
+Response — `204 No Content` with no body.
+
+Errors:
+
+- `400 VALIDATION_ERROR`;
+- `403 INSUFFICIENT_ORGANIZATION_ROLE`;
+- `404 ORGANIZATION_NOT_FOUND`;
+- `409 ORGANIZATION_CONFIRMATION_MISMATCH`;
+- `409 CONCURRENT_MODIFICATION`.
+
+The role is checked before the slug is compared, so a caller who is not an
+`OWNER` never learns whether a submitted slug is correct. An unknown
+organization, an organization the caller does not belong to, and an already
+archived organization all return `404 ORGANIZATION_NOT_FOUND`; a second
+deletion therefore returns `404`. `CONCURRENT_MODIFICATION` is returned when
+competing writes still conflict after three bounded attempts.
+
+Once an organization is archived, it no longer appears in `GET /organizations`,
+and its organization, membership, and project endpoints behave as if it did not
+exist: `404 ORGANIZATION_NOT_FOUND` for organization, membership, project list,
+and project creation routes, and `404 PROJECT_NOT_FOUND` for single-project
+routes. `OrganizationSummary` is unchanged and never exposes `archivedAt`. An
+archived organization keeps reserving its slug.
 
 ## Memberships
 
@@ -996,9 +1038,9 @@ even if later validation or authorization fails.
 A rejected request returns `429 RATE_LIMITED` with `Retry-After` in seconds.
 This response does not invalidate the user's authentication session.
 
-The agreed analytics integration must reuse this user/project budget when
-TSE-71 is implemented. This status note does not mark analytics, Trace Explorer
-UI or WebSocket delivery implemented.
+Analytics (`GET P/analytics`) shares this same user/project budget.
+Switching between trace list, trace detail and analytics does not reset the allowance. Trace Explorer UI and WebSocket delivery remain separate
+implementation scopes.
 
 ### Shared dates, filters and pagination
 
@@ -1061,6 +1103,29 @@ pagination does not preserve a snapshot between requests.
 Detail lookup does not apply the list's default seven-day window.
 
 ### Analytics — TSE-71
+Implemented by TSE-71.
+
+Authentication: existing user JWT. Current OWNER, ADMIN and MEMBER may read analytics for an active project in an active organization.
+Project API keys do not authorize this endpoint.
+
+Accepted query fields:
+`from`, `to`, `q`, `provider`, `model`, `workflow`, `status`, `bucket`.
+
+The common date/filter rules above apply. Pagination and sorting
+parameters are rejected. `bucket` accepts `hour` or `day`.
+
+Responses:
+
+- `200`: direct AnalyticsSnapshot, including accessible empty results.
+- Existing `401`: missing, invalid or expired JWT.
+- `400 VALIDATION_ERROR`: invalid route/query/date/bucket selection.
+- `404 PROJECT_NOT_FOUND`: missing membership, wrong tenant, or missing/
+  archived organization or project.
+- `429 RATE_LIMITED`: shared browser-read quota exhausted, with Retry-After.
+- Existing safe server error: database/internal failure.
+
+Responses use Cache-Control: no-store and preserve request IDs.
+Database errors are not converted into empty snapshots.
 
 `GET P/analytics` returns this object directly:
 
@@ -1136,6 +1201,17 @@ Order model groups by cost descending, provider ascending, model ascending.
 An empty matching set is a successful snapshot: zero counts, `"0"` token totals, `"0.000000000000"` cost, null average/rate, empty model groups and a zero-filled series.
 
 Internal project metadata and synthetic-pricing information used by the assistant are not added to this public response.
+
+Authorization and all contributing reads execute in one short PostgreSQL Repeatable Read transaction. Each request obtains a fresh snapshot.
+
+AnalyticsService.getSnapshot(scope, query) owns that transaction and returns only AnalyticsSnapshot.
+
+AnalyticsService.readSnapshotInTransaction(tx, scope, query) requires a caller-owned Repeatable Read transaction, performs authorization itself, and returns { snapshot, project, pricing }. Every database read uses tx.
+
+The internal project contains id, name and description.
+The internal pricing contains currency: "USD" and containsSyntheticPricing, derived from historical prices referenced by matching traces. Empty matching sets return false.
+
+TSE-80 imports AnalyticsModule and uses this internal method. It finishes the transaction before contacting Gemini. No analytics result is persisted as a resumable snapshot.
 
 ### Realtime — TSE-73
 

@@ -49,6 +49,7 @@ export default defineConfig({
 		execArgv: ['--no-experimental-webstorage'],
 		setupFiles: './test/setup.ts',
 		include: ['test/**/*.test.{ts,tsx}'],
+		fileParallelism: false,
 	},
 })
 

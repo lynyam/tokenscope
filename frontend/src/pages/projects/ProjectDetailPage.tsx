@@ -74,6 +74,15 @@ function ProjectDetail({ organizationId, projectId }: { organizationId: string; 
   const canManage = project?.archivedAt === null && (role === "OWNER" || role === "ADMIN");
   const isMutating = isSaving || isArchiving;
 
+  // The project (or its organization) is gone: clear the detail instead of
+  // leaving stale data and controls on screen.
+  function clearProject() {
+    setIsEditing(false);
+    setSaveError(null);
+    setArchiveError(null);
+    setProject(null);
+  }
+
   async function handleUpdateSubmit(event: FormEvent) {
     event.preventDefault();
     const signal = requests.current?.signal;
@@ -107,6 +116,10 @@ function ProjectDetail({ organizationId, projectId }: { organizationId: string; 
       setIsEditing(false);
     } catch (failure) {
       if (!active.current || signal.aborted || isAbortError(failure)) return;
+      if (failure instanceof ApiError && failure.code === "PROJECT_NOT_FOUND") {
+        clearProject();
+        return;
+      }
       const details = failure instanceof ApiError
         ? failure.details?.flatMap(detail => detail.messages).join(" ")
         : undefined;
@@ -130,6 +143,10 @@ function ProjectDetail({ organizationId, projectId }: { organizationId: string; 
       if (active.current && !signal.aborted) navigate(listPath, { replace: true });
     } catch (failure) {
       if (!active.current || signal.aborted || isAbortError(failure)) return;
+      if (failure instanceof ApiError && failure.code === "PROJECT_NOT_FOUND") {
+        clearProject();
+        return;
+      }
       setArchiveError(getApiErrorMessage(failure, "Failed to archive project."));
     } finally {
       pending.current = false;
@@ -156,7 +173,12 @@ function ProjectDetail({ organizationId, projectId }: { organizationId: string; 
       <Link to={listPath}>Back to projects</Link>
     </section>
   );
-  if (!project) return <p role="alert">Project not found.</p>;
+  if (!project) return (
+    <section>
+      <p role="alert">Project not found.</p>
+      <Link to={listPath}>Back to projects</Link>
+    </section>
+  );
 
   return (
     <section className="mx-auto max-w-md space-y-6 p-6">

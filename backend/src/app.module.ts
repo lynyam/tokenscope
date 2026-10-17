@@ -8,6 +8,7 @@ import { ProjectsModule } from "./projects/projects.module";
 import { ApiKeysModule } from "./api-keys/api-keys.module";
 import { TracesModule } from "./traces/traces.module";
 import { PublicDocsModule } from "./public-docs/public-docs.module";
+import { AnalyticsModule } from "./analytics/analytics.module";
 
 @Module({
 	imports: [
@@ -20,6 +21,7 @@ import { PublicDocsModule } from "./public-docs/public-docs.module";
 		ApiKeysModule,
 		TracesModule,
 		PublicDocsModule,
+		AnalyticsModule,
 	],
 })
 export class AppModule {}

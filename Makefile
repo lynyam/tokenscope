@@ -80,7 +80,7 @@ frontende2e-setup:
 	cd frontend && npm ci --no-audit --no-fund && npx playwright install chromium
 
 frontende2e:
-	cd frontend && E2E_BASE_URL=$${E2E_BASE_URL:-http://localhost:5173} npm run e2e -- $(E2E_ARGS)
+	cd frontend && E2E_BASE_URL=$${E2E_BASE_URL:-http://localhost:5173} npm run test:e2e -- $(E2E_ARGS)
 
 backendcheck:
 	$(COMPOSE) exec $(BACKEND) npm run check

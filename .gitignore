@@ -12,6 +12,9 @@ dist/
 #prisma
 backend/src/generated/
 
+# Playwright browser test output (TSE-66)
+frontend/playwright-report/
+frontend/test-results/
 .local/
 
 backend/.tse64-migration-*/

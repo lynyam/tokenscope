@@ -119,6 +119,33 @@ input/output handling, dependency review, and avoiding unsafe HTML reduce the
 risk. An HTTP-only cookie plus refresh/session design can replace this approach
 during production hardening.
 
+### Frontend transport session protection — TSE-72
+
+JSON, private-byte, multipart and streamed requests use the shared
+frontend HTTP client and the existing auth-session helper.
+
+A request captures the token and session revision once. Initial protected
+HTTP 401 responses invalidate only that captured matching session,
+including when the error body is empty, HTML or malformed JSON.
+
+Two logins may receive the same token string. The session revision prevents
+an earlier request from invalidating the newer login in that case.
+
+403, 404, conflicts, rate limits, server/provider failures, network failures
+and cancellation do not invalidate the application session.
+
+The frontend sends bearer credentials only to application API paths.
+Tokens are not placed in query parameters or exposed through the stream
+handoff object. Frontend components do not create separate token stores.
+
+The assistant parser may invalidate the originating session after a
+validated ACCESS_TOKEN_EXPIRED stream event. It uses the callback captured
+when opening that stream, never an unconditional current-session logout.
+
+Cancellation stops the browser operation. It does not prove a backend
+mutation was rolled back. Uploads, mutations and assistant requests are
+never automatically retried by the shared transport.
+
 ## Authorization
 
 Authentication answers “who is the caller?” Authorization answers “may this
@@ -137,6 +164,7 @@ project-specific member table or ACL.
 | Create organization | yes | yes | yes | no |
 | View organization | yes | yes | yes | no |
 | Rename organization | yes | no | no | no |
+| Archive (delete) organization | yes | no | no | no |
 | View members | yes | yes | yes | no |
 | Add member | yes | no | no | no |
 | Remove member | yes | no | no | no |
@@ -358,6 +386,10 @@ Use:
 This prevents an outsider from using status codes to enumerate organizations or
 projects while still giving legitimate members a useful permission error.
 
+An archived organization is treated as absent: it returns the same concealed
+`404 ORGANIZATION_NOT_FOUND` as an unknown organization, and its projects return
+`404` through the active-organization check.
+
 ## Ownership invariants
 
 ### Initial owner
@@ -399,6 +431,29 @@ PostgreSQL integration tests deliberately overlap two owner transactions and
 cover removal/removal, demotion/demotion, and mixed removal/demotion. They prove
 that one operation succeeds, the other returns `LAST_OWNER_REQUIRED` after
 retry, and one owner remains.
+
+## Organization archive
+
+`DELETE /organizations/:organizationId` is restricted to `OWNER`. Order of checks:
+
+1. authenticate the caller (JWT);
+2. require an active organization and an `OWNER` membership
+   (`404` for outsiders or archived organizations, `403` for ADMIN/MEMBER);
+3. only then compare `confirmSlug` exactly with the slug (`409
+   ORGANIZATION_CONFIRMATION_MISMATCH`).
+
+Comparing the slug after authorization prevents outsiders and non-owners from
+using the endpoint to confirm slugs. The operation runs in a `Serializable`
+transaction. Each attempt repeats authorization and the archive write. Only
+recognized serialization/write conflicts are retried, at most three attempts;
+exhaustion returns `409 CONCURRENT_MODIFICATION`. Final queries also filter on
+`archivedAt: null`, so a concurrent archive cannot be bypassed.
+
+Organization archive updates only the organization row: `archivedAt` is set
+and `updatedAt` is maintained automatically. Child rows and their existing
+lifecycle fields remain unchanged. Backend access checks require an active
+organization, including checks for project API keys, traces and analytics.
+There is no restore operation.
 
 ## Project lifecycle
 
@@ -522,6 +577,9 @@ The following are M1 completion requirements:
 | Archive behavior | Archived project disappears from normal list/detail/update |
 | Slug constraints | Conflicting organization/project slugs return `409` |
 | Mass assignment | Unknown/protected request properties return `400` |
+| Organization archive roles | ADMIN and MEMBER get `403`; outsiders get `404`; slug is never compared first |
+| Organization archive behavior | Archived organization, its members, and its projects become concealed `404`; a second deletion returns `404` |
+| Archive confirmation | Wrong, empty, whitespace-only, or differently-cased slug is rejected; unknown properties return `400` |
 
 At least the tenant-isolation, role, last-owner, and safe-output cases must be
 integration or end-to-end tests against PostgreSQL—not only mocked unit tests.
@@ -665,7 +723,7 @@ Abort, permission, not-found, conflict, rate-limit and network failures do not i
 |---|---|
 | Public trace routes before key authentication | 60 requests/minute per trusted client IP |
 | Public trace routes after key authentication | 120 requests/minute per verified key |
-| Browser trace list/detail | Shared 60 requests/minute per authenticated user/project |
+| Browser trace list/detail and analytics | Shared 60 requests/minute per authenticated user/project |
 | Analytics integration — TSE-71 target | Reuse the same browser user/project budget |
 | Authorized document uploads | 5/minute per user |
 | Realtime connections | 5 simultaneous sockets per user |
@@ -676,7 +734,7 @@ Abort, permission, not-found, conflict, rate-limit and network failures do not i
 Public trace quotas apply across public trace routes. Database retries do not consume another HTTP quota.
 
 ProjectReadLimitInterceptor applies one shared browser-read budget to trace
-list and detail. Its counter uses the browser-project-reads namespace and the
+list, trace detail and analytics. Its counter uses the browser-project-reads namespace and the
 authenticated user ID plus project ID. It is distinct from the public
 client-IP and API-key budgets.
 
@@ -688,8 +746,7 @@ consume capacity even if subsequent validation or authorization fails.
 Quota exhaustion returns 429 RATE_LIMITED with Retry-After in seconds.
 It does not clear the user's authentication session.
 
-TSE-71 must reuse this budget for analytics rather than introducing a separate
-60-request allowance. Analytics is not marked implemented by this change.
+TSE-71 reuses this budget through the HTTP interceptor. Internal analytics calls do not consume browser quota; the assistant owns its separate limits. Analytics is not marked implemented by this change.
 
 Use bounded bookkeeping. Do not introduce Redis for the single-backend evaluation deployment.
 
@@ -705,6 +762,25 @@ accepted as writable trace fields.
 Logs must not contain complete trace payloads, metadata, API keys or raw
 database errors. Post-commit notification failure is logged safely and
 does not turn a committed ingestion into an HTTP failure.
+
+### Analytics snapshot authorization — TSE-71
+
+Analytics requires current organization membership and active project and
+organization records. Authorization and aggregate queries use the same
+transaction client. Aggregate SQL also includes tenant, membership,
+active-parent and deleted-trace conditions.
+
+A Repeatable Read snapshot established before a concurrent revocation can
+still reflect the earlier authorized state. A new snapshot established
+after revocation commits must reject access. Repeating a read inside the
+old snapshot does not discover the new revocation.
+
+Assistant pre-dispatch and streaming access checks must therefore use
+fresh reads after its analytics transaction has completed.
+
+SQL values are parameterized. Search escaping preserves literal percent,
+underscore and backslash characters. Analytics responses exclude raw
+trace metadata and credentials. Database failures use the existing safe error envelope.
 
 ### Realtime access
 
