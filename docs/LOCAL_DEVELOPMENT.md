@@ -376,8 +376,8 @@ npm run build
 
 `build` creates the frontend production assets with Vite.
 
-`test` runs the frontend HTTP-client, auth-invalidation, membership-adapter,
-and membership-page tests with Vitest. The shared test setup uses jsdom and
+`test` runs the frontend HTTP-client, auth-invalidation, organization and
+membership adapter, and page tests (including the organization deletion dialog) with Vitest. The shared test setup uses jsdom and
 Testing Library to exercise React interactions. These are development-only
 dependencies: Vitest runs assertions, jsdom supplies browser APIs, and Testing
 Library exercises controls and accessible output. They do not replace the
@@ -406,13 +406,33 @@ The shared authentication, organization, membership and project integrations are
 
 New unit/component tests remain under `frontend/test/`. Real browser journeys belong under `frontend/test/e2e/` once browser-test infrastructure is introduced.
 
-At baseline `854da94`, the frontend package has no Playwright dependency or browser-test command. Do not present planned browser tests as an existing executable suite.
+Browser tests use Playwright; see "Browser end-to-end tests" below.
 
 TSE-72 extends transport for multipart uploads, private binary responses and assistant streams while preserving current JSON callers.
 
 For TSE-74, document that the returned key must remain only in transient UI memory.
 
 See `EVALUATION_ARCHITECTURE.md` for current integration boundaries and `SPRINT_1_ARCHITECTURE.md` for the existing client/session design.
+
+### Browser end-to-end tests
+
+Browser tests run from the host against the running stack (frontend, backend
+and PostgreSQL). Start and migrate the application first, then from `frontend/`:
+
+```bash
+npm ci
+npx playwright install chromium
+E2E_BASE_URL="http://localhost:5173" npm run test:e2e
+```
+
+Adjust `E2E_BASE_URL` to the actual frontend origin. The specs live in
+`frontend/test/e2e/*.spec.ts` and create unique disposable accounts and
+organizations; they never truncate the development database.
+
+Automatic Playwright traces, screenshots and videos are disabled. Login and
+authenticated requests contain credentials; do not attach network recordings
+or credential-bearing artifacts to a PR.
+
 ---
 
 ### Backend
@@ -429,6 +449,134 @@ npm run build
 `build` compiles the backend TypeScript source into JavaScript.
 
 ---
+
+### Public API documentation — TSE-69
+
+The public trace guide is [PUBLIC_API.md](./PUBLIC_API.md).
+
+After starting development mode with `make up`, open:
+
+```text
+http://localhost:5173/api/v1/public/docs/
+```
+
+After building evaluation mode with `make eval-up`, open:
+
+```text
+https://localhost:8443/api/v1/public/docs/
+```
+
+Use the configured application port if different.
+Trust the evaluation certificate as described below.
+
+The specification is served at:
+
+```text
+/api/v1/public/openapi.json
+```
+
+The generator is:
+
+```text
+backend/scripts/generate-public-api.cjs
+```
+
+It writes two committed copies:
+
+- backend/src/public-docs/public-api.json
+- docs/openapi/public-api.json
+
+Edit the generator and regenerate both copies. Do not edit generated JSON
+directly.
+
+With Node 24 installed on the host, run from the repository root:
+
+```bash
+cd backend
+npm run docs:generate
+npm run docs:check
+node scripts/generate-public-api.cjs --check
+cd ..
+```
+
+The direct `--check` command verifies both generated copies.
+The package `docs:check` command checks the backend copy and runs OpenAPI
+linting; it does not prove that endpoint behavior matches the document.
+
+Alternatively, generate and compare both copies without host Node.
+Run from the repository root:
+
+```bash
+docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  --mount "type=bind,source=$PWD,target=/repo" \
+  --workdir /repo/backend \
+  node:24-alpine \
+  node scripts/generate-public-api.cjs
+
+docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  --mount "type=bind,source=$PWD,target=/repo" \
+  --workdir /repo/backend \
+  node:24-alpine \
+  node scripts/generate-public-api.cjs --check
+```
+
+In development mode, run linting and compilation through the backend container:
+
+```bash
+docker compose exec backend npm run docs:check
+docker compose exec backend npm run build
+docker compose exec backend test -s dist/public-docs/public-api.json
+```
+
+The development backend container mounts only backend/ at /app.
+Do not run generation of both copies there: the repository's docs/ directory
+is outside that mount. Use host Node or the repository-mounted Docker command
+above.
+
+Swagger UI and its specification are accessible without credentials.
+Executing trace operations through the UI requires a project API key and
+uses real endpoints and quotas. Use a disposable project and key.
+
+Before executing fixture requests, follow
+[Explicit price catalogue loading](#explicit-price-catalogue-loading).
+Use explicit fixture dates for list queries; historical examples may fall
+outside the default last-seven-days window.
+
+After changing documentation or endpoint contracts, run:
+
+```bash
+make test-backend
+git diff --check
+```
+
+Rebuild evaluation mode after source changes before verifying the documentation
+and trace operations through HTTPS.
+
+### Project analytics — TSE-71
+
+Run the existing backend gate from the repository root:
+
+```bash
+  make test-backend
+```
+
+Analytics uses the existing schema and price/trace records. No additional
+migration or automatic seed is introduced.
+
+Canonical inputs and expected responses are in:
+
+- fixtures/evaluation/traces-golden.json
+- fixtures/evaluation/responses/analytics-golden.json
+- fixtures/evaluation/responses/analytics-empty.json
+
+The golden selection is explicitly:
+2026-10-01T00:00:00.000Z through 2026-10-02T00:00:00.000Z.
+
+These historical records are not guaranteed to be inside a moving
+last-seven-days window. The database tests load fixtures only into the
+guarded test database; they do not seed development data.
 
 ## Development workflow
 
