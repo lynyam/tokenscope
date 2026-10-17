@@ -454,6 +454,22 @@ bounds also reject NaN.
 
 The document filename limit is enforced as 1–255 UTF-8 bytes.
 
+### Private documents: storage and lifecycle (TSE-78)
+
+Bytes are stored under `DOCUMENT_STORAGE_ROOT` as `<first 2 hex>/<uuid>`. The same string is `ProjectDocument.storageKey`. Directories are created with mode `0700` and files with mode `0600`.
+
+Upload sequence: the request is authorized and rate-limited, then the file is received into a temporary file `<root>/.incoming/<uuid>.tmp` on the same volume, so reception does not buffer the body in memory (validation then holds at most one 10 MiB file in memory, plus a copy for PDFs). The file is then validated. Finalization (moving the file to its final key and committing the metadata in a short transaction that re-checks access) runs inside an in-process critical section shared with the orphan sweep. A row therefore never points at missing bytes, and the sweep cannot delete a file between its move and its commit.
+
+If the metadata transaction certainly rolled back (access lost, validation error inside the transaction, or a failure before commit) the final file is removed at once. If the outcome is unknown (connection lost around the commit) the bytes are kept, because the database is the source of truth and a committed document must never be deleted because the response was lost.
+
+Individual deletion runs one serializable transaction: authorize, insert the `FileDeletionJob`, delete the row. The bytes are deleted after commit, and never while a document row still references the key. A worker polls every 10 s, handles at most 25 due jobs per run and never overlaps runs. A failed deletion keeps the job with an incremented `attempts`, a short error code (never a raw message or path) and the next attempt after 10 s, 30 s, 60 s and then every 5 minutes. Pending jobs survive restarts and are processed at startup. A missing file counts as success. Shutdown waits for a run in flight.
+
+Orphan sweep, at startup and hourly: a managed file older than one hour that has no `ProjectDocument` row (including rows under archived projects and organizations) and no pending job is removed. Symbolic links and files that do not match the server naming pattern are ignored. If the database cannot be consulted nothing is deleted. Abandoned temporary uploads older than one hour are removed too.
+
+Archiving a project or organization keeps rows and bytes and only denies access.
+
+Assumption: one backend instance and one local volume. Running several instances needs a shared volume and a distributed lock for the sweep and workers.
+
 Services remain responsible for normalized identifiers, exact
 cost calculation, price selection, generated UUID storage keys,
 file-content validation and authorization.

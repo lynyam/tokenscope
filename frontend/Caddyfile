@@ -7,6 +7,10 @@ localhost {
 	tls internal
 
 	handle /api/* {
+		# 10 MiB file plus multipart overhead.
+		request_body {
+			max_size 11MiB
+		}
 		reverse_proxy backend:{$BACKEND_PORT:3000} {
 			header_up X-Forwarded-For {http.request.remote.host}
 			header_up -Forwarded

@@ -835,3 +835,17 @@ Real PostgreSQL tests must cover tenant isolation, current roles, archived paren
 Realtime tests must use real connections. Browser tests must exercise the integrated UI. Provider stubs must remain separate from deliberate live-provider evidence.
 
 Logs and test artifacts must exclude credentials, file contents, questions, complete contexts and answers.
+
+## Private documents — TSE-78
+
+- Authorization precedes body parsing. An outsider receives a scoped `404`, a member without the role receives `403`, and a document is only reachable through its own project.
+- Uploads are limited to 10 MiB and to PDF, UTF-8 text and UTF-8 Markdown. Content is validated, not only the extension or client MIME type. Password-protected and permission-encrypted PDFs are rejected.
+- Client file names are display data only. They never form a filesystem path. Storage keys are server-generated UUIDs and are checked against a strict pattern before any file access.
+- Downloads send the stored media type with `nosniff`, `no-store` and a safe `Content-Disposition`. There is no public storage URL.
+- Files are stored with mode `0600` in a private directory that must not be served by any web server.
+- Upload quota is 5 authorized uploads per user per minute. The limiter is an in-memory fixed window: a user can send up to 10 uploads across a window boundary, and counters reset when the process restarts. It is per process, so several backend instances multiply the limit.
+- PDFs are parsed in the backend process with pdf.js (through `pdf-parse`). Parsing untrusted PDFs is a known risk that is bounded here by the size limit and a 10-second deadline; it is not sandboxed, and a stuck parse may keep running in the background after the request is rejected.
+- Validation checks format and structure. It is not a guarantee that a file is free of malware, and no antivirus scan is performed.
+- Documents are only stored for users. They are not sent to the assistant, indexed, or used for retrieval.
+- Uploads are received on disk in a private `0700` directory, so reception does not buffer the body in memory. Validation then reads the file into memory: at most one 10 MiB file per upload, plus one extra copy while a PDF is parsed.
+- Caddy rejects request bodies above 11 MiB on `/api/*` before they reach the backend. Caddy answers `413` itself, so that response does not use the JSON error envelope.

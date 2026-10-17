@@ -1,3 +1,5 @@
+import { isAbsolute } from "node:path";
+
 export interface EnvironmentVariables {
 	BACKEND_PORT: number;
 	DATABASE_URL: string;
@@ -5,6 +7,7 @@ export interface EnvironmentVariables {
 	JWT_ISSUER: string;
 	JWT_AUDIENCE: string;
 	JWT_ACCESS_TTL_SECONDS: number;
+	DOCUMENT_STORAGE_ROOT: string;
 	TRUSTED_PROXY_HOST?: string;
 }
 
@@ -92,6 +95,18 @@ export function validateEnvironment(
 		);
 	}
 
+	const storageRoot = requiredString(env, "DOCUMENT_STORAGE_ROOT");
+
+	if (
+		storageRoot !== storageRoot.trim() ||
+		!isAbsolute(storageRoot) ||
+		storageRoot.includes("\0")
+	) {
+		throw new Error(
+			"Invalid configuration: DOCUMENT_STORAGE_ROOT must be an absolute path.",
+		);
+	}
+
 	return {
 		BACKEND_PORT: port,
 		DATABASE_URL: databaseUrl,
@@ -99,6 +114,7 @@ export function validateEnvironment(
 		JWT_ISSUER: requiredString(env, "JWT_ISSUER"),
 		JWT_AUDIENCE: requiredString(env, "JWT_AUDIENCE"),
 		JWT_ACCESS_TTL_SECONDS: ttl,
+		DOCUMENT_STORAGE_ROOT: storageRoot,
 		...(typeof proxyHost === "string" && proxyHost !== ""
 			? { TRUSTED_PROXY_HOST: proxyHost }
 			: {}),
