@@ -444,6 +444,12 @@ make frontende2e             # all browser tests
 make eval-up
 E2E_BASE_URL=https://localhost:8443 make frontende2e
 
+# With podman-compose (no `compose cp`), `make eval-up` stops at the certificate
+# stage. Caddy is already serving https://localhost:8443 at that point, so the
+# browser suite can still run; export the root certificate yourself with
+# `podman cp tokenscope_frontend_1:/data/caddy/pki/authorities/local/root.crt /tmp/root.crt`,
+# then run `make stop` when finished.
+
 # One suite or test:
 E2E_ARGS="-g 'rapid double submission'" make frontende2e
 ```
