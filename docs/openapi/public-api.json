@@ -1,0 +1,1467 @@
+{
+  "openapi": "3.1.2",
+  "info": {
+    "title": "TokenScope Public Trace API",
+    "version": "1.0.0",
+    "description": "Project-scoped trace API. Obtain a project key using the authenticated workspace API. Keep keys in your server environment. All five operations share quotas: 60 requests/minute/IP before authentication and 120 requests/minute/key. Documentation endpoints do not count as trace operations."
+  },
+  "servers": [
+    {
+      "url": "/api/v1"
+    }
+  ],
+  "security": [
+    {
+      "ProjectApiKey": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Traces",
+      "description": "Stored project usage traces."
+    }
+  ],
+  "paths": {
+    "/public/traces": {
+      "post": {
+        "tags": [
+          "Traces"
+        ],
+        "operationId": "createTrace",
+        "summary": "Create a trace or replay identical normalized content",
+        "description": "The key determines the project. Stored historical pricing is selected from occurredAt. An identical replay does not reprice or change timestamps. Deleted identities remain reserved.",
+        "requestBody": {
+          "required": true,
+          "description": "Maximum actual JSON body size: 16384 bytes. Unknown/server-owned fields are rejected.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TraceInput"
+              },
+              "example": {
+                "externalId": "swagger-demo-001",
+                "provider": "fixture-a",
+                "model": "demo-fast",
+                "workflow": "support",
+                "inputTokens": 1000,
+                "outputTokens": 200,
+                "latencyMs": 500,
+                "status": "SUCCESS",
+                "occurredAt": "2026-10-01T10:00:00.000Z",
+                "metadata": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Identical replay.",
+            "headers": {
+              "ETag": {
+                "description": "Quoted trace version. Supply this value in If-Match.",
+                "schema": {
+                  "type": "string",
+                  "examples": [
+                    "\"1\""
+                  ]
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Trace"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created.",
+            "headers": {
+              "ETag": {
+                "description": "Quoted trace version. Supply this value in If-Match.",
+                "schema": {
+                  "type": "string",
+                  "examples": [
+                    "\"1\""
+                  ]
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Trace"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR or MODEL_PRICE_NOT_FOUND.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "INVALID_API_KEY: missing, invalid, revoked key or archived parent.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "TRACE_EXTERNAL_ID_CONFLICT, TRACE_DELETED or CONCURRENT_MODIFICATION.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "PAYLOAD_TOO_LARGE.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "UNSUPPORTED_MEDIA_TYPE.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Seconds before a deliberate retry.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Safe INTERNAL_SERVER_ERROR.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Traces"
+        ],
+        "operationId": "listTraces",
+        "summary": "Search and paginate traces",
+        "description": "Both dates or neither. Default: last seven days resolved once. Maximum interval 90 days; from <= occurredAt < to. Unknown/repeated parameters are rejected. Search fields use OR; filters use AND. Deleted traces are excluded. Count and rows share a snapshot; separate pages remain live.",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "Z$"
+            },
+            "description": "Inclusive UTC start; requires to."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "Z$"
+            },
+            "description": "Exclusive UTC end; requires from."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "description": "Trimmed literal case-insensitive substring over workflow, externalId and model. Empty means absent."
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "description": "Exact normalized provider."
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "description": "Exact normalized model."
+          },
+          {
+            "name": "workflow",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "description": "Exact trimmed case-sensitive workflow."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "SUCCESS",
+                "ERROR"
+              ]
+            },
+            "description": "Exact status."
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            },
+            "description": "Positive decimal integer; safe calculated offset required."
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25
+            },
+            "description": "Maximum 100."
+          },
+          {
+            "name": "sortBy",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "occurredAt",
+                "estimatedCostUsd",
+                "latencyMs",
+                "inputTokens",
+                "outputTokens"
+              ],
+              "default": "occurredAt"
+            },
+            "description": "Always followed by id ASC."
+          },
+          {
+            "name": "sortOrder",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "default": "desc"
+            },
+            "description": "Primary sort direction."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page. Empty results have totalPages 0. An out-of-range page retains actual totals.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TracePage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR or MODEL_PRICE_NOT_FOUND.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "INVALID_API_KEY: missing, invalid, revoked key or archived parent.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Seconds before a deliberate retry.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Safe INTERNAL_SERVER_ERROR.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/public/traces/{traceId}": {
+      "parameters": [
+        {
+          "name": "traceId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "Traces"
+        ],
+        "operationId": "getTrace",
+        "summary": "Read a trace and its version",
+        "description": "No default date window is applied. Costs and rates are stored historical values.",
+        "responses": {
+          "200": {
+            "description": "Trace found.",
+            "headers": {
+              "ETag": {
+                "description": "Quoted trace version. Supply this value in If-Match.",
+                "schema": {
+                  "type": "string",
+                  "examples": [
+                    "\"1\""
+                  ]
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Trace"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR or MODEL_PRICE_NOT_FOUND.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "INVALID_API_KEY: missing, invalid, revoked key or archived parent.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "TRACE_NOT_FOUND, including another project's trace.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Seconds before a deliberate retry.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Safe INTERNAL_SERVER_ERROR.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Traces"
+        ],
+        "operationId": "replaceTrace",
+        "summary": "Replace writable content using the current version",
+        "description": "Full replacement; externalId is immutable. Omitted metadata becomes {}. A current-version no-op preserves prices, version and timestamps. A changed replacement reprices using its occurredAt and increments version. Stale requests return 412 even if their content matches. Refetch and reconsider; do not blindly overwrite.",
+        "parameters": [
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "Exactly one quoted positive version, such as \"1\". Weak tags, lists and wildcard are rejected.",
+            "schema": {
+              "type": "string",
+              "pattern": "^\"[1-9][0-9]*\"$",
+              "examples": [
+                "\"1\""
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "Maximum actual JSON body size: 16384 bytes. Unknown/server-owned fields are rejected.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TraceInput"
+              },
+              "example": {
+                "externalId": "swagger-demo-001",
+                "provider": "fixture-a",
+                "model": "demo-fast",
+                "workflow": "support",
+                "inputTokens": 1000,
+                "outputTokens": 200,
+                "latencyMs": 500,
+                "status": "SUCCESS",
+                "occurredAt": "2026-10-01T10:00:00.000Z",
+                "metadata": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Replaced or unchanged.",
+            "headers": {
+              "ETag": {
+                "description": "Quoted trace version. Supply this value in If-Match.",
+                "schema": {
+                  "type": "string",
+                  "examples": [
+                    "\"1\""
+                  ]
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Trace"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR or MODEL_PRICE_NOT_FOUND.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "INVALID_API_KEY: missing, invalid, revoked key or archived parent.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "TRACE_NOT_FOUND.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "CONCURRENT_MODIFICATION or TRACE_VERSION_EXHAUSTED.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "TRACE_VERSION_CONFLICT.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "PAYLOAD_TOO_LARGE.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "UNSUPPORTED_MEDIA_TYPE.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "TRACE_VERSION_REQUIRED.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Seconds before a deliberate retry.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Safe INTERNAL_SERVER_ERROR.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Traces"
+        ],
+        "operationId": "deleteTrace",
+        "summary": "Soft-delete a trace using the current version",
+        "description": "Retains the row and externalId. Later GET/DELETE returns 404. POST with the same identity returns TRACE_DELETED. No request body is required.",
+        "parameters": [
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "Exactly one quoted positive version, such as \"1\". Weak tags, lists and wildcard are rejected.",
+            "schema": {
+              "type": "string",
+              "pattern": "^\"[1-9][0-9]*\"$",
+              "examples": [
+                "\"1\""
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted; no response body.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_ERROR or MODEL_PRICE_NOT_FOUND.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "INVALID_API_KEY: missing, invalid, revoked key or archived parent.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "TRACE_NOT_FOUND.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "CONCURRENT_MODIFICATION or TRACE_VERSION_EXHAUSTED.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "TRACE_VERSION_CONFLICT.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "TRACE_VERSION_REQUIRED.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "Seconds before a deliberate retry.",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Safe INTERNAL_SERVER_ERROR.",
+            "headers": {
+              "X-Request-Id": {
+                "description": "Request correlation identifier.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ProjectApiKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "Project key. A user JWT does not authorize this API."
+      }
+    },
+    "schemas": {
+      "TraceInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "externalId",
+          "provider",
+          "model",
+          "workflow",
+          "inputTokens",
+          "outputTokens",
+          "latencyMs",
+          "status",
+          "occurredAt"
+        ],
+        "properties": {
+          "externalId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "description": "Trimmed; case preserved. Immutable after creation."
+          },
+          "provider": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "description": "Trimmed and lowercased provider identifier."
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "Trimmed and lowercased model identifier."
+          },
+          "workflow": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "description": "Trimmed, case-sensitive; control characters forbidden."
+          },
+          "inputTokens": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000000
+          },
+          "outputTokens": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000000
+          },
+          "latencyMs": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 86400000
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "SUCCESS",
+              "ERROR"
+            ]
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "Z$",
+            "description": "Real UTC instant, at most three fractional digits, no more than five minutes in the future."
+          },
+          "metadata": {
+            "type": "object",
+            "maxProperties": 20,
+            "propertyNames": {
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 400
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": "Flat JSON object, maximum 4096 UTF-8 bytes. Omission means {}."
+          }
+        }
+      },
+      "Trace": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "projectId",
+          "externalId",
+          "provider",
+          "model",
+          "workflow",
+          "inputTokens",
+          "outputTokens",
+          "latencyMs",
+          "status",
+          "occurredAt",
+          "metadata",
+          "priceVersionId",
+          "pricing",
+          "inputCostUsd",
+          "outputCostUsd",
+          "estimatedCostUsd",
+          "version",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "externalId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "description": "Trimmed; case preserved. Immutable after creation."
+          },
+          "provider": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "description": "Trimmed and lowercased provider identifier."
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "Trimmed and lowercased model identifier."
+          },
+          "workflow": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "description": "Trimmed, case-sensitive; control characters forbidden."
+          },
+          "inputTokens": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000000
+          },
+          "outputTokens": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000000
+          },
+          "latencyMs": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 86400000
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "SUCCESS",
+              "ERROR"
+            ]
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "Z$",
+            "description": "Real UTC instant, at most three fractional digits, no more than five minutes in the future."
+          },
+          "metadata": {
+            "type": "object",
+            "maxProperties": 20,
+            "propertyNames": {
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 400
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": "Flat JSON object, maximum 4096 UTF-8 bytes. Omission means {}."
+          },
+          "priceVersionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "pricing": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "inputUsdPerMillion",
+              "outputUsdPerMillion",
+              "currency",
+              "isSynthetic"
+            ],
+            "properties": {
+              "inputUsdPerMillion": {
+                "type": "string",
+                "pattern": "^\\d+\\.\\d{6}$",
+                "examples": [
+                  "1.000000"
+                ]
+              },
+              "outputUsdPerMillion": {
+                "type": "string",
+                "pattern": "^\\d+\\.\\d{6}$",
+                "examples": [
+                  "1.000000"
+                ]
+              },
+              "currency": {
+                "type": "string",
+                "const": "USD"
+              },
+              "isSynthetic": {
+                "type": "boolean"
+              }
+            }
+          },
+          "inputCostUsd": {
+            "type": "string",
+            "pattern": "^\\d+\\.\\d{12}$",
+            "examples": [
+              "0.001800000000"
+            ]
+          },
+          "outputCostUsd": {
+            "type": "string",
+            "pattern": "^\\d+\\.\\d{12}$",
+            "examples": [
+              "0.001800000000"
+            ]
+          },
+          "estimatedCostUsd": {
+            "type": "string",
+            "pattern": "^\\d+\\.\\d{12}$",
+            "examples": [
+              "0.001800000000"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "Z$"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "Z$"
+          }
+        }
+      },
+      "TracePage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "total",
+          "totalPages"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Trace"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "pageSize": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "totalPages": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "ApiError": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "statusCode",
+          "code",
+          "error",
+          "message",
+          "requestId"
+        ],
+        "properties": {
+          "statusCode": {
+            "type": "integer",
+            "minimum": 400,
+            "maximum": 599
+          },
+          "code": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "details": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "field",
+                "messages"
+              ],
+              "properties": {
+                "field": {
+                  "type": "string"
+                },
+                "messages": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
