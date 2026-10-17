@@ -18,6 +18,7 @@ export function ProjectDetailPage() {
 function ProjectDetail({ organizationId, projectId }: { organizationId: string; projectId: string }) {
   const navigate = useNavigate();
   const listPath = "/organizations/" + encodeURIComponent(organizationId) + "/projects";
+  const detailPath = listPath + "/" + encodeURIComponent(projectId);
   const requests = useRef<AbortController | null>(null);
   const pending = useRef(false);
   const active = useRef(false);
@@ -216,6 +217,9 @@ function ProjectDetail({ organizationId, projectId }: { organizationId: string; 
           {archiveError && <p role="alert" className="text-sm text-destructive">{archiveError}</p>}
         </>
       )}
+      <nav aria-label="Project sections" className="flex gap-3 text-sm">
+        <Link className="underline" to={detailPath + "/documents"}>Documents</Link>
+      </nav>
       <div className="rounded-lg border p-4">
         <h2 className="font-semibold">Coming soon</h2>
         <p className="text-sm text-muted-foreground">API keys, traces, and cost analytics.</p>

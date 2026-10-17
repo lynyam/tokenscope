@@ -435,6 +435,51 @@ or credential-bearing artifacts to a PR.
 
 ---
 
+### Frontend PDF preview (PDF.js)
+
+The Documents page renders the first page of a PDF with `pdfjs-dist`. Nothing is
+loaded from a CDN: Vite bundles the matching worker locally
+(`pdfjs-dist/legacy/build/pdf.worker.min.mjs?url`, emitted as `dist/assets/pdf.worker.min-*.mjs`). The *legacy* build is used on purpose: the default build of pdfjs-dist 6 needs very recent JavaScript features and fails in browsers that lack them.
+After pulling a branch that adds or upgrades the dependency, run `npm ci` in
+`frontend/` (or restart the frontend container after `make up`). PDF.js is loaded
+lazily, so it is only fetched when a PDF preview is opened.
+
+The Vitest suite mocks PDF.js at its boundary (`src/pages/documents/pdf-preview.ts`).
+Real PDF rendering is covered by the Playwright suite below.
+
+### Browser tests (Playwright)
+
+`frontend/test/e2e/*.spec.ts` drive a real browser against a running stack (frontend,
+backend, PostgreSQL, private storage). Each test signs up its own disposable users and
+creates its own organization and projects through the API, so no demo account or
+storage volume is touched. Small input files come from `fixtures/evaluation/uploads/`.
+
+They run on the host, not in the Alpine frontend container (Playwright's browsers do not
+run there). Node 24 is required on the host.
+
+```bash
+make up                      # development stack: http://localhost:5173
+make frontende2e-setup       # once: npm ci + Chromium download
+make frontende2e             # all browser tests
+
+# Evaluation mode through Caddy (HTTPS, local certificate):
+make eval-up
+E2E_BASE_URL=https://localhost:8443 make frontende2e
+
+# With podman-compose (no `compose cp`), `make eval-up` stops at the certificate
+# stage. Caddy is already serving https://localhost:8443 at that point, so the
+# browser suite can still run; export the root certificate yourself with
+# `podman cp tokenscope_frontend_1:/data/caddy/pki/authorities/local/root.crt /tmp/root.crt`,
+# then run `make stop` when finished.
+
+# One suite or test:
+E2E_ARGS="-g 'rapid double submission'" make frontende2e
+```
+
+`E2E_CHROMIUM_PATH=/path/to/chromium` uses an installed Chromium instead of the downloaded one.
+Uploads are limited to 5 per minute per user; every test uses fresh users, so keep one
+test below that limit. Traces, screenshots and videos are disabled because they would record credentials; a failing test reports its error and location only.
+
 ### Backend
 
 From `backend/`:

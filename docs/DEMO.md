@@ -524,6 +524,27 @@ In each window:
 3. Verify protected pages redirect to sign-in.
 4. Verify the token has been removed from frontend storage.
 
+### Documents page (TSE-79)
+
+Documents are stored privately for project members. They are not used by the
+assistant. Use `UI Demo Project` with Alice (OWNER) and Bob (MEMBER); small
+sample files are in `fixtures/evaluation/uploads/`.
+
+1. As Alice, open the project and choose **Documents**
+   (`/organizations/:organizationId/projects/:projectId/documents`).
+2. Verify the empty state only appears after the list has loaded.
+3. Choose `sample-brief.pdf`. Verify nothing is sent until **Upload** is pressed.
+4. Press **Upload**. Verify the progress bar, then **Processing file…** once all
+   bytes are sent. The document appears only after the server answers `201`.
+5. Try `empty.txt` and a renamed `.exe`: both are refused locally with an inline message.
+   `malformed.pdf` and `invalid-utf8.txt` pass the local checks and are rejected by the server.
+6. **Preview** the PDF (first page, "Page 1 of N"), `sample-guide.md` and
+   `sample-policy.txt` (escaped plain text, first 100 KiB). Close and reopen each.
+7. **Download** a file and compare its bytes with the fixture (`cmp`).
+8. As Bob (MEMBER): the list, **Preview** and **Download** work; there is no upload form and no **Delete**.
+9. As Alice, **Delete** a document: Cancel sends nothing; confirming removes the row and the list refreshes.
+10. Archive the project and reload the page: an unavailable message appears and Alice stays signed in.
+
 ## 4. Automated checks
 
 Run from the repository root:

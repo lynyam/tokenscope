@@ -19,5 +19,8 @@ frontend/test-results/
 
 backend/.tse64-migration-*/
 
+#playwright
+frontend/test-results/
+frontend/playwright-report/
 postman
 .postman
