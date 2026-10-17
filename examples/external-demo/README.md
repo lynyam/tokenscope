@@ -174,3 +174,46 @@ checks. Automated tests alone do not prove live provider or API behavior.
   and model; do not substitute fictional token counts or prices.
 - Gemini failure: the page reports the provider outcome separately.
   A TokenScope key cannot fix a Gemini authentication or availability issue.
+
+## Evaluation walkthrough
+
+Use harmless input. Keep credentials out of screenshots and shared output.
+
+1. Start TokenScope with `make eval-up`, configure both projects and keys,
+   load the catalogue, and start this demo using the commands above.
+2. Submit a Chat question and record its externalId, trace ID, model,
+   workflow and token counts.
+3. Find the trace in Demo Chat using the Trace Explorer or the public
+   API: GET /api/v1/public/traces/:traceId with the Chat X-API-Key.
+   Compare the stored fields with the demo output.
+4. Request the same trace using the Translation key. Expect HTTP 404.
+5. Submit a Translation request. Verify its stored fields using the
+   Translation key and confirm the Chat key receives HTTP 404.
+6. Copy the Chat trace payload from the page. Replay the exact payload
+   through POST /api/v1/public/traces using the original Chat key.
+   Expect HTTP 200 and the same trace ID. Compare list totals before
+   and after; no extra row should appear.
+7. Revoke the configured Chat key through the management API:
+   DELETE /api/v1/organizations/:organizationId/projects/:projectId/api-keys/:apiKeyId
+   using an authorized user's Bearer token. Expect HTTP 204.
+   Prefer a dedicated evaluation key for this exercise.
+8. Submit another Chat question. Verify that the answer remains visible
+   and trace delivery reports HTTP 401.
+9. Submit a Translation request. Verify that delivery still succeeds.
+10. Create a replacement Chat key through the management API, update the
+    demo's server-side configuration and restart it. Verify a new Chat
+    request delivers its trace with HTTP 201.
+11. Keep the demo running and stop only TokenScope's backend with
+    `docker compose stop backend`. Submit a Chat question and verify
+    the answer remains visible alongside trace-delivery failure.
+12. Restore the backend with `docker compose start backend`, then check:
+    `curl --fail --show-error --cacert .local/eval/caddy-root.crt https://localhost:8443/api/v1/health/db`
+    Expect a healthy response.
+13. If project analytics are available, show each project's totals.
+    This is conditional on the dashboard dependency being available.
+
+The public API requires project API keys; management operations require
+an authorized user's JWT. The demo server itself does not need that JWT.
+
+Before review, coordinate the catalogue entry with the TSE-68 owner.
+See MANUAL_TESTS.md for the completed local verification evidence.

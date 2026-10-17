@@ -42,15 +42,44 @@ Unaffected Translation check:
 
 These identifiers refer to the local evaluation database.
 
-## Observations and remaining verification
+## Final live verification
+
+- Stored Chat fields matched the original payload, including provider,
+  model, workflow, token counts, latency, timestamp and metadata.
+- Stored Translation fields matched the recorded project, execution ID,
+  provider, model, workflow, token counts, latency and success status.
+- Exact Chat replay returned HTTP 200 and the original trace ID.
+  The Chat list contained two rows before and after replay, with exactly
+  one row matching the replayed externalId.
+- A replacement Chat key was created. The temporary demo restarted with
+  that key and successfully delivered a new Chat trace with HTTP 201.
+  Trace ID: 0752539e-bb04-4dd1-9076-b90cbc6374fc.
+- With the TokenScope backend stopped, Gemini's answer remained visible
+  while trace delivery reported HTTP 502 and TokenScope unavailability.
+  Execution ID: demo-chat-0e3174f2-ee92-43d9-b94e-dd5de36765b4.
+- After restarting the backend, the HTTPS database readiness endpoint
+  returned {"status":"healthy"} using the exported Caddy CA certificate.
+
+## Observations
 
 Earlier Chat attempts reported provider unavailability and no usable token
 usage. The demo skipped trace delivery for those attempts. Later requests
 succeeded; the precise cause of the earlier failures was not established.
 
-Successful manual checks do not establish completion of every ticket criterion.
-A controlled TokenScope outage and recovery test remains outstanding.
-Stored cost calculations have not yet been independently checked against
-the catalogue and recorded token counts.
+A successful provider outcome indicates that generation completed; it does
+not guarantee factual correctness of the generated answer.
 
+Independent verification of TokenScope's cost arithmetic is outside this
+demo ticket. The matching catalogue was loaded and real ingestion succeeded.
+
+Automated test results are recorded separately from these live checks.
 No API keys, login tokens, prompts, or generated answers are included here.
+
+## Final automated verification
+
+Run on 2026-10-18 using the documented Docker npm test command:
+- 9 test suites passed.
+- 119 tests passed.
+- git diff --check reported no whitespace errors.
+
+These automated results are separate from the live integration checks above.
