@@ -212,6 +212,10 @@ function ProjectDetail({ organizationId, projectId }: { organizationId: string; 
             <Button variant="destructive" disabled={isMutating} onClick={handleArchive}>
               {isArchiving ? "Archiving…" : "Archive project"}
             </Button>
+            <Link to={"/organizations/" + encodeURIComponent(organizationId)
+              + "/projects/" + encodeURIComponent(projectId) + "/api-keys"}>
+              API keys
+            </Link>
           </div>
           {archiveError && <p role="alert" className="text-sm text-destructive">{archiveError}</p>}
         </>

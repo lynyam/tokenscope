@@ -2,19 +2,16 @@ import { OrganizationSwitcher } from "./OrganizationSwitcher";
 import { UserMenu } from "./UserMenu";
 import { CollapsibleNavItem } from "./ProjectMenu";
 import { Separator } from "../components/ui/separator";
-import { Link, useLocation, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useOrganizationProjects } from "../hooks/useOrganizationProjects";
-import { Activity, Key, LayoutDashboard } from "lucide-react";
+import { Activity, LayoutDashboard } from "lucide-react";
 
 export function Sidebar() {
   const { organizationId, projectId } = useParams();
-  const { pathname } = useLocation();
   const { projects, isLoading, error, reload, accessLost } =
     useOrganizationProjects(organizationId);
 
   const currentProject = projects.find((project) => project.id === projectId);
-  const apiKeysPath = `/organizations/${organizationId}/projects/${projectId}/api-keys`;
-  const isApiKeysActive = pathname === apiKeysPath;
 
   return (
     <aside className="flex h-full w-56 flex-col border-r p-4">
@@ -71,18 +68,6 @@ export function Sidebar() {
               {currentProject.name}
             </span>
             <Separator className="mb-1" />
-
-            <Link
-              to={apiKeysPath}
-              className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
-                isApiKeysActive
-                  ? "bg-muted font-medium text-foreground"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
-              }`}
-            >
-              <Key className="h-4 w-4" />
-              API keys
-            </Link>
 
             <span
               aria-disabled="true"
