@@ -675,7 +675,7 @@ P="$DEMO_API_BASE/organizations/$ORG_ID/projects/$PROJECT_ID/documents"
 H="Authorization: Bearer $TOKEN"
 
 printf 'hello' > /tmp/demo.txt
-curl -s -H "$H" -F "file=@/tmp/demo.txt" "$P"                # 201 summary, no storage key
+DOC_ID=$(curl --fail --silent -H "$H" -F "file=@/tmp/demo.txt" "$P" | jq -r '.id')   # upload: 201 summary, no storage key
 curl -s -H "$H" "$P"                                          # list, newest first
 curl -s -H "$H" "$P/$DOC_ID/content"                          # hello
 curl -s -D - -o /dev/null -H "$H" "$P/$DOC_ID/content?download=true"   # attachment, nosniff, no-store
@@ -699,7 +699,7 @@ curl -s -X DELETE -o /dev/null -w '%{http_code}\n' -H "$H" "$P/$DOC_ID"  # 404
 
 # Upload one more document, then archive the project: access is denied, files are kept.
 curl -s -o /dev/null -H "$H" -F "file=@/tmp/demo.txt" "$P"
-curl -s -X DELETE -H "Authorization: Bearer $TOKEN" "http://localhost:5173/api/v1/organizations/$ORG_ID/projects/$PROJECT_ID"
+curl --fail --silent -X DELETE -H "$H" "$DEMO_API_BASE/organizations/$ORG_ID/projects/$PROJECT_ID"
 curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" "$P"   # 404 PROJECT_NOT_FOUND
 docker compose exec backend ls -R /var/lib/tokenscope/documents                    # the bytes are still there
 ```
