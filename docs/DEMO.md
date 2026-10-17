@@ -387,9 +387,12 @@ curl --fail --silent \
 
 Expected:
 
-- archive returns `204`;
-- the project disappears from the active-project list;
-- direct detail and a second archive attempt return `404 PROJECT_NOT_FOUND`.
+Expected: `204` with no body. Repeating the same request returns
+`404 ORGANIZATION_NOT_FOUND`, and the organization no longer appears in
+`GET /organizations`. Before archive, an existing `ADMIN` or `MEMBER` receives
+`403 INSUFFICIENT_ORGANIZATION_ROLE` for this DELETE. After archive, every
+former member receives `404 ORGANIZATION_NOT_FOUND`. The user session remains
+valid for other active organizations.
 
 ### Prove cross-tenant isolation
 
@@ -442,6 +445,41 @@ jq . /tmp/tokenscope-route-mismatch.json
 ```
 
 Expected: `404 PROJECT_NOT_FOUND`.
+
+### Delete (soft-archive) an organization
+
+A wrong slug is rejected:
+
+```bash
+curl --silent --output /tmp/tokenscope-org-archive-mismatch.json --write-out '%{http_code}\n' \
+  -X DELETE "$DEMO_API_BASE/organizations/$BOB_ORGANIZATION_ID" \
+  -H "Authorization: Bearer $BOB_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"confirmSlug": "wrong-slug"}'
+
+jq . /tmp/tokenscope-org-archive-mismatch.json
+```
+
+Expected: `409 ORGANIZATION_CONFIRMATION_MISMATCH`.
+
+The owner confirms the exact slug:
+
+```bash
+BOB_ORGANIZATION_SLUG=$(
+  printf '%s' "$BOB_ORGANIZATION_JSON" | jq -r '.slug'
+)
+
+curl --silent --output /dev/null --write-out '%{http_code}\n' \
+  -X DELETE "$DEMO_API_BASE/organizations/$BOB_ORGANIZATION_ID" \
+  -H "Authorization: Bearer $BOB_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"confirmSlug\": \"$BOB_ORGANIZATION_SLUG\"}"
+```
+
+Expected: `204` with no body. Repeating the same request returns
+`404 ORGANIZATION_NOT_FOUND`, and the organization no longer appears in
+`GET /organizations`. An `ADMIN` or `MEMBER` attempting the same call receives
+`403 INSUFFICIENT_ORGANIZATION_ROLE`.
 
 ## 3. Two-browser frontend demo
 
@@ -551,6 +589,7 @@ Expected:
 - [ ] Browser console and backend logs are clean.
 - [ ] Required automated tests pass.
 - [ ] API keys, traces, cost calculation, and dashboards remain M2 scope.
+- [ ] Only an OWNER can delete (soft-archive) an organization after typing its exact slug; the organization then returns concealed `404` responses.
 
 ## Evaluation acceptance extension — planned
 

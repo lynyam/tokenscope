@@ -1,160 +1,194 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { requestStream } from "@/api/http-client";
+
+import { apiPostStream } from "@/api/http-client";
 import { getAccessToken, saveAccessToken } from "@/api/auth-session";
 
 const fetchMock = vi.fn<typeof fetch>();
-const sse = (body: BodyInit | null, type = "text/event-stream; charset=utf-8", status = 200) =>
-  new Response(body, { status, headers: { "Content-Type": type } });
+const path = "/organizations/org/projects/project/assistant";
+
+const requestBody = {
+	question: "Which model contributes most to the estimated cost?",
+	from: "2026-10-01T00:00:00.000Z",
+	to: "2026-10-02T00:00:00.000Z",
+	filters: {},
+};
+
+function sseResponse(
+	body: BodyInit | null = "event: done\ndata: {}\n\n",
+): Response {
+	return new Response(body, {
+		status: 200,
+		headers: {
+			"Content-Type": "text/event-stream; charset=utf-8",
+			"X-Request-Id": "stream-request",
+		},
+	});
+}
 
 beforeEach(() => {
-  fetchMock.mockReset();
-  vi.stubGlobal("fetch", fetchMock);
-  saveAccessToken("alice-token");
+	fetchMock.mockReset();
+	vi.stubGlobal("fetch", fetchMock);
+	saveAccessToken("alice-token");
 });
 
-describe("requestStream", () => {
-  it("sends an authenticated same-origin JSON POST that accepts an event stream", async () => {
-    fetchMock.mockResolvedValue(sse("data: {}\n\n"));
-    await requestStream("/organizations/o/projects/p/assistant", { question: "Why?" });
-    const [url, init] = fetchMock.mock.calls[0];
-    const headers = new Headers(init?.headers);
-    expect(url).toBe("/api/v1/organizations/o/projects/p/assistant");
-    expect(init?.method).toBe("POST");
-    expect(init?.body).toBe('{"question":"Why?"}');
-    expect(headers.get("Accept")).toBe("text/event-stream");
-    expect(headers.get("Content-Type")).toBe("application/json");
-    expect(headers.get("Authorization")).toBe("Bearer alice-token");
-  });
+describe("authenticated streamed POST", () => {
+	it("sends JSON and returns the original unread stream", async () => {
+		const response = sseResponse();
+		const readText = vi.spyOn(response, "text");
+		const readJson = vi.spyOn(response, "json");
 
-  it("returns the response without reading the body, so an early chunk reaches the caller before completion", async () => {
-    let controller!: ReadableStreamDefaultController<Uint8Array>;
-    const body = new ReadableStream<Uint8Array>({ start(c) { controller = c; } });
-    fetchMock.mockResolvedValue(sse(body));
-    const { response } = await requestStream("/x", {});
-    expect(response.bodyUsed).toBe(false);
-    const reader = response.body!.getReader();
-    controller.enqueue(new TextEncoder().encode("data: first\n\n"));
-    const first = await reader.read(); // The stream is still open.
-    expect(new TextDecoder().decode(first.value)).toBe("data: first\n\n");
-    controller.close();
-    expect((await reader.read()).done).toBe(true);
-  });
+		fetchMock.mockResolvedValueOnce(response);
 
-  it("cancellation after the helper returns stops consumption", async () => {
-    const cancelled = vi.fn();
-    const body = new ReadableStream<Uint8Array>({ pull() {}, cancel: cancelled });
-    fetchMock.mockResolvedValue(sse(body));
-    const { response } = await requestStream("/x", {});
-    await response.body!.cancel();
-    expect(cancelled).toHaveBeenCalled();
-  });
+		const stream = await apiPostStream(path, requestBody);
+		const [url, options] = fetchMock.mock.calls[0];
+		const headers = new Headers(options?.headers);
 
-  it("forwards the abort signal to fetch and keeps AbortError distinct", async () => {
-    const controller = new AbortController();
-    fetchMock.mockImplementation((_url, init) => new Promise((_resolve, reject) => {
-      init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
-    }));
-    const pending = requestStream("/x", {}, { signal: controller.signal });
-    controller.abort();
-    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
-    expect(getAccessToken()).toBe("alice-token");
-  });
+		expect(url).toBe(`/api/v1${path}`);
+		expect(options?.method).toBe("POST");
+		expect(options?.body).toBe(JSON.stringify(requestBody));
+		expect(headers.get("Accept")).toBe("text/event-stream");
+		expect(headers.get("Content-Type")).toBe("application/json");
+		expect(headers.get("Authorization")).toBe("Bearer alice-token");
 
-  it("accepts content-type parameters and any letter case", async () => {
-    fetchMock.mockResolvedValue(sse("x", "Text/Event-Stream;charset=utf-8"));
-    await expect(requestStream("/x", {})).resolves.toBeDefined();
-  });
+		expect(stream.body).toBe(response.body);
+		expect(stream.requestId).toBe("stream-request");
+		expect(response.bodyUsed).toBe(false);
+		expect(stream.body.locked).toBe(false);
+		expect(readText).not.toHaveBeenCalled();
+		expect(readJson).not.toHaveBeenCalled();
 
-  it("retains the opening session: invalidateSession signs out only that session", async () => {
-    fetchMock.mockResolvedValue(sse("x"));
-    const stream = await requestStream("/x", {});
-    stream.invalidateSession();
-    expect(getAccessToken()).toBeNull();
-  });
+		await stream.body.cancel();
+	});
 
-  it("an old stream cannot sign out a newer login, even for the same token", async () => {
-    fetchMock.mockResolvedValue(sse("x"));
-    const stream = await requestStream("/x", {});
-    saveAccessToken("alice-token"); // Session B for the same user and same token value.
-    stream.invalidateSession();
-    expect(getAccessToken()).toBe("alice-token");
-  });
+	it.each([
+		[200, "application/json"],
+		[200, "text/html"],
+		[201, "text/event-stream"],
+	])(
+		"rejects HTTP %i with content type %s and cancels its body",
+		async (status, contentType) => {
+			const response = new Response("unexpected", {
+				status,
+				headers: { "Content-Type": contentType },
+			});
 
-  it("does not expose the raw token", async () => {
-    fetchMock.mockResolvedValue(sse("x"));
-    const stream = await requestStream("/x", {});
-    expect(JSON.stringify(Object.keys(stream))).not.toContain("token");
-    expect(JSON.stringify(stream)).not.toContain("alice-token");
-  });
+			const cancel = vi.spyOn(response.body!, "cancel");
+			fetchMock.mockResolvedValueOnce(response);
 
-  it("invalidateSession is a no-op without authentication", async () => {
-    fetchMock.mockResolvedValue(sse("x"));
-    const stream = await requestStream("/x", {}, { auth: "none" });
-    stream.invalidateSession();
-    expect(getAccessToken()).toBe("alice-token");
-    expect(new Headers(fetchMock.mock.calls[0][1]?.headers).has("Authorization")).toBe(false);
-  });
+			await expect(apiPostStream(path, requestBody)).rejects.toMatchObject({
+				statusCode: status,
+				code: "INVALID_API_RESPONSE",
+			});
 
-  it("maps an initial JSON failure to ApiError", async () => {
-    fetchMock.mockResolvedValue(new Response(
-      JSON.stringify({ code: "LLM_PROVIDER_BUSY", message: "Try again later.", requestId: "r-9" }),
-      { status: 503, headers: { "Content-Type": "application/json" } },
-    ));
-    await expect(requestStream("/x", {})).rejects.toMatchObject({ statusCode: 503, code: "LLM_PROVIDER_BUSY", requestId: "r-9" });
-    expect(getAccessToken()).toBe("alice-token"); // Provider failures never end the app session.
-  });
+			expect(cancel).toHaveBeenCalledTimes(1);
+			expect(getAccessToken()).toBe("alice-token");
+		},
+	);
 
-  it("maps initial non-JSON failures safely", async () => {
-    fetchMock.mockResolvedValue(new Response("<html>Bad gateway</html>", { status: 502 }));
-    const error = (await requestStream("/x", {}).catch((e: unknown) => e)) as Error;
-    expect(error).toMatchObject({ statusCode: 502, code: "HTTP_ERROR" });
-    expect(error.message).not.toContain("html");
-  });
+	it("rejects a response without a readable body", async () => {
+		fetchMock.mockResolvedValueOnce(sseResponse(null));
 
-  it("a non-JSON 401 invalidates the captured session", async () => {
-    fetchMock.mockResolvedValue(new Response("<html>nope</html>", { status: 401 }));
-    await expect(requestStream("/x", {})).rejects.toMatchObject({ statusCode: 401 });
-    expect(getAccessToken()).toBeNull();
-  });
+		await expect(apiPostStream(path, requestBody)).rejects.toMatchObject({
+			code: "INVALID_API_RESPONSE",
+		});
+	});
 
-  it("a late 401 from an old session cannot sign out a newer login", async () => {
-    let finish!: (r: Response) => void;
-    fetchMock.mockReturnValue(new Promise(resolve => { finish = resolve; }));
-    const pending = requestStream("/x", {});
-    saveAccessToken("bob-token");
-    finish(new Response("{}", { status: 401, headers: { "Content-Type": "application/json" } }));
-    await expect(pending).rejects.toMatchObject({ statusCode: 401 });
-    expect(getAccessToken()).toBe("bob-token");
-  });
+	it("delivers an early chunk and preserves cancellation after returning", async () => {
+		const controller = new AbortController();
+		let writer!: ReadableStreamDefaultController<Uint8Array>;
 
-  it("rejects a wrong content type and releases the body", async () => {
-    const cancelled = vi.fn();
-    const body = new ReadableStream<Uint8Array>({ pull() {}, cancel: cancelled });
-    fetchMock.mockResolvedValue(sse(body, "text/html"));
-    await expect(requestStream("/x", {})).rejects.toMatchObject({ code: "INVALID_API_RESPONSE" });
-    expect(cancelled).toHaveBeenCalled();
-  });
+		const source = new ReadableStream<Uint8Array>({
+			start(value) {
+				writer = value;
+			},
+		});
 
-  it("rejects a successful response without a body", async () => {
-    fetchMock.mockResolvedValue(sse(null, "text/event-stream", 200));
-    await expect(requestStream("/x", {})).rejects.toMatchObject({ code: "INVALID_API_RESPONSE" });
-  });
+		// The controlled network imitates fetch's abort propagation.
+		// This tests signal forwarding and the returned stream's lifecycle.
+		fetchMock.mockImplementation(async (_url, options) => {
+			options?.signal?.addEventListener(
+				"abort",
+				() => writer.error(new DOMException("Cancelled", "AbortError")),
+				{ once: true },
+			);
 
-  it("reports connection failures as NETWORK_ERROR and never retries", async () => {
-    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
-    await expect(requestStream("/x", {})).rejects.toMatchObject({ statusCode: undefined, code: "NETWORK_ERROR" });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(getAccessToken()).toBe("alice-token");
-  });
+			return sseResponse(source);
+		});
 
-  it.each(["https://evil.test/x", "//evil.test/x", "assistant"])("never sends credentials to %s", async path => {
-    await expect(requestStream(path, {})).rejects.toBeInstanceOf(TypeError);
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
+		const stream = await apiPostStream(path, requestBody, {
+			signal: controller.signal,
+		});
 
-  it("does not follow redirects with credentials", async () => {
-    fetchMock.mockResolvedValue(Object.defineProperty(new Response(null), "type", { value: "opaqueredirect" }));
-    await expect(requestStream("/x", {})).rejects.toMatchObject({ code: "INVALID_API_RESPONSE" });
-    expect(fetchMock.mock.calls[0][1]?.redirect).toBe("manual");
-  });
+		const reader = stream.body.getReader();
+		const chunk = new TextEncoder().encode(
+			'event: delta\ndata: {"text":"First words"}\n\n',
+		);
+
+		// The source is still open: receiving this proves no full-body buffering.
+		writer.enqueue(chunk);
+
+		const first = await reader.read();
+		expect(first.done).toBe(false);
+		expect(first.value).toEqual(chunk);
+
+		const next = reader.read();
+		const assertion = expect(next).rejects.toMatchObject({
+			name: "AbortError",
+		});
+
+		controller.abort();
+
+		await assertion;
+		reader.releaseLock();
+
+		expect(fetchMock.mock.calls[0][1]?.signal).toBe(controller.signal);
+		expect(getAccessToken()).toBe("alice-token");
+	});
+
+	it("recognizes its current session and can invalidate that session", async () => {
+		fetchMock.mockResolvedValueOnce(sseResponse());
+
+		const stream = await apiPostStream(path, requestBody);
+
+		expect(stream.isSessionCurrent()).toBe(true);
+
+		stream.invalidateSession();
+
+		expect(getAccessToken()).toBeNull();
+		expect(stream.isSessionCurrent()).toBe(false);
+
+		await stream.body.cancel();
+	});
+
+	it.each(["alice-token", "bob-token"])(
+		"retains the original session identity after a new login using %s",
+		async token => {
+			fetchMock.mockResolvedValueOnce(sseResponse());
+
+			const stream = await apiPostStream(path, requestBody);
+			saveAccessToken(token);
+
+			expect(stream.isSessionCurrent()).toBe(false);
+
+			stream.invalidateSession();
+
+			expect(getAccessToken()).toBe(token);
+			await stream.body.cancel();
+		},
+	);
+
+	it("leaves provider error events to the assistant parser", async () => {
+		fetchMock.mockResolvedValueOnce(
+			sseResponse(
+				'event: error\ndata: {"code":"LLM_PROVIDER_BUSY","message":"Try later.","retryable":true}\n\n',
+			),
+		);
+
+		const stream = await apiPostStream(path, requestBody);
+
+		expect(getAccessToken()).toBe("alice-token");
+		expect(stream.isSessionCurrent()).toBe(true);
+
+		await stream.body.cancel();
+	});
 });

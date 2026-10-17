@@ -5,7 +5,6 @@
 
 localhost {
 	tls internal
-	encode gzip
 
 	handle /api/* {
 		# 10 MiB file plus multipart overhead.
@@ -19,8 +18,10 @@ localhost {
 		}
 	}
 
-	# Only frontend routes receive the SPA fallback.
+	# Only frontend routes receive compression and the SPA fallback.
+	# API ETags must remain unchanged for If-Match.
 	handle {
+		encode gzip
 		root * /srv
 		try_files {path} /index.html
 		file_server

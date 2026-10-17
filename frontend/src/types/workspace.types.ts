@@ -94,3 +94,7 @@ export interface UpdateProjectInput {
     name?: string;
     description?: string | null;
 }
+
+export interface ArchiveOrganizationInput {
+  confirmSlug: string;
+}

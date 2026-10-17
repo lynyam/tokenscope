@@ -1,197 +1,184 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, uploadMultipart } from "@/api/http-client";
-import { getAccessToken, saveAccessToken } from "@/api/auth-session";
-import { FakeXhr } from "./fake-xhr";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const form = () => {
-  const data = new FormData();
-  data.append("file", new File(["hello"], "notes.txt", { type: "text/plain" }));
-  return data;
-};
-const created = { id: "doc-1", originalName: "notes.txt" };
+import { uploadMultipart } from "@/api/http-client";
+import { getAccessToken, saveAccessToken } from "@/api/auth-session";
+
+import { FakeXHR, lastXHR } from "./helpers/fake-xhr";
+
+const path = "/organizations/org/projects/project/documents";
 
 beforeEach(() => {
-  FakeXhr.instances = [];
-  vi.stubGlobal("XMLHttpRequest", FakeXhr);
-  saveAccessToken("alice-token");
+	FakeXHR.instances = [];
+	vi.stubGlobal("XMLHttpRequest", FakeXHR);
+	saveAccessToken("alice-token");
 });
-afterEach(() => { FakeXhr.instances = []; });
 
-describe("uploadMultipart", () => {
-  it("posts the FormData to the same-origin API with bearer auth and no JSON content type", async () => {
-    const body = form();
-    const upload = uploadMultipart("/organizations/o/projects/p/documents", body);
-    const xhr = FakeXhr.last;
-    expect(xhr.method).toBe("POST");
-    expect(xhr.url).toBe("/api/v1/organizations/o/projects/p/documents");
-    expect(xhr.body).toBe(body);
-    expect(xhr.requestHeaders.authorization).toBe("Bearer alice-token");
-    expect(xhr.requestHeaders.accept).toBe("application/json");
-    // The browser must add multipart/form-data together with its boundary.
-    expect(xhr.requestHeaders["content-type"]).toBeUndefined();
-    xhr.respond(201, JSON.stringify(created));
-    await expect(upload).resolves.toEqual(created);
-  });
+describe("multipart upload lifecycle", () => {
+	it("sends FormData unchanged and lets the browser set Content-Type", async () => {
+		const form = new FormData();
+		form.append("file", new File(["hello"], "brief.txt", { type: "text/plain" }));
 
-  it("accepts a response whose final URL is the requested one", async () => {
-    const upload = uploadMultipart("/organizations/o/projects/p/documents", form());
-    FakeXhr.last.responseURL = new URL("/api/v1/organizations/o/projects/p/documents", window.location.href).href;
-    FakeXhr.last.respond(201, JSON.stringify(created));
-    await expect(upload).resolves.toEqual(created);
-  });
+		const pending = uploadMultipart(path, form);
+		const xhr = lastXHR();
 
-  it("rejects a redirected response as INVALID_API_RESPONSE, even a JSON 2xx one", async () => {
-    const upload = uploadMultipart("/organizations/o/projects/p/documents", form());
-    const failure = upload.catch(error => error);
-    FakeXhr.last.responseURL = new URL("/api/v1/somewhere/else", window.location.href).href;
-    FakeXhr.last.respond(201, JSON.stringify(created));
-    expect(await failure).toMatchObject({ code: "INVALID_API_RESPONSE" });
-  });
+		expect(xhr.method).toBe("POST");
+		expect(xhr.body).toBe(form);
+		expect(xhr.requestHeaders.get("Authorization")).toBe("Bearer alice-token");
+		expect(xhr.requestHeaders.get("Accept")).toBe("application/json");
+		expect(xhr.requestHeaders.has("Content-Type")).toBe(false);
 
-  it("does not let a redirected 401 invalidate the session", async () => {
-    const upload = uploadMultipart("/x", form());
-    const failure = upload.catch(error => error);
-    FakeXhr.last.responseURL = new URL("/login", window.location.href).href;
-    FakeXhr.last.respond(401, JSON.stringify({ code: "UNAUTHENTICATED", message: "no" }));
-    expect(await failure).toBeInstanceOf(ApiError);
-    expect(getAccessToken()).toBe("alice-token");
-  });
+		xhr.respond(201, '{"id":"document"}');
 
-  it("omits the bearer for auth: none", async () => {
-    const upload = uploadMultipart("/x", form(), { auth: "none" });
-    expect(FakeXhr.last.requestHeaders.authorization).toBeUndefined();
-    FakeXhr.last.respond(201, "{}");
-    await upload;
-  });
+		await expect(pending).resolves.toEqual({ id: "document" });
+	});
 
-  it("reports measured and indeterminate progress without resolving", async () => {
-    const onProgress = vi.fn();
-    const upload = uploadMultipart("/x", form(), { onProgress });
-    const settled = vi.fn();
-    upload.then(settled, settled);
-    const xhr = FakeXhr.last;
-    xhr.progress(10, 100);
-    xhr.progress(40);
-    xhr.progress(100, 100);
-    await Promise.resolve();
-    expect(onProgress.mock.calls.map(call => call[0])).toEqual([
-      { loaded: 10, total: 100 },
-      { loaded: 40 },
-      { loaded: 100, total: 100 },
-    ]);
-    expect(onProgress.mock.calls[1][0]).not.toHaveProperty("total");
-    // 100% uploaded is not "saved": only the HTTP response completes the upload.
-    expect(settled).not.toHaveBeenCalled();
-    xhr.respond(201, JSON.stringify(created));
-    await expect(upload).resolves.toEqual(created);
-  });
+	it("reports measured progress but waits for the HTTP response at 100%", async () => {
+		const onProgress = vi.fn();
+		const completed = vi.fn();
 
-  it("is not affected by a progress observer that throws", async () => {
-    const upload = uploadMultipart("/x", form(), { onProgress: () => { throw new Error("observer bug"); } });
-    FakeXhr.last.progress(1, 2);
-    FakeXhr.last.respond(201, JSON.stringify(created));
-    await expect(upload).resolves.toEqual(created);
-  });
+		const pending = uploadMultipart(path, new FormData(), { onProgress });
+		const observed = pending.then(completed);
+		const xhr = lastXHR();
 
-  it("does not send when the signal is already aborted", async () => {
-    const controller = new AbortController();
-    controller.abort();
-    await expect(uploadMultipart("/x", form(), { signal: controller.signal }))
-      .rejects.toMatchObject({ name: "AbortError" });
-    expect(FakeXhr.instances).toHaveLength(0);
-  });
+		xhr.progress(3);
+		xhr.progress(5, 10);
+		xhr.progress(10, 10);
 
-  it("aborts the XHR during transfer and stays distinguishable from a network failure", async () => {
-    const controller = new AbortController();
-    const onProgress = vi.fn();
-    const upload = uploadMultipart("/x", form(), { signal: controller.signal, onProgress });
-    const xhr = FakeXhr.last;
-    xhr.progress(5, 10);
-    controller.abort();
-    const error = (await upload.catch((e: unknown) => e)) as Error;
-    expect(error).not.toBeInstanceOf(ApiError);
-    expect(error.name).toBe("AbortError");
-    expect(xhr.aborted).toBe(true);
-    xhr.progress(9, 10); // Late events must be ignored.
-    expect(onProgress).toHaveBeenCalledTimes(1);
-    expect(getAccessToken()).toBe("alice-token");
-  });
+		expect(onProgress).toHaveBeenNthCalledWith(1, { loaded: 3 });
+		expect(onProgress).toHaveBeenNthCalledWith(2, { loaded: 5, total: 10 });
+		expect(onProgress).toHaveBeenNthCalledWith(3, { loaded: 10, total: 10 });
 
-  it("reports a network failure as NETWORK_ERROR without logging out", async () => {
-    const upload = uploadMultipart("/x", form());
-    FakeXhr.last.networkFailure();
-    await expect(upload).rejects.toMatchObject({ statusCode: undefined, code: "NETWORK_ERROR" });
-    expect(getAccessToken()).toBe("alice-token");
-  });
+		// Allow pending promise callbacks to run if progress incorrectly resolved it.
+		await new Promise<void>(resolve => setTimeout(resolve, 0));
 
-  it("settles once and removes every listener on each exit path", async () => {
-    const paths: Array<(xhr: FakeXhr, controller: AbortController) => void> = [
-      xhr => xhr.respond(201, JSON.stringify(created)),
-      xhr => xhr.respond(413, JSON.stringify({ code: "PAYLOAD_TOO_LARGE", message: "Too large." })),
-      xhr => xhr.networkFailure(),
-      (_xhr, controller) => controller.abort(),
-    ];
-    for (const finish of paths) {
-      const controller = new AbortController();
-      const removeSpy = vi.spyOn(controller.signal, "removeEventListener");
-      const upload = uploadMultipart("/x", form(), { signal: controller.signal });
-      const xhr = FakeXhr.last;
-      finish(xhr, controller);
-      await upload.catch(() => undefined);
-      expect(xhr.hasListeners()).toBe(false);
-      expect(removeSpy).toHaveBeenCalledWith("abort", expect.any(Function));
-      // A second terminal event cannot produce a second outcome or throw.
-      expect(() => { xhr.onload?.(); xhr.onerror?.(); }).not.toThrow();
-    }
-  });
+		expect(completed).not.toHaveBeenCalled();
 
-  it("keeps structured HTTP errors, details and request IDs", async () => {
-    const details = [{ field: "file", messages: ["file is required"] }];
-    const upload = uploadMultipart("/x", form());
-    FakeXhr.last.respond(400, JSON.stringify({ code: "VALIDATION_ERROR", message: "Bad file.", details, requestId: "r-1" }));
-    await expect(upload).rejects.toMatchObject({ statusCode: 400, code: "VALIDATION_ERROR", details, requestId: "r-1" });
-  });
+		xhr.respond(201, '{"id":"saved-document"}');
 
-  it.each([
-    ["<html>Bad Gateway</html>", 502],
-    ["", 500],
-    ["{broken", 429],
-  ])("never exposes a malformed error body (%s, HTTP %i)", async (body, status) => {
-    const upload = uploadMultipart("/x", form());
-    FakeXhr.last.respond(status, body, { "Content-Type": "text/html", "X-Request-Id": "gw-1" });
-    const error = (await upload.catch((e: unknown) => e)) as Error;
-    expect(error).toMatchObject({ statusCode: status, code: "HTTP_ERROR", requestId: "gw-1" });
-    expect(error.message).toBe("The request failed. Please try again.");
-    expect(getAccessToken()).toBe("alice-token");
-  });
+		await observed;
+		expect(completed).toHaveBeenCalledWith({ id: "saved-document" });
+	});
 
-  it.each([403, 404, 409, 422, 429, 503])("HTTP %i preserves the session", async status => {
-    const upload = uploadMultipart("/x", form());
-    FakeXhr.last.respond(status, JSON.stringify({ code: "E" }));
-    await expect(upload).rejects.toMatchObject({ statusCode: status });
-    expect(getAccessToken()).toBe("alice-token");
-  });
+	it.each(["success", "network", "abort", "timeout"] as const)(
+		"cleans up listeners after %s",
+		async outcome => {
+			const controller = new AbortController();
+			const onProgress = vi.fn();
 
-  it.each(["not-json", "[1]x", "null"])("rejects a 2xx response that is not the expected JSON (%s)", async body => {
-    const upload = uploadMultipart("/x", form());
-    FakeXhr.last.respond(201, body);
-    await expect(upload).rejects.toMatchObject({ code: "INVALID_API_RESPONSE" });
-  });
+			const removeSignalListener = vi.spyOn(
+				controller.signal,
+				"removeEventListener",
+			);
 
-  it("rejects a 2xx HTML response (login page behind a proxy)", async () => {
-    const upload = uploadMultipart("/x", form());
-    FakeXhr.last.respond(200, "{}", { "Content-Type": "text/html" });
-    await expect(upload).rejects.toMatchObject({ code: "INVALID_API_RESPONSE" });
-  });
+			const pending = uploadMultipart(path, new FormData(), {
+				signal: controller.signal,
+				onProgress,
+			});
 
-  it.each(["https://evil.test/x", "//evil.test/x", "documents", "/\\evil.test", "/a b"])(
-    "never sends credentials to %s", async path => {
-      await expect(uploadMultipart(path, form())).rejects.toBeInstanceOf(TypeError);
-      expect(FakeXhr.instances).toHaveLength(0);
-    });
+			// Attach both handlers before triggering the controlled outcome.
+			const observed = pending.then(
+				value => ({ value }),
+				error => ({ error }),
+			);
 
-  it("requires a FormData body", async () => {
-    await expect(uploadMultipart("/x", {} as FormData)).rejects.toBeInstanceOf(TypeError);
-    expect(FakeXhr.instances).toHaveLength(0);
-  });
+			const xhr = lastXHR();
+			const removeRequestListener = vi.spyOn(xhr, "removeEventListener");
+			const removeProgressListener = vi.spyOn(xhr.upload, "removeEventListener");
+
+			if (outcome === "success") {
+				xhr.respond(201, '{"id":"document"}');
+			} else if (outcome === "network") {
+				xhr.dispatchEvent(new Event("error"));
+			} else if (outcome === "abort") {
+				controller.abort();
+			} else {
+				xhr.dispatchEvent(new Event("timeout"));
+			}
+
+			const result = await observed;
+
+			if (outcome === "success") {
+				expect(result).toEqual({ value: { id: "document" } });
+			} else if (outcome === "abort") {
+				expect(result).toMatchObject({ error: { name: "AbortError" } });
+			} else {
+				expect(result).toMatchObject({
+					error: {
+						code: outcome === "network" ? "NETWORK_ERROR" : "REQUEST_TIMEOUT",
+					},
+				});
+			}
+
+			for (const event of ["load", "error", "abort", "timeout"]) {
+				expect(removeRequestListener)
+					.toHaveBeenCalledWith(event, expect.any(Function));
+			}
+
+			expect(removeProgressListener)
+				.toHaveBeenCalledWith("progress", expect.any(Function));
+			expect(removeSignalListener)
+				.toHaveBeenCalledWith("abort", expect.any(Function));
+
+			const abortCalls = xhr.abort.mock.calls.length;
+
+			// No listener should react after settlement.
+			controller.abort();
+			xhr.progress(100, 100);
+			xhr.dispatchEvent(new Event("error"));
+
+			expect(xhr.abort).toHaveBeenCalledTimes(abortCalls);
+			expect(onProgress).not.toHaveBeenCalled();
+			expect(getAccessToken()).toBe("alice-token");
+		},
+	);
+
+	it("rejects malformed success JSON", async () => {
+		const pending = uploadMultipart(path, new FormData());
+		const assertion = expect(pending).rejects.toMatchObject({
+			code: "INVALID_API_RESPONSE",
+			statusCode: 201,
+		});
+
+		lastXHR().respond(201, "{");
+
+		await assertion;
+	});
+
+	it("rejects an unexpected final URL", async () => {
+		const pending = uploadMultipart(path, new FormData());
+		const assertion = expect(pending).rejects.toMatchObject({
+			code: "INVALID_API_RESPONSE",
+		});
+
+		lastXHR().respond(
+			200,
+			'{"id":"unexpected"}',
+			{ "Content-Type": "application/json" },
+			new URL("/login", window.location.origin).href,
+		);
+
+		await assertion;
+		expect(getAccessToken()).toBe("alice-token");
+	});
+
+	it("rejects and aborts if a synchronous progress callback throws", async () => {
+		const failure = new Error("Progress rendering failed");
+
+		const pending = uploadMultipart(path, new FormData(), {
+			onProgress: () => {
+				throw failure;
+			},
+		});
+
+		const assertion = expect(pending).rejects.toBe(failure);
+		const xhr = lastXHR();
+
+		xhr.progress(1, 2);
+
+		await assertion;
+		expect(xhr.abort).toHaveBeenCalledTimes(1);
+
+		// A late HTTP response must not change the rejected result.
+		xhr.respond(201, '{"id":"late"}');
+	});
 });

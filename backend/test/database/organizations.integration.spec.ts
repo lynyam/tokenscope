@@ -232,4 +232,73 @@ describe("Organization endpoints with PostgreSQL", () => {
       expect((await prisma.organization.findUniqueOrThrow({ where: { id: ids.orgA } })).name).toBe("Original");
     },
   );
+    describe("soft archive", () => {
+    const archive = (userId: string, confirmSlug = "original") =>
+      request(app.getHttpServer()).delete(detail)
+        .set("Authorization", bearer(userId)).send({ confirmSlug });
+
+    const archivedAtOf = async (id: string) =>
+      (await prisma.organization.findUniqueOrThrow({ where: { id } })).archivedAt;
+
+    it("archives only the organization row and keeps memberships and projects", async () => {
+      await prisma.project.create({ data: { organizationId: ids.orgA, name: "Kept", slug: "kept" } });
+      const response = await archive(ids.owner).expect(204);
+      expect(response.text).toBe("");
+      expect(await archivedAtOf(ids.orgA)).not.toBeNull();
+      expect(await archivedAtOf(ids.orgB)).toBeNull();
+      expect(await prisma.membership.count({ where: { organizationId: ids.orgA } })).toBe(3);
+      const project = await prisma.project.findFirstOrThrow({ where: { organizationId: ids.orgA } });
+      expect(project.archivedAt).toBeNull();
+    });
+
+    it("hides the archived organization from list, detail, rename and access checks", async () => {
+      await archive(ids.owner).expect(204);
+      const list = await request(app.getHttpServer()).get(base)
+        .set("Authorization", bearer(ids.owner)).expect(200);
+      expect(list.body).toEqual([]);
+      const read = await request(app.getHttpServer()).get(detail)
+        .set("Authorization", bearer(ids.owner)).expect(404);
+      expect(read.body.code).toBe("ORGANIZATION_NOT_FOUND");
+      const rename = await request(app.getHttpServer()).patch(detail)
+        .set("Authorization", bearer(ids.owner)).send({ name: "Nope" }).expect(404);
+      expect(rename.body.code).toBe("ORGANIZATION_NOT_FOUND");
+      await expect(access.assertOrganizationMember(ids.owner, ids.orgA))
+        .rejects.toMatchObject({ code: "ORGANIZATION_NOT_FOUND" });
+    });
+
+    it("returns 404 on a second deletion", async () => {
+      await archive(ids.owner).expect(204);
+      const response = await archive(ids.owner).expect(404);
+      expect(response.body.code).toBe("ORGANIZATION_NOT_FOUND");
+    });
+
+    it("rejects a mismatching confirmation without archiving", async () => {
+      const response = await archive(ids.owner, "Original").expect(409);
+      expect(response.body.code).toBe("ORGANIZATION_CONFIRMATION_MISMATCH");
+      expect(await archivedAtOf(ids.orgA)).toBeNull();
+    });
+
+    it.each([["admin", 403, "INSUFFICIENT_ORGANIZATION_ROLE"], ["member", 403, "INSUFFICIENT_ORGANIZATION_ROLE"],
+      ["outsider", 404, "ORGANIZATION_NOT_FOUND"]] as const)(
+      "keeps %s from archiving, whatever the confirmation", async (name, status, code) => {
+        const wrong = await archive(ids[name], "wrong").expect(status);
+        expect(wrong.body.code).toBe(code);
+        const right = await archive(ids[name]).expect(status);
+        expect(right.body.code).toBe(code);
+        expect(await archivedAtOf(ids.orgA)).toBeNull();
+      },
+    );
+
+    it("keeps reserving the slug of an archived organization", async () => {
+      await archive(ids.owner).expect(204);
+      await expect(prisma.organization.create({ data: { name: "Again", slug: "original" } }))
+        .rejects.toMatchObject({ code: "P2002" });
+    });
+
+    it("lets exactly one of two simultaneous deletions win", async () => {
+      const results = await Promise.all([archive(ids.owner), archive(ids.owner)]);
+      expect(results.map(r => r.status).sort()).toEqual([204, 404]);
+      expect(await archivedAtOf(ids.orgA)).not.toBeNull();
+    });
+  });
 });

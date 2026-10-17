@@ -1,29 +1,38 @@
-import { defineConfig } from "@playwright/test";
+/// <reference types="node" />
+import { defineConfig, devices } from "@playwright/test";
 
-// Real-browser suite (docs/LOCAL_DEVELOPMENT.md). It runs against an already started stack:
-//   E2E_BASE_URL=https://localhost:8443 npm run e2e      (evaluation mode through Caddy)
-//   E2E_BASE_URL=http://localhost:5173  npm run e2e      (development mode; the default)
-// E2E_CHROMIUM_PATH optionally points to an installed Chromium instead of Playwright's download.
+const baseURL = process.env.E2E_BASE_URL;
+if (!baseURL) {
+  throw new Error(
+    "E2E_BASE_URL must be the running frontend origin, for example http://localhost:5173.",
+  );
+}
+
+// Optional: use an installed Chromium instead of Playwright's download.
 const executablePath = process.env.E2E_CHROMIUM_PATH;
 
 export default defineConfig({
-  testDir: "test/e2e",
+  testDir: "./test/e2e",
+  // Browser specs end in .spec.ts; Vitest only discovers .test.ts/.test.tsx.
   testMatch: "**/*.spec.ts",
   timeout: 60_000,
   expect: { timeout: 10_000 },
-  // Tests create their own disposable accounts, but uploads are rate limited per user: stay sequential.
+  // Uploads are rate limited per user: stay sequential.
   fullyParallel: false,
   workers: 1,
   retries: 0,
-  reporter: [["list"]],
-  outputDir: "test-results",
+  reporter: [["list"], ["html", { open: "never" }]],
   use: {
-    baseURL: process.env.E2E_BASE_URL ?? "http://localhost:5173",
+    baseURL,
     // The evaluation Caddy uses a local CA that browsers do not trust by default.
     ignoreHTTPSErrors: true,
     acceptDownloads: true,
-    trace: "retain-on-failure",
+    // Login and authenticated requests contain credentials.
+    // Do not record them in automatic test artifacts.
+    trace: "off",
+    screenshot: "off",
+    video: "off",
     launchOptions: executablePath ? { executablePath, args: ["--no-sandbox"] } : {},
   },
-  projects: [{ name: "chromium", use: { browserName: "chromium" } }],
+  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
 });
