@@ -415,7 +415,7 @@ Create or extend a helper only when a concrete consumer needs it.
 
 Do not add generic frameworks, speculative adapters or duplicate wrappers.
 
-For organization DELETE with a confirmation body, reuse the existing request implementation. At the inspected baseline, `request()` is private; TSE-66 must make the minimal compatible change needed by its adapter.
+Organization archive uses the exported shared `request<void>("DELETE", path, { confirmSlug }, { signal }, true)` from its domain adapter. The last argument requires the documented empty `204` response. No additional DELETE transport wrapper is needed; the shared client keeps ownership of authentication, cancellation and error normalization.
 
 ## Deployment and configuration
 

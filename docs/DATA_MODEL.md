@@ -31,6 +31,7 @@ erDiagram
         string slug UK
         datetime createdAt
         datetime updatedAt
+        datetime archivedAt
     }
 
     Membership {
@@ -85,9 +86,11 @@ organization, and all projects belong to one organization.
 | `slug` | Human-readable stable identifier | Required, globally unique, generated at creation |
 | `createdAt` | Creation timestamp | Generated automatically |
 | `updatedAt` | Last update timestamp | Updated automatically |
+| `archivedAt` | Soft-archive timestamp | Nullable; `null` while the organization is active |
 
 The organization slug does not change when the organization is renamed in M1.
-Organization deletion is out of scope for M1.
+Organizations are never hard-deleted. An owner archives an organization by
+setting `archivedAt` once (see "Organization archive" below).
 
 ### Membership
 
@@ -189,6 +192,11 @@ and test them:
 10. Slugs are generated consistently, validated as non-empty, and checked
     through database uniqueness constraints. A race that reaches the unique
     constraint is mapped to `409 Conflict`.
+11. Archived organizations are excluded from every organization, membership,
+    and project access query. Organization archive updates only the organization
+    row (`archivedAt`, plus the automatic `updatedAt`). Child rows and their
+    existing lifecycle fields, including `Project.archivedAt`, remain unchanged.
+    Access to those rows is denied through the active-parent check.
 
 ## Lifecycle rules
 
@@ -205,6 +213,12 @@ of scope. Membership removal deletes only the membership, not the global user.
 
 Multiple owners are allowed. An owner may remove or demote another owner/or
 themselves only if at least one owner remains.
+### Organization archive
+
+Archiving sets `Organization.archivedAt` once and leaves memberships and
+projects untouched. They become inaccessible because every access query also
+requires an active organization. There is no restore operation. An archived
+organization keeps reserving its slug.
 
 ### Project archive
 
