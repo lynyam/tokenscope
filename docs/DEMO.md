@@ -660,3 +660,15 @@ estimated cost.
 TSE-70 owns loading usable evaluation data. Fixture presence alone
 does not demonstrate implemented feature endpoints or live Gemini
 integration.
+
+### Trace Explorer (read-only)
+
+Open a project, then **Traces**. The list shows UTC time, provider/model, workflow, tokens, estimated cost,
+latency and status for the last seven days (resolved to explicit dates in the URL). For the golden period use:
+
+```
+/organizations/<org>/projects/<project>/traces?from=2026-10-01T00:00:00.000Z&to=2026-10-02T00:00:00.000Z
+```
+
+Search, filters, sorting and paging all live in the URL, so a copied link reproduces the screen.
+Details: `docs/FRONTEND_TRACE_EXPLORER.md`. Realtime refresh is pending integration.
