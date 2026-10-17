@@ -114,6 +114,72 @@ Existing session protection must remain intact: a late failure from an earlier s
 
 The existing `project-events.ts` synchronizes confirmed project writes within one browser runtime. It is not a WebSocket implementation and does not synchronize different clients.
 
+### Shared frontend transport — TSE-72
+
+Frontend domain adapters use `frontend/src/api/http-client.ts`.
+
+The shared transport provides:
+
+| Export | Purpose |
+|---|---|
+| `apiGet`, `apiPost`, `apiPatch` | Existing JSON requests |
+| `apiDelete` | Existing bodyless DELETE with a required 204 response |
+| `request` | JSON requests requiring the explicit method/body/empty-response contract, including organization archive |
+| `requestBlob` | Authenticated GET returning private bytes |
+| `uploadMultipart` | Multipart POST with measured upload progress and cancellation |
+| `apiPostStream` | Authenticated JSON POST returning an unread SSE body |
+
+Paths are relative to `/api/v1`, for example
+`/organizations/:organizationId/projects/:projectId/documents`.
+
+External URLs, protocol-relative URLs and paths escaping the API prefix
+are rejected. Fetch requests use same-origin mode, reject redirects and
+disable response caching. XHR uploads validate their final response URL;
+this detects a changed destination after the response and does not
+prevent redirects. API routes must return API responses directly.
+
+All transports capture the existing token/revision session snapshot once.
+A protected initial HTTP 401 invalidates only that captured session.
+Non-authentication failures and cancellation preserve authentication.
+
+`ApiError` retains statusCode, code, message, details and requestId.
+Its optional retryAfterSeconds field exposes a valid Retry-After header
+for deliberate retry UI. It does not enable automatic retries.
+
+Cancellation is exposed as AbortError. There are no automatic request retries.
+
+`uploadMultipart` sends FormData unchanged and lets the browser generate
+the multipart Content-Type boundary. Progress uses browser-reported
+loaded/total bytes. An absent total means indeterminate progress.
+Reaching 100% does not mean the backend has saved the document.
+
+`apiPostStream` returns:
+
+- body: the original unread ReadableStream.
+- requestId: the response correlation identifier, when present.
+- isSessionCurrent(): compares the captured session with the current session.
+- invalidateSession(): invalidates only the captured matching session.
+
+The caller retains its AbortController throughout stream consumption.
+TSE-81 owns UTF-8 decoding, SSE parsing, event validation, terminal states
+and cancellation of abandoned streams. A validated ACCESS_TOKEN_EXPIRED
+event uses the captured stream's invalidateSession function.
+Provider failures do not invalidate the application session.
+
+TSE-79 owns document adapters, response-shape validation, progress UI,
+preview/download behavior and object-URL cleanup.
+
+TSE-66 uses request<void>("DELETE", path, { confirmSlug }, options, true).
+Existing bodyless DELETE callers keep their current signatures.
+
+Frontend screens/adapters remain responsible for discarding results after
+navigation, a selection change or a superseded session.
+
+Transport tests use controlled Fetch responses and XHR events.
+Real document and assistant integration must be recorded separately when
+their consumers are integrated. Passing transport tests alone does not
+prove browser upload, proxy streaming or backend cancellation behavior.
+
 ## Feature ownership
 
 | Tickets | Responsibility |

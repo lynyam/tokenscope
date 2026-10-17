@@ -119,6 +119,33 @@ input/output handling, dependency review, and avoiding unsafe HTML reduce the
 risk. An HTTP-only cookie plus refresh/session design can replace this approach
 during production hardening.
 
+### Frontend transport session protection — TSE-72
+
+JSON, private-byte, multipart and streamed requests use the shared
+frontend HTTP client and the existing auth-session helper.
+
+A request captures the token and session revision once. Initial protected
+HTTP 401 responses invalidate only that captured matching session,
+including when the error body is empty, HTML or malformed JSON.
+
+Two logins may receive the same token string. The session revision prevents
+an earlier request from invalidating the newer login in that case.
+
+403, 404, conflicts, rate limits, server/provider failures, network failures
+and cancellation do not invalidate the application session.
+
+The frontend sends bearer credentials only to application API paths.
+Tokens are not placed in query parameters or exposed through the stream
+handoff object. Frontend components do not create separate token stores.
+
+The assistant parser may invalidate the originating session after a
+validated ACCESS_TOKEN_EXPIRED stream event. It uses the callback captured
+when opening that stream, never an unconditional current-session logout.
+
+Cancellation stops the browser operation. It does not prove a backend
+mutation was rolled back. Uploads, mutations and assistant requests are
+never automatically retried by the shared transport.
+
 ## Authorization
 
 Authentication answers “who is the caller?” Authorization answers “may this
