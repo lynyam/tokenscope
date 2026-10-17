@@ -114,6 +114,72 @@ Existing session protection must remain intact: a late failure from an earlier s
 
 The existing `project-events.ts` synchronizes confirmed project writes within one browser runtime. It is not a WebSocket implementation and does not synchronize different clients.
 
+### Shared frontend transport — TSE-72
+
+Frontend domain adapters use `frontend/src/api/http-client.ts`.
+
+The shared transport provides:
+
+| Export | Purpose |
+|---|---|
+| `apiGet`, `apiPost`, `apiPatch` | Existing JSON requests |
+| `apiDelete` | Existing bodyless DELETE with a required 204 response |
+| `request` | JSON requests requiring the explicit method/body/empty-response contract, including organization archive |
+| `requestBlob` | Authenticated GET returning private bytes |
+| `uploadMultipart` | Multipart POST with measured upload progress and cancellation |
+| `apiPostStream` | Authenticated JSON POST returning an unread SSE body |
+
+Paths are relative to `/api/v1`, for example
+`/organizations/:organizationId/projects/:projectId/documents`.
+
+External URLs, protocol-relative URLs and paths escaping the API prefix
+are rejected. Fetch requests use same-origin mode, reject redirects and
+disable response caching. XHR uploads validate their final response URL;
+this detects a changed destination after the response and does not
+prevent redirects. API routes must return API responses directly.
+
+All transports capture the existing token/revision session snapshot once.
+A protected initial HTTP 401 invalidates only that captured session.
+Non-authentication failures and cancellation preserve authentication.
+
+`ApiError` retains statusCode, code, message, details and requestId.
+Its optional retryAfterSeconds field exposes a valid Retry-After header
+for deliberate retry UI. It does not enable automatic retries.
+
+Cancellation is exposed as AbortError. There are no automatic request retries.
+
+`uploadMultipart` sends FormData unchanged and lets the browser generate
+the multipart Content-Type boundary. Progress uses browser-reported
+loaded/total bytes. An absent total means indeterminate progress.
+Reaching 100% does not mean the backend has saved the document.
+
+`apiPostStream` returns:
+
+- body: the original unread ReadableStream.
+- requestId: the response correlation identifier, when present.
+- isSessionCurrent(): compares the captured session with the current session.
+- invalidateSession(): invalidates only the captured matching session.
+
+The caller retains its AbortController throughout stream consumption.
+TSE-81 owns UTF-8 decoding, SSE parsing, event validation, terminal states
+and cancellation of abandoned streams. A validated ACCESS_TOKEN_EXPIRED
+event uses the captured stream's invalidateSession function.
+Provider failures do not invalidate the application session.
+
+TSE-79 owns document adapters, response-shape validation, progress UI,
+preview/download behavior and object-URL cleanup.
+
+TSE-66 uses request<void>("DELETE", path, { confirmSlug }, options, true).
+Existing bodyless DELETE callers keep their current signatures.
+
+Frontend screens/adapters remain responsible for discarding results after
+navigation, a selection change or a superseded session.
+
+Transport tests use controlled Fetch responses and XHR events.
+Real document and assistant integration must be recorded separately when
+their consumers are integrated. Passing transport tests alone does not
+prove browser upload, proxy streaming or backend cancellation behavior.
+
 ## Feature ownership
 
 | Tickets | Responsibility |
@@ -208,6 +274,50 @@ Trace listing, analytics and assistant context share matching semantics:
 
 Pagination and sorting belong to trace lists. They must not limit analytics or assistant context.
 
+### Shared filtering implementation — TSE-69
+
+TSE-69 implements the reusable filter foundation in:
+
+- backend/src/traces/trace-filters.ts
+- backend/src/traces/dto/trace-query.dto.ts
+- backend/src/traces/trace-scope.ts
+
+trace-filters.ts owns shared date resolution, filter normalization and matching
+conditions. trace-query.dto.ts adds trace-list pagination and sorting.
+trace-scope.ts builds API-key and browser access conditions for trace queries.
+
+Public and browser trace lists reuse these matching rules.
+Trace detail uses access scope and trace identity without the list's default
+date window.
+
+TSE-71 reuses the shared filter parser and adds parameterized SQL matching
+adapters alongside the Prisma adapters. Integration tests compare trace
+listing and analytics for the same selection. Analytics aggregates every
+matching trace independently of pagination.
+
+Browser trace list, trace detail and analytics share the browser-project-reads quota for each authenticated user/project pair.
+
+TSE-69 reads place authorization, count and rows in one short Repeatable Read
+transaction. Each HTTP request obtains a new database snapshot; separate
+pagination requests remain live.
+
+TSE-69 delivers trace reads, shared filtering and public trace CRUD.
+TSE-71 adds analytics calculations. Dashboard UI, Trace Explorer UI,
+exports, assistant integration and WebSocket delivery remain separately
+owned features.
+
+### Analytics integration — TSE-71
+The implementation is registered through AnalyticsModule, which exports
+AnalyticsService.
+
+getSnapshot(scope, query) owns a short Repeatable Read transaction.
+readSnapshotInTransaction(tx, scope, query) uses a caller-owned Repeatable
+Read transaction and returns snapshot, authorized project metadata and
+historical synthetic-pricing information.
+
+The internal method always authorizes access itself. Its transaction must
+finish before any assistant provider request. The analytics module has no
+dependency on the assistant or realtime modules.
 TSE-71 calculates all matching data in a short Repeatable Read transaction. Summary, series, model groups, authorized project metadata and internal pricing information must use the same transaction when needed together.
 
 Its transaction-aware entry point must authorize the caller itself. It does not accept an authorization-bypass flag.
@@ -305,7 +415,7 @@ Create or extend a helper only when a concrete consumer needs it.
 
 Do not add generic frameworks, speculative adapters or duplicate wrappers.
 
-For organization DELETE with a confirmation body, reuse the existing request implementation. At the inspected baseline, `request()` is private; TSE-66 must make the minimal compatible change needed by its adapter.
+Organization archive uses the exported shared `request<void>("DELETE", path, { confirmSlug }, { signal }, true)` from its domain adapter. The last argument requires the documented empty `204` response. No additional DELETE transport wrapper is needed; the shared client keeps ownership of authentication, cancellation and error normalization.
 
 ## Deployment and configuration
 

@@ -44,6 +44,7 @@ services:
       JWT_ISSUER: "${JWT_ISSUER}"
       JWT_AUDIENCE: "${JWT_AUDIENCE}"
       JWT_ACCESS_TTL_SECONDS: "${JWT_ACCESS_TTL_SECONDS}"
+      TRUSTED_PROXY_HOST: "frontend"
     depends_on:
      postgres:
       condition: service_healthy

@@ -18,8 +18,11 @@ export default defineConfig({
   reporter: [["list"], ["html", { open: "never" }]],
   use: {
     baseURL,
-    trace: "retain-on-failure",
-    screenshot: "only-on-failure",
+    // Login and authenticated requests contain credentials.
+    // Do not record them in automatic test artifacts.
+    trace: "off",
+    screenshot: "off",
+    video: "off",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
 });

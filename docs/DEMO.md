@@ -387,9 +387,12 @@ curl --fail --silent \
 
 Expected:
 
-- archive returns `204`;
-- the project disappears from the active-project list;
-- direct detail and a second archive attempt return `404 PROJECT_NOT_FOUND`.
+Expected: `204` with no body. Repeating the same request returns
+`404 ORGANIZATION_NOT_FOUND`, and the organization no longer appears in
+`GET /organizations`. Before archive, an existing `ADMIN` or `MEMBER` receives
+`403 INSUFFICIENT_ORGANIZATION_ROLE` for this DELETE. After archive, every
+former member receives `404 ORGANIZATION_NOT_FOUND`. The user session remains
+valid for other active organizations.
 
 ### Prove cross-tenant isolation
 

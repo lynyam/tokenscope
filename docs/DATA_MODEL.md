@@ -193,8 +193,10 @@ and test them:
     through database uniqueness constraints. A race that reaches the unique
     constraint is mapped to `409 Conflict`.
 11. Archived organizations are excluded from every organization, membership,
-    and project access query. Child records carry no archive field of their own;
-    they become inaccessible through the active-parent check.
+    and project access query. Organization archive updates only the organization
+    row (`archivedAt`, plus the automatic `updatedAt`). Child rows and their
+    existing lifecycle fields, including `Project.archivedAt`, remain unchanged.
+    Access to those rows is denied through the active-parent check.
 
 ## Lifecycle rules
 
@@ -346,11 +348,37 @@ Do not add indexes for every possible sort without an actual query need.
 
 A referenced price cannot be deleted. New price versions do not reprice existing traces.
 
-An actual correction updates the trace’s writable data, historical-price association, rate snapshots, costs, hash and version atomically.
+A genuinely changed PUT updates writable data, historical-price association,
+rate snapshots, input/output/total costs, payloadHash, updatedAt and version
+atomically in one transaction. It selects historical pricing using the
+replacement's occurredAt and increments version exactly once.
+The trace ID, project ID, externalId and createdAt remain unchanged.
 
-A read, POST replay or no-op PUT preserves stored history.
+An identical normalized POST replay and a current-version no-op PUT preserve
+stored pricing, costs, payloadHash, version, createdAt and updatedAt.
+They do not consult newly available catalogue prices.
+A stale PUT fails even when its content matches the current trace.
 
-Trace deletion retains the row and external ID while excluding it from ordinary reads and aggregates.
+Reads return stored historical values without repricing or mutation.
+
+TSE-71 sums stored estimatedCostUsd values using PostgreSQL numeric
+arithmetic. Aggregate token totals are serialized as decimal integer
+strings; aggregate costs use twelve fractional digits.
+
+The assistant's internal containsSyntheticPricing value follows the
+ModelPrice rows referenced by matching traces through priceVersionId.
+It does not inspect only the newest catalogue version.
+
+Analytics introduces no persistent snapshot table or schema migration.
+
+Trace deletion is soft deletion: it sets deletedAt, advances version and
+updates updatedAt while retaining the database row and externalId.
+The existing unique constraint on (projectId, externalId) continues to reserve
+that identity, including after deletion.
+
+Deleted traces are excluded from ordinary list/detail queries and aggregates.
+Subsequent public GET/DELETE returns TRACE_NOT_FOUND; POST reusing the retained
+identity returns TRACE_DELETED. No restoration endpoint is provided.
 
 The persisted historical rate snapshots on Trace are named:
 
@@ -365,6 +393,17 @@ must not replace them with current catalogue rates.
 
 The Prisma schema is authoritative for exact persisted field names:
 [backend/prisma/schema.prisma](../backend/prisma/schema.prisma).
+
+TSE-68 computes payloadHash as SHA-256 over a fixed ordered tuple of
+normalized writable fields. Metadata entries are sorted by key before
+hashing. Server-generated IDs, costs, price identity, version and
+creation/update timestamps are excluded.
+
+Provider/model identifiers are trimmed and lowercased. Occurrence
+timestamps are normalized to millisecond UTC precision before hashing.
+
+The selected ModelPrice identity and rate snapshots are persisted with
+the trace. Replays return those persisted values without price lookup.
 
 ### Private documents
 

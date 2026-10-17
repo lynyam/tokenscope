@@ -5,6 +5,10 @@ import { AuthModule } from "./auth/auth.module";
 import { OrganizationsModule } from "./organizations/organizations.module";
 import { MembershipsModule } from "./memberships/memberships.module";
 import { ProjectsModule } from "./projects/projects.module";
+import { ApiKeysModule } from "./api-keys/api-keys.module";
+import { TracesModule } from "./traces/traces.module";
+import { PublicDocsModule } from "./public-docs/public-docs.module";
+import { AnalyticsModule } from "./analytics/analytics.module";
 
 @Module({
 	imports: [
@@ -14,6 +18,10 @@ import { ProjectsModule } from "./projects/projects.module";
 		OrganizationsModule,
 		MembershipsModule,
 		ProjectsModule,
+		ApiKeysModule,
+		TracesModule,
+		PublicDocsModule,
+		AnalyticsModule,
 	],
 })
 export class AppModule {}

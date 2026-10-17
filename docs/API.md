@@ -7,7 +7,11 @@ This document owns TokenScope’s external contracts.
 
 The identity, organization, membership and project sections describe the Sprint 1 baseline present at `854da94`.
 
-The section “Evaluation extensions — agreed, not yet implemented” defines additional contracts awaiting implementation. Its presence does not mean the corresponding routes exist.
+The evaluation extensions section contains both implemented contracts and
+agreed contracts awaiting implementation. Implementation-status notes identify
+the delivered scope; a documented route alone does not prove implementation.
+
+The public trace API guide is [PUBLIC_API.md](./PUBLIC_API.md).
 
 See [EVALUATION_ARCHITECTURE.md](./EVALUATION_ARCHITECTURE.md) for feature ownership and integration boundaries.
 
@@ -724,9 +728,11 @@ permission, slug rule, or archive rule must update:
 4. [SECURITY.md](./SECURITY.md) or [DATA_MODEL.md](./DATA_MODEL.md) when the changed behavior affects those
    contracts.
 
-## Evaluation extensions — agreed, not yet implemented
+## Evaluation extensions — contracts and implementation status
 
-Status at baseline `854da94`: the following extensions are planned.
+The extensions below were planned at baseline `854da94`.
+Feature-specific implementation-status notes record subsequently delivered
+scope. Sections without a delivered-status note remain agreed targets.
 
 Existing Sprint 1 routes and response shapes remain compatible unless an explicit extension below changes their behavior.
 
@@ -840,6 +846,25 @@ type CreatedApiKey = ApiKeySummary & {
 
 Do not automatically retry creation after an uncertain network outcome. List metadata, revoke the uncertain credential and deliberately create another if needed.
 
+Implementation status: TSE-67 implements key management and the reusable public authentication foundation. Trace operations belong to TSE-68/69.
+
+Public authentication uses exactly one X-API-Key header containing a canonical tsk_ secret. Query parameters, JSON fields, cookies and bearer JWTs are not alternative API-key locations.
+
+Missing, malformed, unknown, revoked and archived-parent credentials return 401 INVALID_API_KEY with the same message.
+
+Project credentials remain valid when their creator is removed or demoted. Current OWNER/ADMIN members manage them.
+
+lastUsedAt records best-effort successful authenticated admission, not successful trace persistence. It is updated at most once per minute.
+
+Public trace requests share:
+- 60 requests per trusted client IP per minute.
+- 120 requests per verified key ID per minute.
+
+Both use fixed 60-second windows beginning at the first counted request.
+429 responses contain RATE_LIMITED and an integer Retry-After header.
+Invalid credentials consume only the IP budget. Requests admitted by
+the guard consume quota even if later validation or business logic fails.
+
 ### Trace writes and historical values — TSE-68 / TSE-69
 
 Public clients send:
@@ -921,6 +946,102 @@ An actual correction updates its values atomically and increments version once.
 
 DELETE sets `deletedAt`, increments version and returns `204`. Later GET/DELETE returns `404`. The external ID remains reserved.
 
+### TSE-68 implementation status
+
+Implemented:
+
+- POST /api/v1/public/traces with X-API-Key authentication.
+- 201 creation and 200 identical replay.
+- ETag containing the quoted stored trace version.
+- Historical price selection and stored estimated costs.
+- GET /api/v1/model-prices with user JWT authentication.
+
+TSE-69 extends this foundation with public trace list/search, detail,
+replacement and soft deletion, plus JWT-authenticated browser list/detail.
+Their contract and implementation status are described below.
+
+The POST body is limited to 16,384 actual JSON bytes. Metadata is limited
+to 4,096 serialized UTF-8 bytes. Null characters and invalid Unicode
+sequences are rejected because PostgreSQL cannot represent them safely.
+
+POST replay compares the current normalized writable payload. It does not
+reprice the trace or modify its version/timestamps. A different payload
+returns TRACE_EXTERNAL_ID_CONFLICT; a retained deleted identity returns
+TRACE_DELETED.
+
+### TSE-69 implementation status
+
+Implemented public trace operations, relative to `/api/v1`:
+
+| Method | Route | Success |
+|---|---|---|
+| `POST` | `/public/traces` | `201` creation or `200` identical normalized replay |
+| `GET` | `/public/traces` | `200` paginated list with search and filters |
+| `GET` | `/public/traces/:traceId` | `200` trace with its version ETag |
+| `PUT` | `/public/traces/:traceId` | `200` replacement or current-version no-op |
+| `DELETE` | `/public/traces/:traceId` | `204` soft deletion without a response body |
+
+All five operations require a project API key in `X-API-Key`.
+A user JWT alone does not authorize them.
+
+Public operations share the existing quotas across routes:
+60 requests/minute per trusted client IP before key authentication,
+and 120 requests/minute per verified key.
+
+PUT and DELETE require exactly one `If-Match` header containing the quoted
+current version. A stale version returns `412 TRACE_VERSION_CONFLICT`,
+including when the submitted replacement matches the current content.
+
+Public documentation is available without credentials:
+
+- Interactive Swagger UI: `/api/v1/public/docs/`
+- OpenAPI JSON: `/api/v1/public/openapi.json`
+
+Documentation requests do not consume the trace-operation quotas.
+Swagger's interactive trace requests use the real endpoints, require an API
+key and consume the normal quotas.
+
+See [PUBLIC_API.md](./PUBLIC_API.md) for examples and
+[openapi/public-api.json](./openapi/public-api.json) for the generated contract.
+
+### Browser trace reads — TSE-69
+
+Implemented routes, relative to `/api/v1`:
+
+| Method | Route | Success |
+|---|---|---|
+| `GET` | `P/traces` | `200` paginated list |
+| `GET` | `P/traces/:traceId` | `200` trace detail |
+
+`P` uses the organization/project prefix defined above.
+
+Both routes require the existing user JWT.
+OWNER, ADMIN and MEMBER may read traces within an accessible active project
+and active organization. Project API keys do not authorize these routes.
+
+The list uses the shared dates, filters, pagination and sorting contract below.
+Detail lookup has no default seven-day restriction.
+
+An inaccessible or archived project/organization returns
+`404 PROJECT_NOT_FOUND`. Within an accessible project, an absent, deleted or
+cross-project trace returns `404 TRACE_NOT_FOUND`.
+
+Browser list and detail share one quota of 60 requests per minute for each
+authenticated user/project pair. Changing the trace ID or switching between
+list and detail does not create another quota.
+
+The interceptor consumes quota before parameter pipes and service-level
+project authorization. An invalid project UUID is passed to the UUID pipe
+without consuming this budget; requests with a valid project UUID can count
+even if later validation or authorization fails.
+
+A rejected request returns `429 RATE_LIMITED` with `Retry-After` in seconds.
+This response does not invalidate the user's authentication session.
+
+Analytics (`GET P/analytics`) shares this same user/project budget.
+Switching between trace list, trace detail and analytics does not reset the allowance. Trace Explorer UI and WebSocket delivery remain separate
+implementation scopes.
+
 ### Shared dates, filters and pagination
 
 Trace lists and analytics accept both dates or neither. When omitted, resolve the last seven days using one captured server time.
@@ -971,9 +1092,40 @@ type Page<T> = {
 
 An empty collection has `totalPages: 0`. A page beyond the end returns empty items and actual totals.
 
-Count and rows use one consistent authorized read. Detail lookup does not apply the list’s default seven-day window.
+Authorization, count and page rows execute in one PostgreSQL Repeatable Read
+transaction and share its database snapshot. Concurrent changes committed
+after that snapshot is established are not reflected halfway through the
+response.
+
+Each HTTP request obtains a new snapshot. Separate page requests remain live;
+pagination does not preserve a snapshot between requests.
+
+Detail lookup does not apply the list's default seven-day window.
 
 ### Analytics — TSE-71
+Implemented by TSE-71.
+
+Authentication: existing user JWT. Current OWNER, ADMIN and MEMBER may read analytics for an active project in an active organization.
+Project API keys do not authorize this endpoint.
+
+Accepted query fields:
+`from`, `to`, `q`, `provider`, `model`, `workflow`, `status`, `bucket`.
+
+The common date/filter rules above apply. Pagination and sorting
+parameters are rejected. `bucket` accepts `hour` or `day`.
+
+Responses:
+
+- `200`: direct AnalyticsSnapshot, including accessible empty results.
+- Existing `401`: missing, invalid or expired JWT.
+- `400 VALIDATION_ERROR`: invalid route/query/date/bucket selection.
+- `404 PROJECT_NOT_FOUND`: missing membership, wrong tenant, or missing/
+  archived organization or project.
+- `429 RATE_LIMITED`: shared browser-read quota exhausted, with Retry-After.
+- Existing safe server error: database/internal failure.
+
+Responses use Cache-Control: no-store and preserve request IDs.
+Database errors are not converted into empty snapshots.
 
 `GET P/analytics` returns this object directly:
 
@@ -1049,6 +1201,17 @@ Order model groups by cost descending, provider ascending, model ascending.
 An empty matching set is a successful snapshot: zero counts, `"0"` token totals, `"0.000000000000"` cost, null average/rate, empty model groups and a zero-filled series.
 
 Internal project metadata and synthetic-pricing information used by the assistant are not added to this public response.
+
+Authorization and all contributing reads execute in one short PostgreSQL Repeatable Read transaction. Each request obtains a fresh snapshot.
+
+AnalyticsService.getSnapshot(scope, query) owns that transaction and returns only AnalyticsSnapshot.
+
+AnalyticsService.readSnapshotInTransaction(tx, scope, query) requires a caller-owned Repeatable Read transaction, performs authorization itself, and returns { snapshot, project, pricing }. Every database read uses tx.
+
+The internal project contains id, name and description.
+The internal pricing contains currency: "USD" and containsSyntheticPricing, derived from historical prices referenced by matching traces. Empty matching sets return false.
+
+TSE-80 imports AnalyticsModule and uses this internal method. It finishes the transaction before contacting Gemini. No analytics result is persisted as a resumable snapshot.
 
 ### Realtime — TSE-73
 

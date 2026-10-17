@@ -119,6 +119,33 @@ input/output handling, dependency review, and avoiding unsafe HTML reduce the
 risk. An HTTP-only cookie plus refresh/session design can replace this approach
 during production hardening.
 
+### Frontend transport session protection — TSE-72
+
+JSON, private-byte, multipart and streamed requests use the shared
+frontend HTTP client and the existing auth-session helper.
+
+A request captures the token and session revision once. Initial protected
+HTTP 401 responses invalidate only that captured matching session,
+including when the error body is empty, HTML or malformed JSON.
+
+Two logins may receive the same token string. The session revision prevents
+an earlier request from invalidating the newer login in that case.
+
+403, 404, conflicts, rate limits, server/provider failures, network failures
+and cancellation do not invalidate the application session.
+
+The frontend sends bearer credentials only to application API paths.
+Tokens are not placed in query parameters or exposed through the stream
+handoff object. Frontend components do not create separate token stores.
+
+The assistant parser may invalidate the originating session after a
+validated ACCESS_TOKEN_EXPIRED stream event. It uses the callback captured
+when opening that stream, never an unconditional current-session logout.
+
+Cancellation stops the browser operation. It does not prove a backend
+mutation was rolled back. Uploads, mutations and assistant requests are
+never automatically retried by the shared transport.
+
 ## Authorization
 
 Authentication answers “who is the caller?” Authorization answers “may this
@@ -422,9 +449,11 @@ recognized serialization/write conflicts are retried, at most three attempts;
 exhaustion returns `409 CONCURRENT_MODIFICATION`. Final queries also filter on
 `archivedAt: null`, so a concurrent archive cannot be bypassed.
 
-Archiving sets only `Organization.archivedAt`. Child tables get no archive
-field; their inaccessibility comes from the active-organization condition in
-backend access checks. There is no restore operation.
+Organization archive updates only the organization row: `archivedAt` is set
+and `updatedAt` is maintained automatically. Child rows and their existing
+lifecycle fields remain unchanged. Backend access checks require an active
+organization, including checks for project API keys, traces and analytics.
+There is no restore operation.
 
 ## Project lifecycle
 
@@ -646,6 +675,36 @@ Missing, invalid, revoked and archived-parent keys use the same `401 INVALID_API
 
 The key belongs to its project. Creator removal/demotion does not revoke it automatically; explicit revocation and parent archive invalidate it.
 
+API-key management uses current OWNER/ADMIN membership and active project/organization checks. Creation and revocation use bounded
+serializable transactions with at most three attempts. Every retry rechecks authorization using the transaction client.
+
+Public trace handlers use PublicApi(), which applies IP quota, API-key
+verification and verified-key quota in that order.
+
+GET /api/v1/public/openapi.json and the Swagger UI/assets under
+/api/v1/public/docs/ are intentionally accessible without JWT or API key.
+They do not use PublicApi() and do not consume trace-operation quotas.
+
+Public documentation access does not grant access to trace data.
+All five /api/v1/public/traces operations continue to require X-API-Key,
+including when invoked through Swagger UI.
+
+Swagger UI uses locally served assets, disables the external Swagger
+validator and does not persist authorization. Users must enter a disposable
+project key deliberately; no key is embedded in the specification or examples.
+Interactive requests execute real operations and consume the normal quotas.
+
+ApiKeyAuthService.assertActivePrincipal(principal, tx) revalidates the credential inside consumer database operations without consuming quota.
+
+The in-memory limiter holds at most 10,000 counters across namespaces.
+Expired counters are removed. Active counters are not evicted to make space; new identities are rejected when capacity is exhausted.
+Restart clears quotas. This implementation assumes one backend instance.
+
+Compose configures TRUSTED_PROXY_HOST=frontend. The limiter trusts forwarded identity only when the socket peer matches that service's resolved address. Vite and Caddy replace X-Forwarded-For with one socket client address. Other peers' forwarding headers are ignored. Failed proxy identity resolution fails closed.
+
+Request logs retain the existing allowlist of request IDs, methods, route templates, permitted resource IDs and outcomes. They do not
+record headers, request/response bodies, API-key secrets or hashes.
+
 ### Shared frontend session behavior
 
 Preserve `auth-session.ts` and its captured-session protection.
@@ -664,7 +723,8 @@ Abort, permission, not-found, conflict, rate-limit and network failures do not i
 |---|---|
 | Public trace routes before key authentication | 60 requests/minute per trusted client IP |
 | Public trace routes after key authentication | 120 requests/minute per verified key |
-| Browser trace-list/analytics budget | Shared 60 requests/minute per user/project |
+| Browser trace list/detail and analytics | Shared 60 requests/minute per authenticated user/project |
+| Analytics integration — TSE-71 target | Reuse the same browser user/project budget |
 | Authorized document uploads | 5/minute per user |
 | Realtime connections | 5 simultaneous sockets per user |
 | Realtime subscribe attempts | 10 per 10 seconds per socket |
@@ -673,9 +733,54 @@ Abort, permission, not-found, conflict, rate-limit and network failures do not i
 
 Public trace quotas apply across public trace routes. Database retries do not consume another HTTP quota.
 
+ProjectReadLimitInterceptor applies one shared browser-read budget to trace
+list, trace detail and analytics. Its counter uses the browser-project-reads namespace and the
+authenticated user ID plus project ID. It is distinct from the public
+client-IP and API-key budgets.
+
+The interceptor runs after JWT authentication and before parameter pipes and
+service-level project authorization. Malformed project UUIDs are left to the
+UUID pipe without consuming this budget. Requests with a valid project UUID
+consume capacity even if subsequent validation or authorization fails.
+
+Quota exhaustion returns 429 RATE_LIMITED with Retry-After in seconds.
+It does not clear the user's authentication session.
+
+TSE-71 reuses this budget through the HTTP interceptor. Internal analytics calls do not consume browser quota; the assistant owns its separate limits. Analytics is not marked implemented by this change.
+
 Use bounded bookkeeping. Do not introduce Redis for the single-backend evaluation deployment.
 
 Do not trust arbitrary forwarded IP headers. Configure the known proxy boundary and preserve it in tests.
+
+Trace ingestion obtains project scope exclusively from the verified
+API-key principal. Every transaction attempt revalidates the key and its
+active project/organization through ApiKeyAuthService.
+
+Incoming project IDs, actor identity, pricing and computed costs are not
+accepted as writable trace fields.
+
+Logs must not contain complete trace payloads, metadata, API keys or raw
+database errors. Post-commit notification failure is logged safely and
+does not turn a committed ingestion into an HTTP failure.
+
+### Analytics snapshot authorization — TSE-71
+
+Analytics requires current organization membership and active project and
+organization records. Authorization and aggregate queries use the same
+transaction client. Aggregate SQL also includes tenant, membership,
+active-parent and deleted-trace conditions.
+
+A Repeatable Read snapshot established before a concurrent revocation can
+still reflect the earlier authorized state. A new snapshot established
+after revocation commits must reject access. Repeating a read inside the
+old snapshot does not discover the new revocation.
+
+Assistant pre-dispatch and streaming access checks must therefore use
+fresh reads after its analytics transaction has completed.
+
+SQL values are parameterized. Search escaping preserves literal percent,
+underscore and backslash characters. Analytics responses exclude raw
+trace metadata and credentials. Database failures use the existing safe error envelope.
 
 ### Realtime access
 

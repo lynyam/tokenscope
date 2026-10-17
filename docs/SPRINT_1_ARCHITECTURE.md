@@ -487,7 +487,9 @@ apiGet<T>(path, options?)
 apiPost<T>(path, body, options?)
 apiPatch<T>(path, body, options?)
 apiDelete(path, options?) // Promise<void>; expects the M1 204 response
-apiDeleteWithBody(path, body, options?) //Promise<void>;DELETE with a JSON body, expects 204
+request<T>(method, path, data, options?, emptyResponse?)
+// Organization archive:
+request<void>("DELETE", path, { confirmSlug }, { signal }, true)
 
 // Options: { auth?: "required" | "none"; signal?: AbortSignal }
 ```

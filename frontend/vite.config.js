@@ -25,6 +25,21 @@ export default defineConfig({
 			'/api': {
 				target: backenUrl,
 				changeOrigin: true,
+				configure(proxy) {
+				  proxy.on('proxyReq', (proxyReq, req) => {
+					// Replace caller-supplied forwarding information.
+					const peer = req.socket.remoteAddress;
+
+					if (peer) {
+					  proxyReq.setHeader('X-Forwarded-For', peer);
+					} else {
+					  proxyReq.removeHeader('X-Forwarded-For');
+					}
+
+					proxyReq.removeHeader('Forwarded');
+					proxyReq.removeHeader('X-Real-IP');
+				  });
+				},
 			},
 		},
 	},
@@ -34,6 +49,7 @@ export default defineConfig({
 		execArgv: ['--no-experimental-webstorage'],
 		setupFiles: './test/setup.ts',
 		include: ['test/**/*.test.{ts,tsx}'],
+		fileParallelism: false,
 	},
 })
 
