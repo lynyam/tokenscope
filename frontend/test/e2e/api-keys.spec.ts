@@ -192,12 +192,37 @@ test("OWNER creates a key, sees the secret once, then revokes it", async ({ page
   expect(stored?.revokedAt).not.toBeNull();
 });
 
-test.fixme(
-  "a fresh key creates a public trace; after revocation the same key gets 401 INVALID_API_KEY",
-  async () => {
-    // Blocked until the public trace routes (TSE-68/69) are merged into develop.
-  },
-);
+test("a fresh key creates a public trace; after revocation the same key gets 401 INVALID_API_KEY", async () => {
+  const created = await createKeyApi(ws.owner, ws.orgId, ws.projectId, "Trace journey " + RUN);
+  const trace = {
+    externalId: "e2e-trace-" + RUN,
+    provider: "fixture-a",
+    model: "demo-fast",
+    workflow: "support",
+    inputTokens: 1000,
+    outputTokens: 200,
+    latencyMs: 0,
+    status: "SUCCESS",
+    occurredAt: "2026-10-01T10:00:00Z",
+  };
+  // The key only travels in this header; assertions below never print it.
+  const send = () => api.post("/api/v1/public/traces", {
+    headers: { "X-API-Key": created.key },
+    data: trace,
+  });
+
+  const accepted = await send();
+  expect(accepted.status(), "a fresh key is accepted").toBe(201);
+
+  const revoked = await api.delete(keysApi(ws.orgId, ws.projectId) + "/" + created.id, {
+    headers: auth(ws.owner),
+  });
+  expect(revoked.ok(), "revocation succeeds").toBe(true);
+
+  const rejected = await send();
+  expect(rejected.status(), "the revoked key is rejected").toBe(401);
+  expect((await rejected.json()).code).toBe("INVALID_API_KEY");
+});
 
 test("ADMIN can create and revoke keys", async ({ page }) => {
   await signIn(page, ws.admin);
