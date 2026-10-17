@@ -313,9 +313,9 @@ function ApiKeys({ organizationId, projectId }: { organizationId: string; projec
     return (
       <div className="flex h-full flex-col items-center justify-center gap-1 text-center mb-6">
         <CircleAlert className="h-12 w-12 text-muted-foreground" />
-        <p className="mt-4 text-xl font-semibold">Project archived</p>
-        <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-          API keys are not available for archived projects.
+        <h1 className="mt-4 text-xl font-semibold">Project archived</h1>
+        <p role="alert" className="mt-2 max-w-sm text-sm text-muted-foreground">
+          This project is archived. API keys are not available.
         </p>
         <Link
           to={projectPath}
@@ -355,7 +355,11 @@ function ApiKeys({ organizationId, projectId }: { organizationId: string; projec
 
       <div className="mt-2 mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold">API keys</h1>
-        <Button className="rounded-lg" onClick={() => handleCreateOpenChange(true)}>
+        <Button
+          className="rounded-lg"
+          aria-label="Create API key"
+          onClick={() => handleCreateOpenChange(true)}
+        >
           <Plus className="h-4 w-4" />
           Create
         </Button>
@@ -431,7 +435,8 @@ function ApiKeys({ organizationId, projectId }: { organizationId: string; projec
       </Dialog>
 
       {listLoading && keys === null && (
-        <div className="flex flex-col gap-2">
+        <div role="status" className="flex flex-col gap-2">
+          <span className="sr-only">Loading API keys…</span>
           {Array.from({ length: 3 }).map((_, index) => (
             <Skeleton key={index} className="h-20 w-full" />
           ))}
@@ -495,7 +500,7 @@ function ApiKeys({ organizationId, projectId }: { organizationId: string; projec
 
       <Card className="mt-8 rounded-lg">
         <CardHeader>
-          <CardTitle className="text-lg">Use a key</CardTitle>
+          <CardTitle className="text-lg"><h2>Use a key</h2></CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
           <p className="text-sm text-muted-foreground">
