@@ -97,6 +97,22 @@ describe("Environment configuration", () => {
     }).TRUSTED_PROXY_HOST).toBeUndefined();
   });
 
+  it("starts without Gemini settings (the assistant is then unavailable)", () => {
+    const result = validateEnvironment({ ...VALID_ENV, GEMINI_API_KEY: "", LLM_MODEL: "  " });
+    expect(result.GEMINI_API_KEY).toBeUndefined();
+    expect(result.LLM_MODEL).toBeUndefined();
+  });
+
+  it("returns the Gemini settings in the typed result", () => {
+    const result = validateEnvironment({
+      ...VALID_ENV,
+      GEMINI_API_KEY: "test-only-gemini-key",
+      LLM_MODEL: "gemini-3.5-flash-lite",
+    });
+    expect(result.GEMINI_API_KEY).toBe("test-only-gemini-key");
+    expect(result.LLM_MODEL).toBe("gemini-3.5-flash-lite");
+  });
+
   it.each([
     true,
     "*",

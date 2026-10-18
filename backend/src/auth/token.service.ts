@@ -67,7 +67,7 @@ export class TokenService {
 	This closes the gap where a correctly signed token with
 	missing sub or missing exp could previously pass verification.
 	*/
-	verifyAccessToken(token: string): { sub: string } {
+	verifyAccessToken(token: string): { sub: string; exp: number } {
 		// AuthModule supplies signature algorithm, issuer, and audience checks.
 		// Existing expiration claims are also checked by the JWT library.
 		const payload: unknown = this.jwtService.verify(token);
@@ -91,7 +91,8 @@ export class TokenService {
 			throw new Error("Invalid access token claims.");
 		}
 
-		// Return only the identity consumed by the guard.
-		return { sub: payload.sub };
+		// Return the identity and the already-verified expiry (seconds).
+		// The assistant uses exp to stop a stream when the session ends.
+		return { sub: payload.sub, exp: payload.exp };
 	}
 }

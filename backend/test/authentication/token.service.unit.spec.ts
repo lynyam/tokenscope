@@ -44,6 +44,16 @@ describe("TokenService", () => {
     expect(service.verifyAccessToken(accessToken).sub).toBe(TEST_USER_ID);
   });
 
+  it("returns the verified exp claim with the identity", () => {
+    const { accessToken } = service.signAccessToken(TEST_USER_ID);
+    const decoded = jwtService.decode(accessToken) as { exp: number };
+
+    expect(service.verifyAccessToken(accessToken)).toEqual({
+      sub: TEST_USER_ID,
+      exp: decoded.exp,
+    });
+  });
+
   it("reports the configured TTL as expiresIn", () => {
     expect(service.signAccessToken(TEST_USER_ID).expiresIn).toBe(3600);
   });

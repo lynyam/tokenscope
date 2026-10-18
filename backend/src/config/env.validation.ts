@@ -6,6 +6,19 @@ export interface EnvironmentVariables {
 	JWT_AUDIENCE: string;
 	JWT_ACCESS_TTL_SECONDS: number;
 	TRUSTED_PROXY_HOST?: string;
+	// Assistant (optional): the app starts without them, the assistant answers 503.
+	GEMINI_API_KEY?: string;
+	LLM_MODEL?: string;
+}
+
+// Reads an optional setting. Empty or blank means "not set".
+function optionalString(env: Record<string, unknown>, key: string): string | undefined {
+	const value = env[key];
+
+	if (typeof value !== "string" || value.trim() === "") {
+		return undefined;
+	}
+	return value.trim();
 }
 
 function requiredString(env: Record<string, unknown>, key: string): string {
@@ -92,6 +105,9 @@ export function validateEnvironment(
 		);
 	}
 
+	const geminiApiKey = optionalString(env, "GEMINI_API_KEY");
+	const llmModel = optionalString(env, "LLM_MODEL");
+
 	return {
 		BACKEND_PORT: port,
 		DATABASE_URL: databaseUrl,
@@ -102,5 +118,7 @@ export function validateEnvironment(
 		...(typeof proxyHost === "string" && proxyHost !== ""
 			? { TRUSTED_PROXY_HOST: proxyHost }
 			: {}),
+		...(geminiApiKey ? { GEMINI_API_KEY: geminiApiKey } : {}),
+		...(llmModel ? { LLM_MODEL: llmModel } : {}),
 	};
 }

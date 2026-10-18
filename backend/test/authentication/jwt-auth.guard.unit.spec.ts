@@ -112,6 +112,7 @@ describe("JwtAuthGuard", () => {
     it("attaches ONLY { id } to request.user on success", () => {
       tokenService.verifyAccessToken.mockReturnValue({
         sub: "user-123",
+        exp: 2_000_000_000,
         iss: "tokenscope",
         aud: "tokenscope-web",
       } as never);
@@ -122,6 +123,20 @@ describe("JwtAuthGuard", () => {
 
       expect(guard.canActivate(buildContext(request))).toBe(true);
       expect(request.user).toEqual({ id: "user-123" });
+    });
+
+    it("attaches the verified expiry separately, in milliseconds", () => {
+      tokenService.verifyAccessToken.mockReturnValue({
+        sub: "user-123",
+        exp: 2_000_000_000,
+      } as never);
+
+      const request: Record<string, unknown> = {
+        headers: { authorization: "Bearer valid" },
+      };
+
+      guard.canActivate(buildContext(request));
+      expect(request.accessTokenExpiresAt).toBe(2_000_000_000_000);
     });
   });
 });
