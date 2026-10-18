@@ -336,7 +336,7 @@ These features have different responsibilities:
 | TSE-77 export | Capture and serialize the displayed snapshot |
 | TSE-80 assistant | Build a fresh fixed context for one submitted question |
 
-### Realtime
+### Realtime — C07
 
 A committed trace creation, actual correction or deletion can publish `traces.changed`.
 
@@ -347,6 +347,15 @@ Replay, no-op updates and rolled-back writes do not publish changes.
 Notifications are best effort. The dashboard repairs missed events after subscription/reconnection, on visible focus and through the agreed visible-page refresh interval.
 
 Socket authorization checks current membership and active parents. Joining a room once does not authorize every later notification.
+
+TSE-73 implements `/realtime` on `/socket.io`, using the existing HTTP server and
+single-process Socket.IO adapter. RealtimeModule consumes TraceChangesService and
+AccessChangesService; domain mutation modules import only AccessChangesModule.
+This prevents circular imports. No migration, Redis, persistent event queue or replay is added.
+The fixed 150 ms window bounds notification/authentication work during bursts.
+Origin handling, verified JWT expiry, limits and failure behavior are specified in API.md
+and SECURITY.md. TSE-76 owns the displayed dashboard and its recovery HTTP requests.
+
 
 ### Exports
 

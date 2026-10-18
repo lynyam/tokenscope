@@ -1,3 +1,5 @@
+import { parseRealtimeOrigins } from "./realtime-origins";
+
 export interface EnvironmentVariables {
 	BACKEND_PORT: number;
 	DATABASE_URL: string;
@@ -6,6 +8,7 @@ export interface EnvironmentVariables {
 	JWT_AUDIENCE: string;
 	JWT_ACCESS_TTL_SECONDS: number;
 	TRUSTED_PROXY_HOST?: string;
+	REALTIME_ALLOWED_ORIGINS?: string[];
 }
 
 function requiredString(env: Record<string, unknown>, key: string): string {
@@ -92,7 +95,9 @@ export function validateEnvironment(
 		);
 	}
 
+	const origins = parseRealtimeOrigins(env.REALTIME_ALLOWED_ORIGINS);
 	return {
+		...(origins.length ? { REALTIME_ALLOWED_ORIGINS: origins } : {}),
 		BACKEND_PORT: port,
 		DATABASE_URL: databaseUrl,
 		JWT_SECRET: secret,

@@ -1,3 +1,4 @@
+import { AccessChangesModule } from "../access-changes/access-changes.module";
 import { Module } from "@nestjs/common";
 import { DatabaseModule } from "../database/database.module";
 import { OrganizationAccessService } from "./organization-access.service";
@@ -6,7 +7,7 @@ import { MembershipsService } from "./memberships.service";
 import { MembershipsController } from "./memberships.controller";
 
 @Module({
-	imports: [DatabaseModule, UsersModule],
+	imports: [AccessChangesModule, DatabaseModule, UsersModule],
 	controllers: [MembershipsController],
 	providers: [OrganizationAccessService, MembershipsService],
 	exports: [OrganizationAccessService],
