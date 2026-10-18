@@ -49,6 +49,8 @@
 		"@nestjs/core": "^11.1.28",
 		"@nestjs/jwt": "^12.0.1",
 		"@nestjs/platform-express": "^11.1.28",
+		"@nestjs/platform-socket.io": "^11.1.28",
+		"@nestjs/websockets": "^11.1.28",
 		"@prisma/adapter-pg": "^7.9.1",
 		"@prisma/client": "^7.9.1",
 		"argon2": "^0.45.1",
@@ -58,6 +60,7 @@
 		"pg": "^8.22.0",
 		"reflect-metadata": "^0.2.2",
 		"rxjs": "^7.8.2",
+		"socket.io": "^4.8.4",
 		"swagger-ui-express": "5.0.1"
 	},
 	"devDependencies": {
@@ -76,6 +79,7 @@
 		"jest": "^30.5.1",
 		"jsonwebtoken": "^9.0.3",
 		"prisma": "^7.9.1",
+		"socket.io-client": "^4.8.4",
 		"supertest": "^7.2.2",
 		"ts-jest": "^29.4.12",
 		"tsx": "^4.23.12",
