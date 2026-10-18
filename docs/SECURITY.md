@@ -783,6 +783,64 @@ Cancellation, expiry, access loss, timeout and disconnect must release provider 
 
 Keep provider credentials backend-only. Verify the actual account/model configuration and disclose applicable provider processing accurately. Do not promise zero retention or unlimited free use without evidence.
 
+#### TSE-80 implementation status
+
+Authorization:
+
+- The global JWT guard verifies the token. `TokenService.verifyAccessToken()` now
+  returns the verified `exp`; the guard stores it as `request.accessTokenExpiresAt`
+  (milliseconds). The token is never decoded without verification, roles are not
+  added to it, and public auth responses are unchanged.
+- `ProjectAccessService.assertProjectAccess()` runs before any limit, inside the
+  analytics transaction (TSE-71), right before the provider call, and every
+  5 seconds while streaming. A lost membership or an archived organization/project
+  stops the stream with `PROJECT_NOT_FOUND`; a re-check that cannot complete stops
+  it with `INTERNAL_SERVER_ERROR`. Re-checks never overlap (chained timers).
+- The stream also stops when the verified JWT expires (`ACCESS_TOKEN_EXPIRED`).
+
+Data sent to Gemini (`backend/src/assistant/assistant-prompt.ts`), built from an
+explicit allowlist:
+
+- the question;
+- project name and description;
+- window, applied filters, summary, time series, per-model breakdown and the
+  synthetic-pricing flag.
+
+Never sent: JWTs, API keys, user identities or emails, trace metadata, trace
+prompts, documents, snapshot/project/request IDs. Data is JSON-encoded inside
+`<analytics>` / `<question>` blocks with `<` and `>` escaped, and the fixed
+instructions say that this content is data, not instructions.
+
+Provider boundary: only `gemini-assistant.provider.ts` imports `@google/genai`.
+One attempt (`httpOptions.retryOptions.attempts: 1`, proven against the installed
+SDK by `test/assistant/gemini-sdk-retry.unit.spec.ts`), one candidate,
+600 output tokens, no tools, `automaticContinuation: false`. Provider errors are
+mapped to safe codes; raw SDK messages never reach clients or logs. A provider
+authentication failure is `503 LLM_UNAVAILABLE`, never a user `401`.
+
+Cancellation is client-side: on Stop, disconnect, deadline, expiry, access loss
+or shutdown, TokenScope aborts the SDK request, stops reading and writing, clears
+its timers and frees the user's slot. It cannot guarantee that Google stops
+computing an answer already in progress.
+
+Limits are in memory (`RateLimitService` plus a per-user active set). They are
+correct for the single backend instance of this MVP; several instances would
+each keep their own counters. The per-minute windows are fixed 60-second windows
+started by the first accepted attempt.
+
+Logging: one `assistant_answer` line per admitted answer with `requestId`,
+outcome code and duration only. Rejections before admission are logged by the
+existing `request_failed` filter line. Questions, descriptions, contexts,
+answers and raw provider errors are never logged.
+
+Gemini data handling (to confirm for the evaluation account): the key is used
+with the Gemini Developer API. On the unpaid (free) tier, Google's Gemini API
+Additional Terms allow Google to use submitted content and responses to improve
+its products, possibly with human review; the paid tier does not. TokenScope
+therefore tells users that the question, project name/description and selected
+analytics are sent to Gemini, and makes no zero-retention claim.
+Recorded model, tier and quota: _fill in after the live check (TSE-80 PR)._
+
 ### Private files
 
 Authorize before accepting upload bytes and again before committing metadata.

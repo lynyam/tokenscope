@@ -1302,6 +1302,96 @@ Provider configuration/authentication failures are not user `401` responses.
 
 The answer context stays fixed. Project/date/filter changes cancel and clear the old answer; same-selection dashboard refreshes do not.
 
+### TSE-80 implementation status
+
+Implemented, relative to `/api/v1`:
+
+```http
+POST /organizations/:organizationId/projects/:projectId/assistant
+```
+
+JWT only (the global guard). OWNER, ADMIN and MEMBER of an active organization
+and project may ask. Project API keys are rejected with `401`.
+
+Request example (`fixtures/evaluation/assistant/request.json`):
+
+```json
+{
+  "question": "Which model contributes most to the estimated cost?",
+  "from": "2026-10-01T00:00:00.000Z",
+  "to": "2026-10-02T00:00:00.000Z",
+  "filters": {}
+}
+```
+
+Dates and filters use the same parser as `GET .../analytics` (TSE-69 / TSE-71):
+`from <= occurredAt < to`, at most 90 days, UTC instants ending in `Z`,
+hourly buckets up to 48 hours and daily buckets otherwise.
+`from`, `to` and `bucket` are not accepted inside `filters`.
+
+Order of checks:
+
+1. JWT, route UUIDs, `Content-Type: application/json`, 8 KiB of real body bytes, body validation.
+2. Current project access (a rejected request uses no rate-limit capacity).
+3. Provider configuration.
+4. One active answer per user, 5 accepted attempts per user and 30 per project per minute.
+5. Context built in one Repeatable Read transaction, closed before Gemini is called.
+6. JWT expiry and project access checked again, then one provider request.
+
+The SSE response starts when Gemini accepts the request (before the first text):
+
+```http
+200 OK
+Content-Type: text/event-stream; charset=utf-8
+Cache-Control: no-store
+X-Request-Id: <same value as start.requestId>
+```
+
+Each frame is `event: <name>\ndata: <json>\n\n`. Long text is split into
+several `delta` events (at most 4,000 characters each), so frames stay far
+below 64 KiB. Transcripts: `fixtures/evaluation/assistant/*.sse`; a unit test
+proves they are byte-for-byte what the backend writes.
+
+Errors:
+
+| Situation | Before the stream (JSON) | After the stream started (`error` event) |
+|---|---|---|
+| Missing / invalid / expired JWT | `401` existing codes | `ACCESS_TOKEN_EXPIRED` |
+| Invalid UUID, body, filter or dates | `400 VALIDATION_ERROR` | — |
+| Body over 8,192 bytes | `413 PAYLOAD_TOO_LARGE` | — |
+| Wrong content type | `415 UNSUPPORTED_MEDIA_TYPE` | — |
+| No access, archived organization/project | `404 PROJECT_NOT_FOUND` | `PROJECT_NOT_FOUND` |
+| No matching traces | `422 ASSISTANT_NO_DATA` | — |
+| Context over 32 KiB | `422 ASSISTANT_CONTEXT_TOO_LARGE` | — |
+| Refusal / safety block | `422 LLM_REFUSED` | `LLM_REFUSED` |
+| Answer already running for this user | `429 ASSISTANT_ALREADY_RUNNING` | — |
+| Local rate limit | `429 RATE_LIMITED` + `Retry-After: <seconds>` | — |
+| Key/model missing or rejected by Gemini | `503 LLM_UNAVAILABLE` | `LLM_UNAVAILABLE` |
+| Gemini quota or overload (`429`/`503`) | `503 LLM_PROVIDER_BUSY` | `LLM_PROVIDER_BUSY` |
+| Other provider failure, empty answer, cut stream | `502 LLM_PROVIDER_ERROR` | `LLM_PROVIDER_ERROR` |
+| 15 s without text / 60 s in total | `504 LLM_TIMEOUT` | `LLM_TIMEOUT` |
+| Server shutdown | — | `SERVICE_UNAVAILABLE` |
+| Database or unexpected failure | `500 INTERNAL_SERVER_ERROR` | `INTERNAL_SERVER_ERROR` |
+
+`retryable` is a hint for a deliberate user retry. It never means "retry automatically".
+
+`usage` mapping: `inputTokens = usageMetadata.promptTokenCount`,
+`outputTokens = usageMetadata.candidatesTokenCount` (thinking tokens are not
+included). `null` when Gemini does not report both. Usage is never estimated
+and never written to project traces.
+
+Handoff to TSE-81:
+
+- Types: `backend/src/assistant/assistant.types.ts` (`AssistantContext`) and the tables above.
+- Fixtures: `fixtures/evaluation/assistant/` (request, context, five SSE transcripts, chunk boundaries).
+- Fake-provider tests run with `make test-backend`; live checks are opt-in (see LOCAL_DEVELOPMENT.md).
+
+Ownership notes:
+
+- TSE-71: reused as is through `AnalyticsService.readSnapshotInTransaction()`; no change was needed.
+- TSE-76: the dashboard must send its applied, resolved selection (never "last7days").
+- TSE-81: owns the UI, Stop button, and the complete / truncated / stopped / interrupted / failed states.
+
 ### Private documents — TSE-78 / TSE-79
 
 Upload accepts exactly one multipart file field named `file`, no extra fields, and 1–10,485,760 file bytes.

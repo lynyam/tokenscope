@@ -607,6 +607,26 @@ Keep the 51-row pagination dataset, cross-tenant data and mutation demonstration
 
 The 16-point figure remains a target until complete functionality and the subject’s requirements have been demonstrated.
 
+### Assistant demo — TSE-80
+
+Backend demo before TSE-81's UI (golden project loaded as in
+LOCAL_DEVELOPMENT.md, "Dashboard assistant — TSE-80"):
+
+1. Select the golden period: `2026-10-01T00:00:00.000Z` to `2026-10-02T00:00:00.000Z`, no filters.
+2. Ask: "Which model contributes most to the estimated cost?"
+3. Show `start`: its `context` has the scope, the generation time, 6 traces,
+   `"0.015350000000"` USD and `containsSyntheticPricing: true`.
+4. Show the `delta` lines arriving over time, then `done`.
+5. The answer should name `fixture-b/demo-large` (`"0.008200000000"`) and say the
+   prices are synthetic. Do not expect exact wording.
+6. Stop: run the same request and interrupt it. An immediate new question
+   is accepted (`200`, not `429`).
+7. Access loss: while an answer streams, remove the member or archive the
+   project; the stream ends with an `error` event `PROJECT_NOT_FOUND` within 5 seconds.
+
+`backend/test/manual/assistant-proxy-check.sh` runs steps 2–6 through the
+Vite proxy or the evaluation HTTPS proxy. It uses real Gemini quota.
+
 ### Canonical evaluation data
 
 Fixture inputs and expected responses are available under

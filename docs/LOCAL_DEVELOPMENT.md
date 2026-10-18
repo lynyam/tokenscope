@@ -558,6 +558,75 @@ These historical records are not guaranteed to be inside a moving
 last-seven-days window. The database tests load fixtures only into the
 guarded test database; they do not seed development data.
 
+### Dashboard assistant — TSE-80
+
+Configuration (backend only, in your untracked `.env`):
+
+```bash
+GEMINI_API_KEY=<your key>
+LLM_MODEL=gemini-3.5-flash-lite
+```
+
+Compose passes both to the backend. Without them the application starts
+normally and the assistant answers `503 LLM_UNAVAILABLE`. Never put the key in a
+`VITE_` variable, and never run `docker compose config` (it prints resolved
+secrets). After editing `.env`, recreate the backend and check the key length
+only:
+
+```bash
+docker compose up -d backend
+docker compose exec backend sh -c 'echo ${#GEMINI_API_KEY}'
+```
+
+No Gemini call happens at startup or in health checks.
+
+Automated tests never call Gemini (a fake provider is injected):
+
+```bash
+make test-backend
+```
+
+Assistant suites: `test/assistant/*.unit.spec.ts`, `test/assistant/assistant.e2e-spec.ts`
+and `test/database/assistant.integration.spec.ts`.
+
+Fixture data for a manual check (TSE-70's seed is not required):
+
+1. Load the synthetic price catalogue ([Explicit price catalogue loading](#explicit-price-catalogue-loading)).
+2. Sign in, create a disposable organization and project, and create a project API key.
+3. Load the six golden traces into that project (repeatable; the key is not printed):
+
+```bash
+read -rs API_KEY && export API_KEY
+BASE_URL=http://localhost:5173 backend/test/manual/load-assistant-fixture.sh
+```
+
+Opt-in live check (uses real Gemini quota: three requests):
+
+```bash
+read -rs TOKEN && export TOKEN
+export ORG_ID=<organization id> PROJECT_ID=<project id>
+BASE_URL=http://localhost:5173 backend/test/manual/assistant-proxy-check.sh
+BASE_URL=https://localhost:8443 backend/test/manual/assistant-proxy-check.sh
+```
+
+The script prints each SSE line with its arrival time (text must arrive
+progressively), stops a second request after 2 seconds, then shows that an
+immediate new request gets `200` (the stopped request freed its slot). Then:
+
+```bash
+docker compose logs backend | grep assistant_answer | tail -3
+```
+
+The stopped request must appear with `"outcome":"client_left"`.
+
+Proxies: the Vite proxy streams responses as they arrive. Caddy flushes
+`text/event-stream` immediately and only compresses frontend routes, so no proxy
+change was needed. Do not add `flush_interval -1`: it can keep the backend request
+running after the client disconnects.
+
+Record the live results (model, tier, quota, timestamps, commit) separately from
+the automated results.
+
 ## Development workflow
 
 Once the local environment works, follow:
