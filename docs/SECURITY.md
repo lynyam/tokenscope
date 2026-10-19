@@ -786,7 +786,25 @@ trace metadata and credentials. Database failures use the existing safe error en
 
 Verify JWT signature and expiry using the existing token service.
 
-Validate exact allowed browser Origins for polling and WebSocket transport.
+Validate every Engine.IO request, including polling and WebSocket upgrades, against
+`REALTIME_ALLOWED_ORIGINS` (comma-separated exact HTTP(S) origins, no trailing slash).
+An absent configuration denies realtime transport requests; HTTP authentication remains unchanged.
+A present Origin must match exactly; reject `null` and unapproved origins.
+WebSocket upgrades require an approved Origin. The only missing-Origin exception is a
+polling GET with `Sec-Fetch-Site: same-origin` and an allowlisted Referer origin, because
+real browsers may omit Origin on same-origin GETs. Proxies preserve these browser headers.
+Non-browser clients can forge these headers: they are not identity or authorization.
+JWT verification and current project access remain mandatory. Never place credentials in URLs.
+
+TokenService returns verified `{ sub, exp }`; exp is Unix seconds. Realtime converts it
+to milliseconds, schedules disconnection and rechecks it before join and notification delivery.
+The HTTP guard continues to attach only `{ id }` to request.user; assistant HTTP expiry
+metadata remains TSE-80's responsibility.
+
+Post-commit access events use AccessChangesModule, which has no dependency on realtime
+or the assistant. Its listener errors are logged safely and cannot reverse a committed mutation.
+The existing TraceChangesService remains the only trace mutation publisher.
+No raw token, API key, socket auth body or exception details are logged.
 
 Check access when subscribing and again before notifications. Protect asynchronous subscription changes with a generation check.
 

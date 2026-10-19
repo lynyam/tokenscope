@@ -672,3 +672,37 @@ latency and status for the last seven days (resolved to explicit dates in the UR
 
 Search, filters, sorting and paging all live in the URL, so a copied link reproduces the screen.
 Details: `docs/FRONTEND_TRACE_EXPLORER.md`. Realtime refresh is pending integration.
+
+## Realtime handoff — TSE-73 / TSE-76
+
+1. Load the documented synthetic price catalogue and use a disposable organization/project.
+2. Open two authorized dashboard sessions when TSE-76 is integrated. Both must subscribe
+   successfully to the same project. Confirm another project does not receive its notifications.
+3. Select `[2026-10-01T00:00:00.000Z, 2026-10-02T00:00:00.000Z)` for the supplied
+   `fixtures/evaluation/realtime/live-trace-request.json`; its timestamp is historical.
+4. Send that body to `POST /api/v1/public/traces` with a valid project `X-API-Key`.
+   Use a fresh externalId for each demonstration; identical POST replay produces no notification.
+5. Confirm one minimal `traces.changed` reaches each authorized viewer, then the dashboard
+   fetches fresh analytics with its current applied dates/filters. Under normal local evaluation
+   conditions both dashboards should update within two seconds (TSE-76 integrated evidence).
+6. Correct the trace with PUT and the current If-Match, then soft-delete with DELETE and
+   the new If-Match. Both actual commits must invalidate; no-op PUT must not.
+7. Remove a member or archive a parent: affected sockets receive `access.revoked` and
+   stop receiving data. Demotion to MEMBER keeps read access. Expired JWT disconnects.
+8. Disconnect/reconnect a browser: it must re-subscribe and refetch; no missed-event replay is promised.
+
+Before the dashboard is available, run `frontend/test/e2e/realtime.spec.ts` in development
+and HTTPS evaluation modes using LOCAL_DEVELOPMENT.md. Record commit, mode, commands and
+actual results. Transport-only evidence must not be presented as a completed dashboard demo.
+
+For a disposable evaluation project, set `TOKENSCOPE_KEY` locally and send the fixture:
+
+```sh
+curl --fail-with-body --cacert .local/eval/caddy-root.crt \
+  -H "X-API-Key: $TOKENSCOPE_KEY" \
+  -H 'Content-Type: application/json' \
+  --data-binary @fixtures/evaluation/realtime/live-trace-request.json \
+  https://localhost:8443/api/v1/public/traces
+```
+
+Keep the returned trace id and ETag for PUT/DELETE. Do not commit the key.

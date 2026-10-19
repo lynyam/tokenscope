@@ -45,6 +45,7 @@ services:
       JWT_AUDIENCE: "${JWT_AUDIENCE}"
       JWT_ACCESS_TTL_SECONDS: "${JWT_ACCESS_TTL_SECONDS}"
       TRUSTED_PROXY_HOST: "frontend"
+      REALTIME_ALLOWED_ORIGINS: "${REALTIME_ALLOWED_ORIGINS:-http://localhost:5173,https://localhost:8443}"
     depends_on:
      postgres:
       condition: service_healthy
