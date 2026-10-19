@@ -826,6 +826,39 @@ Use a separate checkout and a unique Compose project name for fresh-database
 and deliberate migration-failure tests. Never reset the working database
 to demonstrate evaluation startup.
 
+## Trace Explorer checks
+
+```sh
+make frontendcheck
+make frontendtest
+docker compose exec frontend npm run build
+```
+
+The screen is read-only and uses existing backend endpoints documented in
+`docs/API.md`. Shared filters and integration limitations are documented in
+`docs/EVALUATION_ARCHITECTURE.md`, “Frontend Trace Explorer integration — TSE-75”.
+
+### Trace Explorer browser tests
+
+Playwright runs on the host against a stack that is already up (`make up`, then `make frontende2e-setup` once):
+
+```bash
+make frontende2e E2E_ARGS="trace-explorer"
+E2E_BASE_URL=https://localhost:8443 make frontende2e E2E_ARGS="trace-explorer"   # evaluation mode
+```
+
+The suite creates its own users, organization and three projects, ingests `fixtures/evaluation/traces-golden.json`
+and `traces-pagination.json` through the real public API (one API key per project) and then drives the browser.
+Ingestion is limited to 60 requests per minute per client address, so a full run takes about two minutes.
+
+The browser never loads prices: the fixture price catalogue must already be in the database. Once per database:
+
+```bash
+docker compose exec -T backend sh -c 'cat > /tmp/model-prices.json' < fixtures/evaluation/model-prices.json
+docker compose exec backend sh -c 'npm run build >/dev/null && npm run pricing:load -- --file /tmp/model-prices.json'
+```
+
+The loader is idempotent. When the catalogue is missing, the suite stops at its first step with this pointer.
 
 ## Realtime development and HTTPS verification — TSE-73
 
