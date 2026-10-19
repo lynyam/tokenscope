@@ -41,6 +41,30 @@ export default defineConfig({
 				  });
 				},
 			},
+			// Realtime (TSE-73): Socket.IO, same origin, with WebSocket upgrade.
+			'/socket.io': {
+				target: backenUrl,
+				changeOrigin: true,
+				ws: true,
+				configure(proxy) {
+				  const forward = (proxyReq, req) => {
+					// Replace caller-supplied forwarding information.
+					const peer = req.socket.remoteAddress;
+
+					if (peer) {
+					  proxyReq.setHeader('X-Forwarded-For', peer);
+					} else {
+					  proxyReq.removeHeader('X-Forwarded-For');
+					}
+
+					proxyReq.removeHeader('Forwarded');
+					proxyReq.removeHeader('X-Real-IP');
+				  };
+				  proxy.on('proxyReq', forward);
+				  // WebSocket upgrades go through another event.
+				  proxy.on('proxyReqWs', forward);
+				},
+			},
 		},
 	},
 	test: {

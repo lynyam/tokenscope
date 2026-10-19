@@ -1,25 +1,25 @@
-{
-	admin off
-	auto_https disable_redirects
-}
+	{
+		admin off
+		auto_https disable_redirects
+	}
 
-localhost {
-	tls internal
+	localhost {
+		tls internal
 
-	handle /api/* {
-		reverse_proxy backend:{$BACKEND_PORT:3000} {
-			header_up X-Forwarded-For {http.request.remote.host}
-			header_up -Forwarded
-			header_up -X-Real-IP
+		handle /api/* {
+			reverse_proxy backend:{$BACKEND_PORT:3000} {
+				header_up X-Forwarded-For {http.request.remote.host}
+				header_up -Forwarded
+				header_up -X-Real-IP
+			}
+		}
+
+		# Only frontend routes receive compression and the SPA fallback.
+		# API ETags must remain unchanged for If-Match.
+		handle {
+			encode gzip
+			root * /srv
+			try_files {path} /index.html
+			file_server
 		}
 	}
-
-	# Only frontend routes receive compression and the SPA fallback.
-	# API ETags must remain unchanged for If-Match.
-	handle {
-		encode gzip
-		root * /srv
-		try_files {path} /index.html
-		file_server
-	}
-}

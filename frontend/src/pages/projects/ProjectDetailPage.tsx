@@ -217,7 +217,10 @@ function ProjectDetail({ organizationId, projectId }: { organizationId: string; 
         </>
       )}
       <nav aria-label="Project sections" className="rounded-lg border p-4">
-        <Link className="underline" to={"/organizations/" + encodeURIComponent(organizationId) + "/projects/" + encodeURIComponent(projectId) + "/traces"}>Traces</Link>
+        <div className="flex gap-4">
+          <Link className="underline" to={"/organizations/" + encodeURIComponent(organizationId) + "/projects/" + encodeURIComponent(projectId) + "/dashboard"}>Dashboard</Link>
+          <Link className="underline" to={"/organizations/" + encodeURIComponent(organizationId) + "/projects/" + encodeURIComponent(projectId) + "/traces"}>Traces</Link>
+        </div>
       </nav>
       <div className="rounded-lg border p-4">
         <h2 className="font-semibold">Coming soon</h2>

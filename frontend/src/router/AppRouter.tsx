@@ -17,6 +17,7 @@ import { MembersPage } from "../pages/organizations/MembersPage";
 import { ProjectsPage } from "../pages/projects/ProjectsPage";
 import { ProjectDetailPage } from "../pages/projects/ProjectDetailPage";
 import { TracesPage } from "../pages/projects/TracesPage";
+import { ProjectDashboardPage } from "../pages/projects/ProjectDashboardPage";
 import { TraceDetailPage } from "../pages/projects/TraceDetailPage";
 import { LandingPage } from "../pages/LandingPage";
 
@@ -74,6 +75,11 @@ export function AppRouter()
                     <Route
                     path="/organizations/:organizationId/projects/:projectId"
                     element={<ProjectDetailPage />}
+                    />
+
+                    <Route
+                    path="/organizations/:organizationId/projects/:projectId/dashboard"
+                    element={<ProjectDashboardPage />}
                     />
 
                     <Route
