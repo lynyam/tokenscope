@@ -671,7 +671,9 @@ latency and status for the last seven days (resolved to explicit dates in the UR
 ```
 
 Search, filters, sorting and paging all live in the URL, so a copied link reproduces the screen.
-Details: `docs/FRONTEND_TRACE_EXPLORER.md`. Realtime refresh is pending integration.
+Integration and shared-filter ownership:
+`docs/EVALUATION_ARCHITECTURE.md`, “Frontend Trace Explorer integration — TSE-75”.
+Realtime refresh remains pending shared frontend client integration.
 
 ## Realtime handoff — TSE-73 / TSE-76
 

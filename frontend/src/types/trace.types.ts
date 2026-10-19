@@ -1,4 +1,4 @@
-/** Browser trace contract (docs/FRONTEND_TRACE_EXPLORER.md). Money and rates stay decimal strings. */
+/** Browser trace contract (docs/API.md). Money and rates stay decimal strings. */
 
 export type TraceStatus = "SUCCESS" | "ERROR";
 

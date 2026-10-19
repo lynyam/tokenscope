@@ -834,8 +834,9 @@ make frontendtest
 docker compose exec frontend npm run build
 ```
 
-The screen is read-only and uses only existing backend endpoints. Contract, shared filters and limitations:
-`docs/FRONTEND_TRACE_EXPLORER.md`.
+The screen is read-only and uses existing backend endpoints documented in
+`docs/API.md`. Shared filters and integration limitations are documented in
+`docs/EVALUATION_ARCHITECTURE.md`, “Frontend Trace Explorer integration — TSE-75”.
 
 ### Trace Explorer browser tests
 

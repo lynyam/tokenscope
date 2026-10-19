@@ -25,7 +25,7 @@ export default defineConfig({
   use: {
     baseURL,
     // The evaluation Caddy uses a local CA that browsers do not trust by default.
-    ignoreHTTPSErrors: true,
+    //ignoreHTTPSErrors: true,
     acceptDownloads: true,
     // Login and authenticated requests contain credentials.
     // Do not record them in automatic test artifacts.

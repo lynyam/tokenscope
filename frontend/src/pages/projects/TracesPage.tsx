@@ -10,6 +10,10 @@ import { TraceFilterForm, type ChoicesState, type QueryPatch } from "./TraceFilt
 import { TraceFailureNotice } from "./TraceFailureNotice";
 import { TraceTable } from "./TraceTable";
 import { classifyTraceFailure, type TraceFailure } from "./trace-failure";
+import {
+  getAuthSessionSnapshot,
+  isAuthSessionCurrent,
+} from "../../api/auth-session";
 
 type View =
   | { key: string; phase: "loading" }
@@ -34,8 +38,12 @@ function TraceExplorer({ organizationId, projectId }: { organizationId: string; 
 
   const [attempt, setAttempt] = useState(0);
   const [view, setView] = useState<View>({ key: "", phase: "loading" });
-  const [unavailable, setUnavailable] = useState(false);
+  const [unavailable, setUnavailable] = useState<TraceFailure | null>(null);
   const generation = useRef(0);
+  const cooldown = useRef<{
+    until: number;
+    failure: Extract<TraceFailure, { kind: "rate-limit" }>;
+  } | null>(null);
 
   // Resolve the default period (and any normalization) once, without adding history entries.
   useEffect(() => {
@@ -45,17 +53,44 @@ function TraceExplorer({ organizationId, projectId }: { organizationId: string; 
   const ready = canonical !== null && canonical === search;
 
   useEffect(() => {
-    if (!ready || !query || archived) return;
-    const controller = new AbortController();
-    const id = ++generation.current;
+    if (archived || unavailable) {
+      setView({ key: "", phase: "loading" });
+      return;
+    }
+    if (!ready || !query) return;
     const key = canonical!;
+    const limited = cooldown.current;
+    // Editing the query does not remove the server's cooldown.
+    if (limited && Date.now() < limited.until) {
+      setView({
+        key,
+        phase: "error",
+        failure: {
+          ...limited.failure,
+          retryAfterSeconds: Math.ceil(
+            (limited.until - Date.now()) / 1000,
+          ),
+        },
+      });
+      return;
+    }
+
+    const controller = new AbortController();
+    const session = getAuthSessionSnapshot();
+    const id = ++generation.current;
     setView(previous =>
       previous.key === key && "data" in previous
         ? { key, phase: "updating", data: previous.data }
         : { key, phase: "loading" });
     listTraces(organizationId, projectId, query, controller.signal)
       .then(data => {
-        if (controller.signal.aborted || id !== generation.current) return;
+        if (
+          controller.signal.aborted ||
+          id !== generation.current ||
+          !isAuthSessionCurrent(session)
+        ) {
+          return;
+        }
         const lastPage = Math.max(1, data.totalPages);
         if (query.page > lastPage) {
           // Out-of-range page (for example after deletions): go to the last page, once.
@@ -65,26 +100,69 @@ function TraceExplorer({ organizationId, projectId }: { organizationId: string; 
         setView({ key, phase: "ready", data });
       })
       .catch(error => {
-        if (controller.signal.aborted || id !== generation.current || isAbortError(error)) return;
+        if (
+          controller.signal.aborted ||
+          id !== generation.current ||
+          !isAuthSessionCurrent(session) ||
+          isAbortError(error)
+        ) {
+          return;
+        }
         const failure = classifyTraceFailure(error);
-        if (failure.kind === "project-unavailable") { setUnavailable(true); return; }
+        if (failure.kind === "rate-limit") {
+          cooldown.current = {
+            until: Date.now() + failure.retryAfterSeconds * 1000,
+            failure,
+          };
+        }
+        if (failure.kind === "project-unavailable") {
+          setUnavailable(failure);
+          return;
+        }
         setView({ key, phase: "error", failure });
       });
     return () => controller.abort();
     // `query` is derived from `canonical`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [organizationId, projectId, canonical, ready, attempt, archived]);
+  }, [organizationId, projectId, canonical, ready, attempt, archived, unavailable,]);
 
   const [choices, setChoices] = useState<ChoicesState>({ phase: "loading" });
   const [choicesAttempt, setChoicesAttempt] = useState(0);
   useEffect(() => {
+    if (archived || unavailable) {
+      setChoices({ phase: "loading" });
+      return;
+    }
+
     const controller = new AbortController();
+    const session = getAuthSessionSnapshot();
+
     setChoices({ phase: "loading" });
+
     getModelChoices(controller.signal)
-      .then(result => { if (!controller.signal.aborted) setChoices({ phase: "ready", choices: result }); })
-      .catch(error => { if (!controller.signal.aborted && !isAbortError(error)) setChoices({ phase: "error" }); });
+      .then(result => {
+        if (
+          !controller.signal.aborted &&
+          isAuthSessionCurrent(session)
+        ) {
+          setChoices({ phase: "ready", choices: result });
+        }
+      })
+      .catch(error => {
+        if (
+          !controller.signal.aborted &&
+          isAuthSessionCurrent(session) &&
+          !isAbortError(error)
+        ) {
+          setChoices({
+            phase: "error",
+            failure: classifyTraceFailure(error),
+          });
+        }
+      });
+
     return () => controller.abort();
-  }, [choicesAttempt]);
+  }, [choicesAttempt, archived, unavailable]);
 
   const apply = useCallback((next: TraceListQuery, replace = false) => {
     setSearchParams(serializeTraceQuery(next), { replace });
@@ -109,6 +187,11 @@ function TraceExplorer({ organizationId, projectId }: { organizationId: string; 
     return (
       <section className="space-y-3 p-6">
         <p role="alert">This project is not available.</p>
+        {unavailable?.requestId && (
+          <p className="break-all text-xs">
+            Request ID: {unavailable.requestId}
+          </p>
+        )}
         <Link to={"/organizations/" + encodeURIComponent(organizationId) + "/projects"}>Back to projects</Link>
       </section>
     );

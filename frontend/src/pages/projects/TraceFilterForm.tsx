@@ -2,15 +2,17 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LIMITS, TRACE_PAGE_SIZES, validatePeriod } from "../../api/trace-filters";
+import { LIMITS, TRACE_PAGE_SIZES, validatePeriod, parseUtcInstant } from "../../api/trace-filters";
 import type { ModelChoices } from "../../api/traces.api";
 import type { TraceListQuery, TraceStatus } from "../../types/trace.types";
+import { TraceFailureNotice } from "./TraceFailureNotice";
+import type { TraceFailure } from "./trace-failure";
 
 export const SEARCH_DEBOUNCE_MS = 300;
 
 export type ChoicesState =
   | { phase: "loading" }
-  | { phase: "error" }
+  | { phase: "error"; failure: TraceFailure }
   | { phase: "ready"; choices: ModelChoices };
 
 export type QueryPatch = Partial<Pick<TraceListQuery, "q" | "provider" | "model" | "workflow" | "status" | "pageSize" | "from" | "to">>;
@@ -24,10 +26,15 @@ interface Props {
 }
 
 const SELECT = "h-9 w-full rounded-md border bg-transparent px-2 text-sm";
-const toInput = (iso: string) => iso.slice(0, 19);
+// The control has no timezone suffix; its label explicitly identifies UTC.
+const toInput = (iso: string) => iso.replace(/Z$/, "");
+
 function fromInput(value: string): string {
   const withSeconds = value.length === 16 ? value + ":00" : value;
-  return withSeconds + ".000Z";
+  const instant = withSeconds + "Z";
+  const ms = parseUtcInstant(instant);
+
+  return ms === null ? instant : new Date(ms).toISOString();
 }
 
 function withCurrent(options: string[], current: string | undefined): string[] {
@@ -61,6 +68,14 @@ export function TraceFilterForm({ query, choices, onChange, onReset, onRetryChoi
     const timer = setTimeout(() => onChangeRef.current({ workflow: value || undefined }, { replace: true }), SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [workflowDraft, query.workflow]);
+
+  function reset() {
+    // Discard text that has not reached the applied URL yet.
+    setQDraft("");
+    setWorkflowDraft("");
+    setPeriodError(null);
+    onReset();
+  }
 
   function applyPeriod(event: FormEvent) {
     event.preventDefault();
@@ -128,26 +143,31 @@ export function TraceFilterForm({ query, choices, onChange, onReset, onRetryChoi
       </div>
 
       {choices.phase === "error" && (
-        <p role="alert" className="text-sm text-destructive">
-          Provider and model choices could not be loaded.{" "}
-          <button type="button" className="underline" onClick={onRetryChoices}>Retry choices</button>
-        </p>
+        <div className="space-y-2">
+          <p className="text-sm">
+            Provider and model choices could not be loaded.
+          </p>
+          <TraceFailureNotice
+            failure={choices.failure}
+            onRetry={onRetryChoices}
+            retryLabel="Retry choices"
+          />
+        </div>
       )}
-
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <div className="space-y-1">
           <Label htmlFor="trace-from">From (UTC)</Label>
-          <Input id="trace-from" type="datetime-local" step={1} value={fromDraft}
+          <Input id="trace-from" type="datetime-local" step={0.001} value={fromDraft}
             onChange={event => setFromDraft(event.target.value)} />
         </div>
         <div className="space-y-1">
           <Label htmlFor="trace-to">To (UTC)</Label>
-          <Input id="trace-to" type="datetime-local" step={1} value={toDraft}
+          <Input id="trace-to" type="datetime-local" step={0.001} value={toDraft}
             onChange={event => setToDraft(event.target.value)} />
         </div>
         <div className="flex items-end gap-2">
           <Button type="submit">Apply period</Button>
-          <Button type="button" variant="outline" onClick={onReset}>Reset</Button>
+          <Button type="button" variant="outline" onClick={reset}>Reset</Button>
         </div>
       </div>
       {periodError && <p role="alert" className="text-sm text-destructive">{periodError}</p>}
