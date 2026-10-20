@@ -2,9 +2,16 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, expect, it, vi } from "vitest";
 import { ApiKeysPage } from "@/pages/projects/ApiKeysPage";
-import { saveAccessToken } from "@/api/auth-session";
+import { saveAccessToken, clearAuthSession, getAccessToken } from "@/api/auth-session";
 import type { ApiKeySummary, CreatedApiKey } from "@/types/api-key.types";
 import type { MembershipRole, Project } from "@/types/workspace.types";
+
+import { notifyProjectsChanged } from "@/api/project-events";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+
+vi.mock("@/hooks/useCurrentUser", () => ({ useCurrentUser: vi.fn() }));
+const currentUser = vi.mocked(useCurrentUser);
+const actor = { id: "actor", email: "actor@example.test", displayName: "Actor" };
 
 const org = "00000000-0000-4000-8000-000000000001";
 const otherOrg = "00000000-0000-4000-8000-000000000003";
@@ -62,8 +69,8 @@ let keys: ApiKeySummary[];
 let archived: boolean;
 let write: (url: RequestInfo | URL, options?: RequestInit) => Promise<Response>;
 
-function view(path = keysPath) {
-  return render(
+function pageTree(path = keysPath) {
+  return (
     <MemoryRouter initialEntries={[path]}>
       <Link to={otherKeysPath}>Open other project</Link>
       <Routes>
@@ -72,8 +79,12 @@ function view(path = keysPath) {
           element={<ApiKeysPage />}
         />
       </Routes>
-    </MemoryRouter>,
+    </MemoryRouter>
   );
+}
+
+function view(path = keysPath) {
+  return render(pageTree(path));
 }
 
 const writes = () => fetchMock.mock.calls.filter(([, options]) => options?.method !== "GET");
@@ -98,6 +109,7 @@ function submitName(input: HTMLElement, value: string) {
 }
 
 beforeEach(() => {
+  currentUser.mockReturnValue({ user: actor, isLoading: false });
   role = "OWNER";
   keys = [summary];
   archived = false;
@@ -333,7 +345,7 @@ it("explains how to use a key without ever showing a real one", async () => {
   expect(screen.getByText(/browser JWT/)).toBeInTheDocument();
   expect(screen.getByText(/<PROJECT_API_KEY>/)).toBeInTheDocument();
   const link = screen.getByRole("link", { name: "Public API documentation" });
-  expect(link).toHaveAttribute("href", expect.stringContaining("docs/API.md"));
+  expect(link).toHaveAttribute("href", "/api/v1/public/docs");
   expect(document.body.textContent).not.toContain("tsk_");
 });
 
@@ -511,4 +523,85 @@ it("asks for confirmation when the corner close button is used", async () => {
 
   expect(await screen.findByText("Close without saving?")).toBeInTheDocument();
   expect(screen.getByRole("textbox", { name: "API key" })).toBeInTheDocument();
+});
+
+
+it("ignores a creation response from a superseded session", async () => {
+  let finish!: (response: Response) => void;
+  write = () => new Promise(resolve => { finish = resolve; });
+  view();
+  submitName(await openCreate(), "New key");
+  saveAccessToken("new-session");
+  await act(async () => { finish(json(created, 201)); });
+  expect(screen.queryByRole("textbox", { name: "API key" })).toBeNull();
+  expect(getAccessToken()).toBe("new-session");
+});
+
+it.each(["signout", "replacement"])("clears an already displayed secret on %s", async change => {
+  write = async () => json(created, 201);
+  const mounted = view();
+  submitName(await openCreate(), "New key");
+  await screen.findByRole("textbox", { name: "API key" });
+  if (change === "signout") {
+    clearAuthSession();
+    currentUser.mockReturnValue({ user: null, isLoading: false });
+  } else {
+    // Even a login receiving the same token is a new session revision.
+    saveAccessToken("api-keys-ui-token");
+  }
+  mounted.rerender(pageTree());
+  expect(screen.queryByRole("textbox", { name: "API key" })).toBeNull();
+});
+
+it("clears disclosure after the existing project-archive event", async () => {
+  write = async () => json(created, 201);
+  view();
+  submitName(await openCreate(), "New key");
+  await screen.findByRole("textbox", { name: "API key" });
+  act(() => notifyProjectsChanged({ organizationId: org, kind: "archive", projectId: project.id }));
+  expect(await screen.findByText("Project not found.")).toBeInTheDocument();
+  expect(screen.queryByRole("textbox", { name: "API key" })).toBeNull();
+  expect(screen.queryByText("CI")).toBeNull();
+});
+
+it("keeps the new login after an old creation returns 401", async () => {
+  let finish!: (response: Response) => void;
+  write = () => new Promise(resolve => { finish = resolve; });
+  view();
+  submitName(await openCreate(), "New key");
+  saveAccessToken("new-session");
+  await act(async () => { finish(json({ code: "UNAUTHORIZED", message: "Expired." }, 401)); });
+  expect(getAccessToken()).toBe("new-session");
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+it("displays validation details, request ID and invalid-field semantics", async () => {
+  write = async () => json({ code: "VALIDATION_ERROR", message: "Invalid request.",
+    details: [{ field: "name", messages: ["Name rejected."] }], requestId: "req-key" }, 400);
+  view();
+  submitName(await openCreate(), "Draft");
+  expect(await screen.findByRole("alert")).toHaveTextContent("Name rejected. Request ID: req-key");
+  expect(screen.getByLabelText("Name")).toHaveAttribute("aria-invalid", "true");
+  expect(screen.getByLabelText("Name")).toHaveValue("Draft");
+});
+
+it("respects Retry-After across closing and reopening without automatic retry", async () => {
+  write = async () => new Response(JSON.stringify({ code: "RATE_LIMITED", message: "Slow down." }), {
+    status: 429, headers: { "Content-Type": "application/json", "Retry-After": "30" },
+  });
+  view();
+  fireEvent.click(await screen.findByRole("button", { name: "Revoke" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Revoke key" }));
+  const limited = await screen.findByRole("button", { name: /Revoke key in/ });
+  expect(limited).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  fireEvent.click(screen.getByRole("button", { name: "Revoke" }));
+  expect(await screen.findByRole("button", { name: /Revoke key in/ })).toBeDisabled();
+  expect(writes()).toHaveLength(1);
+  // Advance only the deadline clock; keep real DOM scheduling.
+  const now = Date.now();
+  const clock = vi.spyOn(Date, "now").mockReturnValue(now + 31_000);
+  await waitFor(() => expect(screen.getByRole("button", { name: "Revoke key" })).toBeEnabled());
+  expect(writes()).toHaveLength(1);
+  clock.mockRestore();
 });

@@ -1,3 +1,4 @@
+import { RealtimeModule } from "./realtime/realtime.module";
 import { Module } from "@nestjs/common";
 import { ConfigurationModule } from "./config/configuration.module";
 import { HealthModule } from "./health/health.module";
@@ -22,6 +23,7 @@ import { AnalyticsModule } from "./analytics/analytics.module";
 		TracesModule,
 		PublicDocsModule,
 		AnalyticsModule,
+		RealtimeModule,
 	],
 })
 export class AppModule {}

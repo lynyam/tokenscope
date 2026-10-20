@@ -55,6 +55,7 @@ describe("Trace ingestion orchestration", () => {
 		const tx = {
 			trace: {
 				findUnique: jest.fn().mockResolvedValue(null),
+				findFirst: jest.fn().mockResolvedValue(row),
 				create: jest.fn().mockResolvedValue(row),
 			},
 		};
@@ -129,6 +130,22 @@ describe("Trace ingestion orchestration", () => {
 
 		expect(s.changes.publish).not.toHaveBeenCalled();
 	});
+
+	it("does not publish for a same-value PUT", async () => {
+        const s = setup();
+        await s.service.replace(principal, "trace", '"1"', payload);
+        expect(s.changes.publish).not.toHaveBeenCalled();
+    });
+
+    it("does not publish when commit fails after the write", async () => {
+        const s = setup();
+        s.prisma.$transaction.mockImplementation(async work => {
+            await work(s.tx);
+            throw new Error("commit failed");
+        });
+        await expect(s.service.ingest(principal, payload)).rejects.toThrow("commit failed");
+        expect(s.changes.publish).not.toHaveBeenCalled();
+    });
 
 	it("retains success when publication fails", async () => {
 		const s = setup();

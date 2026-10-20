@@ -1,11 +1,13 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { randomUUID } from "node:crypto";
+import { signUp, createOrganization, createProject, addMember, signInPage,
+  TEST_PASSWORD, type TestUser } from "./helpers";
+import { fixtureBodies, requireCatalogue } from "./trace-helpers";
 
 // Throwaway data: unique per run, never a real account or key.
-const RUN = Date.now().toString(36);
-const PASSWORD = "E2e-demo-password-2026";
-const TOKEN_KEY = "tokenscope.accessToken";
+const RUN = randomUUID();
 
-type Actor = { token: string; id: string; email: string };
+type Actor = TestUser;
 type Workspace = {
   owner: Actor; admin: Actor; member: Actor; outsider: Actor;
   orgId: string; projectId: string;
@@ -21,39 +23,6 @@ const keysApi = (orgId: string, projectId: string) =>
   "/api/v1/organizations/" + orgId + "/projects/" + projectId + "/api-keys";
 const KEYS_POST = "**/api/v1/organizations/*/projects/*/api-keys";
 
-async function signUp(name: string): Promise<Actor> {
-  const email = "e2e." + name + "." + RUN + "@tokenscope.dev";
-  const response = await api.post("/api/v1/auth/signup", {
-    data: { email, password: PASSWORD, displayName: name },
-  });
-  expect(response.status()).toBe(201);
-  const body = await response.json();
-  return { token: body.accessToken, id: body.user.id, email };
-}
-
-async function createOrg(owner: Actor, name: string): Promise<string> {
-  const response = await api.post("/api/v1/organizations", {
-    headers: auth(owner), data: { name },
-  });
-  expect(response.status()).toBe(201);
-  return (await response.json()).id;
-}
-
-async function createProject(owner: Actor, orgId: string, name: string): Promise<string> {
-  const response = await api.post("/api/v1/organizations/" + orgId + "/projects", {
-    headers: auth(owner), data: { name, description: "E2E" },
-  });
-  expect(response.status()).toBe(201);
-  return (await response.json()).id;
-}
-
-async function addMember(owner: Actor, orgId: string, who: Actor, role: "ADMIN" | "MEMBER") {
-  const response = await api.post("/api/v1/organizations/" + orgId + "/members", {
-    headers: auth(owner), data: { email: who.email, role },
-  });
-  expect(response.status()).toBe(201);
-}
-
 async function listKeys(actor: Actor, orgId: string, projectId: string) {
   const response = await api.get(keysApi(orgId, projectId), { headers: auth(actor) });
   expect(response.status()).toBe(200);
@@ -68,18 +37,11 @@ async function createKeyApi(actor: Actor, orgId: string, projectId: string, name
   return (await response.json()) as { id: string; key: string };
 }
 
-async function signIn(page: Page, actor: Actor) {
-  await page.addInitScript(
-    ([key, token]) => localStorage.setItem(key, token),
-    [TOKEN_KEY, actor.token],
-  );
-}
-
 // Real sign-in through the form, used once in the main journey.
 async function signInThroughUi(page: Page, actor: Actor) {
   await page.goto("/signin");
   await page.getByLabel("Email").fill(actor.email);
-  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByLabel("Password").fill(TEST_PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/organizations/);
 }
@@ -115,14 +77,15 @@ async function createKeyInUi(page: Page, name: string) {
 
 test.beforeAll(async ({ playwright }, testInfo) => {
   api = await playwright.request.newContext({ baseURL: testInfo.project.use.baseURL });
-  const owner = await signUp("owner");
-  const admin = await signUp("admin");
-  const member = await signUp("member");
-  const outsider = await signUp("outsider");
-  const orgId = await createOrg(owner, "E2E Keys " + RUN);
-  await addMember(owner, orgId, admin, "ADMIN");
-  await addMember(owner, orgId, member, "MEMBER");
-  const projectId = await createProject(owner, orgId, "Main " + RUN);
+  const owner = await signUp(api, "owner");
+  await requireCatalogue(api, owner);
+  const admin = await signUp(api, "admin");
+  const member = await signUp(api, "member");
+  const outsider = await signUp(api, "outsider");
+  const orgId = await createOrganization(api, owner);
+  await addMember(api, owner, orgId, admin, "ADMIN");
+  await addMember(api, owner, orgId, member, "MEMBER");
+  const projectId = await createProject(api, owner, orgId, "Main " + RUN);
   ws = { owner, admin, member, outsider, orgId, projectId };
 });
 
@@ -131,8 +94,8 @@ test.afterAll(async () => {
 });
 
 test("OWNER sees the empty state on a new project", async ({ page }) => {
-  const projectId = await createProject(ws.owner, ws.orgId, "Empty " + RUN);
-  await signIn(page, ws.owner);
+  const projectId = await createProject(api, ws.owner, ws.orgId, "Empty " + RUN);
+  await signInPage(page, ws.owner);
   await page.goto(keysUrl(ws.orgId, projectId));
 
   await expect(page.getByRole("heading", { name: "API keys" })).toBeVisible();
@@ -155,6 +118,24 @@ test("OWNER creates a key, sees the secret once, then revokes it", async ({ page
   await expect(page.getByText("Copied to clipboard.")).toBeVisible();
   const clipboard = await page.evaluate(() => navigator.clipboard.readText());
   expect(clipboard === secret, "clipboard holds the full key").toBe(true);
+
+  // Use the actual key returned by this UI creation, not a second API-created key.
+  const body = { ...fixtureBodies("traces-golden.json")[0], externalId: randomUUID() };
+  const accepted = await api.post("/api/v1/public/traces", {
+    headers: { "X-API-Key": secret }, data: body,
+  });
+  expect(accepted.status(), "UI-created key can ingest").toBe(201);
+  const traceId = (await accepted.json()).id as string;
+  const intended = await api.get(`/api/v1/organizations/${ws.orgId}/projects/${ws.projectId}/traces/${traceId}`, {
+    headers: auth(ws.owner),
+  });
+  expect(intended.status(), "trace is readable inside the intended project").toBe(200);
+  const otherProject = await createProject(api, ws.owner, ws.orgId, "Isolation " + RUN);
+  const otherKey = await createKeyApi(ws.owner, ws.orgId, otherProject, "Other " + RUN);
+  const crossProject = await api.get(`/api/v1/public/traces/${traceId}`, {
+    headers: { "X-API-Key": otherKey.key },
+  });
+  expect(crossProject.status(), "another project's key cannot read the trace").toBe(404);
 
   await page.getByRole("button", { name: "I have saved this key" }).click();
   await expect(box).toHaveCount(0);
@@ -190,42 +171,15 @@ test("OWNER creates a key, sees the secret once, then revokes it", async ({ page
 
   const stored = (await listKeys(ws.owner, ws.orgId, ws.projectId)).find(key => key.name === name);
   expect(stored?.revokedAt).not.toBeNull();
-});
-
-test("a fresh key creates a public trace; after revocation the same key gets 401 INVALID_API_KEY", async () => {
-  const created = await createKeyApi(ws.owner, ws.orgId, ws.projectId, "Trace journey " + RUN);
-  const trace = {
-    externalId: "e2e-trace-" + RUN,
-    provider: "fixture-a",
-    model: "demo-fast",
-    workflow: "support",
-    inputTokens: 1000,
-    outputTokens: 200,
-    latencyMs: 0,
-    status: "SUCCESS",
-    occurredAt: "2026-10-01T10:00:00Z",
-  };
-  // The key only travels in this header; assertions below never print it.
-  const send = () => api.post("/api/v1/public/traces", {
-    headers: { "X-API-Key": created.key },
-    data: trace,
+  const rejected = await api.get(`/api/v1/public/traces/${traceId}`, {
+    headers: { "X-API-Key": secret },
   });
-
-  const accepted = await send();
-  expect(accepted.status(), "a fresh key is accepted").toBe(201);
-
-  const revoked = await api.delete(keysApi(ws.orgId, ws.projectId) + "/" + created.id, {
-    headers: auth(ws.owner),
-  });
-  expect(revoked.ok(), "revocation succeeds").toBe(true);
-
-  const rejected = await send();
-  expect(rejected.status(), "the revoked key is rejected").toBe(401);
+  expect(rejected.status(), "UI-revoked key is unusable").toBe(401);
   expect((await rejected.json()).code).toBe("INVALID_API_KEY");
 });
 
 test("ADMIN can create and revoke keys", async ({ page }) => {
-  await signIn(page, ws.admin);
+  await signInPage(page, ws.admin);
   const name = "Admin " + RUN;
   await page.goto(keysUrl(ws.orgId, ws.projectId));
   await createKeyInUi(page, name);
@@ -238,7 +192,7 @@ test("ADMIN can create and revoke keys", async ({ page }) => {
 });
 
 test("MEMBER is denied: no link, no controls, no key list request", async ({ page }) => {
-  await signIn(page, ws.member);
+  await signInPage(page, ws.member);
   const seen = track(page, (_method, url) => new URL(url).pathname.startsWith("/api/v1/") && url.includes("/api-keys"));
 
   await page.goto("/organizations/" + ws.orgId + "/projects/" + ws.projectId);
@@ -258,10 +212,15 @@ test("MEMBER is denied: no link, no controls, no key list request", async ({ pag
     headers: auth(ws.member), data: { name: "Denied " + RUN },
   });
   expect(create.status()).toBe(403);
+  const key = await createKeyApi(ws.owner, ws.orgId, ws.projectId, "Member denied revoke " + RUN);
+  const revoke = await api.delete(keysApi(ws.orgId, ws.projectId) + "/" + key.id, {
+    headers: auth(ws.member),
+  });
+  expect(revoke.status()).toBe(403);
 });
 
 test("OWNER reaches the page from the project detail link", async ({ page }) => {
-  await signIn(page, ws.owner);
+  await signInPage(page, ws.owner);
   await page.goto("/organizations/" + ws.orgId + "/projects/" + ws.projectId);
   await page.getByRole("link", { name: "API keys" }).click();
   await expect(page).toHaveURL(new RegExp(keysUrl(ws.orgId, ws.projectId) + "$"));
@@ -270,20 +229,20 @@ test("OWNER reaches the page from the project detail link", async ({ page }) => 
 
 test("an outsider gets not-found and no data", async ({ page }) => {
   await createKeyApi(ws.owner, ws.orgId, ws.projectId, "Hidden " + RUN);
-  await signIn(page, ws.outsider);
+  await signInPage(page, ws.outsider);
   await page.goto(keysUrl(ws.orgId, ws.projectId));
 
-  await expect(page.getByText("Project not found.")).toBeVisible();
+  await expect(page.getByText(/^Project not found\./)).toBeVisible();
   await expect(page.getByText("Hidden " + RUN)).toHaveCount(0);
   const response = await api.get(keysApi(ws.orgId, ws.projectId), { headers: auth(ws.outsider) });
   expect(response.status()).toBe(404);
 });
 
 test("keys are isolated between two projects of the same organization", async ({ page }) => {
-  const other = await createProject(ws.owner, ws.orgId, "Other " + RUN);
+  const other = await createProject(api, ws.owner, ws.orgId, "Other " + RUN);
   const created = await createKeyApi(ws.owner, ws.orgId, ws.projectId, "Isolated " + RUN);
 
-  await signIn(page, ws.owner);
+  await signInPage(page, ws.owner);
   await page.goto(keysUrl(ws.orgId, other));
   await expect(page.getByText("No API keys yet.")).toBeVisible();
   await expect(page.getByText("Isolated " + RUN)).toHaveCount(0);
@@ -299,24 +258,24 @@ test("keys are isolated between two projects of the same organization", async ({
 });
 
 test("an archived project is not found and requests no key list", async ({ page }) => {
-  const projectId = await createProject(ws.owner, ws.orgId, "Archived " + RUN);
+  const projectId = await createProject(api, ws.owner, ws.orgId, "Archived " + RUN);
   const archive = await api.delete("/api/v1/organizations/" + ws.orgId + "/projects/" + projectId, {
     headers: auth(ws.owner),
   });
   expect(archive.ok()).toBe(true);
 
-  await signIn(page, ws.owner);
+  await signInPage(page, ws.owner);
   const seen = track(page, (_method, url) => new URL(url).pathname.startsWith("/api/v1/") && url.includes("/api-keys"));
   await page.goto(keysUrl(ws.orgId, projectId));
 
-  await expect(page.getByText("Project not found.")).toBeVisible();
+  await expect(page.getByText(/^Project not found\./)).toBeVisible();
   expect(seen).toHaveLength(0);
   const response = await api.get(keysApi(ws.orgId, projectId), { headers: auth(ws.owner) });
   expect(response.ok(), "key list of an archived project").toBe(false);
 });
 
 test("a name that is empty or too long sends nothing", async ({ page }) => {
-  await signIn(page, ws.owner);
+  await signInPage(page, ws.owner);
   const posts = track(page, method => method === "POST");
   await page.goto(keysUrl(ws.orgId, ws.projectId));
 
@@ -329,7 +288,7 @@ test("a name that is empty or too long sends nothing", async ({ page }) => {
 });
 
 test("a response arriving after switching project never shows the secret", async ({ page }) => {
-  const other = await createProject(ws.owner, ws.orgId, "Switch " + RUN);
+  const other = await createProject(api, ws.owner, ws.orgId, "Switch " + RUN);
   const name = "Late " + RUN;
   let secret = "";
   let release!: () => void;
@@ -343,7 +302,7 @@ test("a response arriving after switching project never shows the secret", async
     await route.fulfill({ response });
   });
 
-  await signIn(page, ws.owner);
+  await signInPage(page, ws.owner);
   await page.goto(keysUrl(ws.orgId, ws.projectId));
   await createKeyInUi(page, name);
   await expect(page.getByRole("button", { name: "Creating…" })).toBeVisible();
@@ -368,7 +327,7 @@ test("a response arriving after switching project never shows the secret", async
 
 test("a network failure on creation never repeats the POST", async ({ page }) => {
   const name = "Offline " + RUN;
-  await signIn(page, ws.owner);
+  await signInPage(page, ws.owner);
   await page.route(KEYS_POST, route =>
     route.request().method() === "POST" ? route.abort("failed") : route.continue());
   const posts = track(page, method => method === "POST");
@@ -386,7 +345,7 @@ test("a network failure on creation never repeats the POST", async ({ page }) =>
 test("a 429 on revocation keeps the dialog open and does not retry", async ({ page }) => {
   const name = "Limited " + RUN;
   const created = await createKeyApi(ws.owner, ws.orgId, ws.projectId, name);
-  await signIn(page, ws.owner);
+  await signInPage(page, ws.owner);
   await page.route("**/api-keys/*", route =>
     route.request().method() === "DELETE"
       ? route.fulfill({
@@ -405,20 +364,24 @@ test("a 429 on revocation keeps the dialog open and does not retry", async ({ pa
   await expect(page.getByText(/Too many requests/)).toBeVisible();
   await expect(page.getByText("Revoke this key?")).toBeVisible();
   expect(deletes).toHaveLength(1);
+  await expect(page.getByRole("button", { name: /Revoke key in/ })).toBeDisabled();
   const stored = (await listKeys(ws.owner, ws.orgId, ws.projectId)).find(key => key.id === created.id);
   expect(stored?.revokedAt).toBeNull();
 });
 
 test("an ADMIN demoted during the session loses the controls and the secret", async ({ page }) => {
-  const demoted = await signUp("demoted");
-  await addMember(ws.owner, ws.orgId, demoted, "ADMIN");
-  await signIn(page, demoted);
+  const demoted = await signUp(api, "demoted");
+  await addMember(api, ws.owner, ws.orgId, demoted, "ADMIN");
+  await signInPage(page, demoted);
   await page.goto(keysUrl(ws.orgId, ws.projectId));
   await page.getByRole("button", { name: "Create API key" }).click();
   await page.getByLabel("Name").fill("Demoted " + RUN);
 
+  const me = await api.get("/api/v1/auth/me", { headers: auth(demoted) });
+  expect(me.status()).toBe(200);
+  const demotedId = (await me.json()).id as string;
   const demotion = await api.patch(
-    "/api/v1/organizations/" + ws.orgId + "/members/" + demoted.id,
+    "/api/v1/organizations/" + ws.orgId + "/members/" + demotedId,
     { headers: auth(ws.owner), data: { role: "MEMBER" } },
   );
   expect(demotion.ok()).toBe(true);
@@ -434,7 +397,7 @@ test("an ADMIN demoted during the session loses the controls and the secret", as
 });
 
 test("Escape asks before discarding the secret", async ({ page }) => {
-  await signIn(page, ws.owner);
+  await signInPage(page, ws.owner);
   await page.goto(keysUrl(ws.orgId, ws.projectId));
   await createKeyInUi(page, "Escape " + RUN);
   const field = page.getByRole("textbox", { name: "API key", exact: true });
@@ -454,7 +417,7 @@ test("Escape asks before discarding the secret", async ({ page }) => {
 });
 
 test("an outside click asks before discarding the secret", async ({ page }) => {
-  await signIn(page, ws.owner);
+  await signInPage(page, ws.owner);
   await page.goto(keysUrl(ws.orgId, ws.projectId));
   await createKeyInUi(page, "Outside " + RUN);
   const field = page.getByRole("textbox", { name: "API key", exact: true });
@@ -468,4 +431,35 @@ test("an outside click asks before discarding the secret", async ({ page }) => {
   await page.getByRole("button", { name: "Keep key visible" }).click();
   await expect(page.getByText("Close without saving?")).toBeHidden();
   await expect(field).toBeVisible();
+});
+
+
+test("archiving either parent rejects a retained key and clears the management page", async ({ page }) => {
+  for (const parent of ["project", "organization"] as const) {
+    const orgId = await createOrganization(api, ws.owner);
+    const projectId = await createProject(api, ws.owner, orgId, `Archive ${parent}`);
+    const created = await createKeyApi(ws.owner, orgId, projectId, `Archive ${parent}`);
+    await signInPage(page, ws.owner);
+    await page.goto(keysUrl(orgId, projectId));
+    await expect(page.getByRole("listitem").filter({ hasText: `Archive ${parent}` })).toBeVisible();
+    const url = `/api/v1/organizations/${orgId}`;
+    if (parent === "organization") {
+      const organization = await api.get(url, { headers: auth(ws.owner) });
+      expect(organization.status()).toBe(200);
+      const removed = await api.delete(url, {
+        headers: auth(ws.owner), data: { confirmSlug: (await organization.json()).slug },
+      });
+      expect(removed.status()).toBe(204);
+    } else {
+      const removed = await api.delete(`${url}/projects/${projectId}`, { headers: auth(ws.owner) });
+      expect(removed.status()).toBe(204);
+    }
+    const publicRead = await api.get("/api/v1/public/traces", { headers: { "X-API-Key": created.key } });
+    expect(publicRead.status()).toBe(401);
+    expect((await publicRead.json()).code).toBe("INVALID_API_KEY");
+    await page.reload();
+    await expect(page.getByText("Project not found.", { exact: false })).toBeVisible();
+    await expect(page.getByRole("list", { name: "API keys" })).toHaveCount(0);
+    await expect(page).not.toHaveURL(/\/signin/);
+  }
 });

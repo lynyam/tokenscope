@@ -306,6 +306,29 @@ TSE-71 adds analytics calculations. Dashboard UI, Trace Explorer UI,
 exports, assistant integration and WebSocket delivery remain separately
 owned features.
 
+### Frontend Trace Explorer integration — TSE-75
+
+The Trace Explorer is read-only. It uses the existing browser JWT trace endpoints through `frontend/src/api/traces.api.ts` and the shared HTTP client. HTTP contracts remain documented in API.md.
+
+Shared frontend filters are defined in `frontend/src/types/trace.types.ts` and handled by `frontend/src/api/trace-filters.ts`.
+
+TSE-76 and downstream frontend consumers must reuse this filter contract and its normalization/serialization utilities:
+
+- Shared selection: from, to, q, provider, model, workflow and status.
+- Dates are explicit resolved UTC instants.
+- Sorting and pagination belong only to the trace list.
+- `commonFilters(query)` extracts the shared selection from a list query.
+
+The applied list query is stored in the URL. List and detail views preserve recorded cost/rate strings and discard obsolete responses.
+Project access loss clears protected content without signing the user out.
+
+TSE-73 provides the backend realtime transport and notifications.
+TSE-76 owns the shared frontend project realtime client, which is not yet available on develop.
+
+Until that client is integrated, the Explorer supports manual Refresh and detects remote access loss on its next HTTP request.
+
+When the shared client is available, connect active list/detail views to trace-change, reconnection and access-revocation handling. Reuse that client; do not create another socket implementation. Verify the combined browser behavior before claiming realtime acceptance complete.
+
 ### Analytics integration — TSE-71
 The implementation is registered through AnalyticsModule, which exports
 AnalyticsService.
@@ -336,7 +359,7 @@ These features have different responsibilities:
 | TSE-77 export | Capture and serialize the displayed snapshot |
 | TSE-80 assistant | Build a fresh fixed context for one submitted question |
 
-### Realtime
+### Realtime — C07
 
 A committed trace creation, actual correction or deletion can publish `traces.changed`.
 
@@ -347,6 +370,15 @@ Replay, no-op updates and rolled-back writes do not publish changes.
 Notifications are best effort. The dashboard repairs missed events after subscription/reconnection, on visible focus and through the agreed visible-page refresh interval.
 
 Socket authorization checks current membership and active parents. Joining a room once does not authorize every later notification.
+
+TSE-73 implements `/realtime` on `/socket.io`, using the existing HTTP server and
+single-process Socket.IO adapter. RealtimeModule consumes TraceChangesService and
+AccessChangesService; domain mutation modules import only AccessChangesModule.
+This prevents circular imports. No migration, Redis, persistent event queue or replay is added.
+The fixed 150 ms window bounds notification/authentication work during bursts.
+Origin handling, verified JWT expiry, limits and failure behavior are specified in API.md
+and SECURITY.md. TSE-76 owns the displayed dashboard and its recovery HTTP requests.
+
 
 ### Exports
 

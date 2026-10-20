@@ -212,17 +212,43 @@ function ProjectDetail({ organizationId, projectId }: { organizationId: string; 
             <Button variant="destructive" disabled={isMutating} onClick={handleArchive}>
               {isArchiving ? "Archiving…" : "Archive project"}
             </Button>
-            <Link to={"/organizations/" + encodeURIComponent(organizationId)
-              + "/projects/" + encodeURIComponent(projectId) + "/api-keys"}>
-              API keys
-            </Link>
           </div>
           {archiveError && <p role="alert" className="text-sm text-destructive">{archiveError}</p>}
         </>
       )}
+      <nav
+        aria-label="Project sections"
+        className="flex gap-4 rounded-lg border p-4"
+      >
+        {canManage && (
+          <Link
+            className="underline"
+            to={
+              "/organizations/" + encodeURIComponent(organizationId)
+              + "/projects/" + encodeURIComponent(projectId)
+              + "/api-keys"
+            }
+          >
+            API keys
+          </Link>
+        )}
+
+        <Link
+          className="underline"
+          to={
+            "/organizations/" + encodeURIComponent(organizationId)
+            + "/projects/" + encodeURIComponent(projectId)
+            + "/traces"
+          }
+        >
+          Traces
+        </Link>
+      </nav>
       <div className="rounded-lg border p-4">
-        <h2 className="font-semibold">Coming soon</h2>
-        <p className="text-sm text-muted-foreground">Traces and cost analytics.</p>
+        <p className="text-sm text-muted-foreground">
+          Cost analytics.
+        </p>
+        <p className="text-sm text-muted-foreground">API keys and cost analytics.</p>
       </div>
     </section>
   );

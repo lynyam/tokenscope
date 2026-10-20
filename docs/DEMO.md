@@ -618,11 +618,11 @@ Use Alice (OWNER) and Bob (MEMBER) in two browser windows, as in section 3. Neve
 | 6 | Alice clicks **Revoke**, then **Revoke key** | The row shows `Revoked` and a date after the list refresh |
 | 7 | Bob opens the same URL | A permission-denied message, no controls and no list request |
 | 8 | Alice archives the project and reopens the page | "Project not found." and no list request (the backend would answer 404 for an archived project) |
-| 9 | A client calls a public trace route with a fresh key | BLOCKED until TSE-68/69 are merged |
+| 9 | Before revocation, use the UI-created key to POST a canonical trace; after UI revocation, GET that trace with the same key | POST returns 201; the JWT project detail endpoint finds the trace in the intended project; after revocation the public GET returns 401 INVALID_API_KEY |
 | 10 | Alice creates a key, then presses Escape on the secret dialog | "Close without saving?" appears and the key stays visible; a second Escape goes back to the key |
 | 11 | With the secret dialog open, Alice clicks outside it, then **Close and discard** | The same confirmation appears; after **Close and discard** the key is gone and cannot be shown again |
 
-Public clients send the key in exactly one header. A JWT is not accepted there, and the key is not accepted on browser workspace routes (see [API.md](./API.md)). This example is not executable until the trace routes exist:
+Public clients send the key in exactly one header. A JWT is not accepted there, and the key is not accepted on browser workspace routes (see [API.md](./API.md)). The public trace routes and interactive documentation at `/api/v1/public/docs` are available:
 
 ```sh
 curl "$TOKENSCOPE_ORIGIN/api/v1/public/traces" -H "X-API-Key: <PROJECT_API_KEY>"
@@ -688,3 +688,51 @@ estimated cost.
 TSE-70 owns loading usable evaluation data. Fixture presence alone
 does not demonstrate implemented feature endpoints or live Gemini
 integration.
+
+### Trace Explorer (read-only)
+
+Open a project, then **Traces**. The list shows UTC time, provider/model, workflow, tokens, estimated cost,
+latency and status for the last seven days (resolved to explicit dates in the URL). For the golden period use:
+
+```
+/organizations/<org>/projects/<project>/traces?from=2026-10-01T00:00:00.000Z&to=2026-10-02T00:00:00.000Z
+```
+
+Search, filters, sorting and paging all live in the URL, so a copied link reproduces the screen.
+Integration and shared-filter ownership:
+`docs/EVALUATION_ARCHITECTURE.md`, “Frontend Trace Explorer integration — TSE-75”.
+Realtime refresh remains pending shared frontend client integration.
+
+## Realtime handoff — TSE-73 / TSE-76
+
+1. Load the documented synthetic price catalogue and use a disposable organization/project.
+2. Open two authorized dashboard sessions when TSE-76 is integrated. Both must subscribe
+   successfully to the same project. Confirm another project does not receive its notifications.
+3. Select `[2026-10-01T00:00:00.000Z, 2026-10-02T00:00:00.000Z)` for the supplied
+   `fixtures/evaluation/realtime/live-trace-request.json`; its timestamp is historical.
+4. Send that body to `POST /api/v1/public/traces` with a valid project `X-API-Key`.
+   Use a fresh externalId for each demonstration; identical POST replay produces no notification.
+5. Confirm one minimal `traces.changed` reaches each authorized viewer, then the dashboard
+   fetches fresh analytics with its current applied dates/filters. Under normal local evaluation
+   conditions both dashboards should update within two seconds (TSE-76 integrated evidence).
+6. Correct the trace with PUT and the current If-Match, then soft-delete with DELETE and
+   the new If-Match. Both actual commits must invalidate; no-op PUT must not.
+7. Remove a member or archive a parent: affected sockets receive `access.revoked` and
+   stop receiving data. Demotion to MEMBER keeps read access. Expired JWT disconnects.
+8. Disconnect/reconnect a browser: it must re-subscribe and refetch; no missed-event replay is promised.
+
+Before the dashboard is available, run `frontend/test/e2e/realtime.spec.ts` in development
+and HTTPS evaluation modes using LOCAL_DEVELOPMENT.md. Record commit, mode, commands and
+actual results. Transport-only evidence must not be presented as a completed dashboard demo.
+
+For a disposable evaluation project, set `TOKENSCOPE_KEY` locally and send the fixture:
+
+```sh
+curl --fail-with-body --cacert .local/eval/caddy-root.crt \
+  -H "X-API-Key: $TOKENSCOPE_KEY" \
+  -H 'Content-Type: application/json' \
+  --data-binary @fixtures/evaluation/realtime/live-trace-request.json \
+  https://localhost:8443/api/v1/public/traces
+```
+
+Keep the returned trace id and ETag for PUT/DELETE. Do not commit the key.

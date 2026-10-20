@@ -851,9 +851,9 @@ Implementation status: TSE-67 implements key management and the reusable public 
 Frontend behavior — TSE-74:
 
 - The management page is `/organizations/:organizationId/projects/:projectId/api-keys`. It is available to OWNER and ADMIN of an active project. The role comes from `GET /organizations/:organizationId` (`currentUserRole`), never from the URL, storage or token. A MEMBER sees a denied state and the key list is not requested.
-- The plaintext `key` exists only in the state of the one-time disclosure dialog. Closing the dialog, leaving the route, changing project or losing permission discards it. It is never written to the list, the URL, browser storage or logs.
+- The plaintext `key` exists only in the page's transient disclosure state. Closing the dialog, leaving the route, changing project or session, or detecting access loss discards it. It is never written to the list, the URL, browser storage or logs.
 - A creation whose outcome is uncertain (network failure) is never retried automatically. The page reloads the list and asks the user to check it.
-- `403 INSUFFICIENT_ORGANIZATION_ROLE` clears the list and any secret and re-reads the role. `404` on the project or organization clears the page content. `404 API_KEY_NOT_FOUND` on revocation closes the dialog and reloads the list. `429` shows a generic wait message and is not retried; the page does not read `Retry-After`.
+- `403 INSUFFICIENT_ORGANIZATION_ROLE` clears the list and any secret and re-reads the role. `404` on the project or organization clears the page content. `404 API_KEY_NOT_FOUND` on revocation closes the dialog and reloads the list. `429` uses the shared `ApiError.retryAfterSeconds` value to disable deliberate retries until its deadline. No mutation is retried automatically.
 - The browser calls these management routes with the user's JWT. The key created here is only for the `X-API-Key` header of public trace routes; see [Authentication and route ownership](#authentication-and-route-ownership).
 
 Public authentication uses exactly one X-API-Key header containing a canonical tsk_ secret. Query parameters, JSON fields, cookies and bearer JWTs are not alternative API-key locations.
@@ -1268,6 +1268,36 @@ Server events:
 Publish only after committed creation, actual correction or deletion. Coalesce changes using the agreed fixed 150 ms window.
 
 Delivery is best effort. Subscription/reconnection must be followed by a fresh HTTP read.
+
+Realtime errors use `{ code, message }`: `connect_error.data` for namespace
+connection rejection and `realtime.error` before terminating an accepted connection.
+Codes: `AUTHENTICATION_REQUIRED`, `INVALID_ACCESS_TOKEN`, `ACCESS_TOKEN_EXPIRED`,
+`VALIDATION_ERROR`, `PROJECT_NOT_FOUND`, `RATE_LIMITED`, `INTERNAL_SERVER_ERROR`.
+Origin rejection occurs at the Engine.IO HTTP layer before namespace authentication.
+
+`project.unsubscribe` may request an acknowledgement: `{ ok: true }`.
+A payload is rejected with `VALIDATION_ERROR`, while still clearing the subscription.
+Subscriptions require exactly two UUID fields; unknown fields are rejected.
+A superseded subscription receives `PROJECT_NOT_FOUND`; it never restores an old room.
+
+Limits: five concurrent sockets/user; ten subscription attempts/ten seconds/socket,
+including invalid payloads. Failed initialization/disconnect releases the connection slot.
+The collection window is a fixed 150 ms; changes during dispatch cause a later flush.
+Each flush batch-checks current membership and active parents, then rechecks connection,
+verified expiry and subscription generation. Authorization failure emits a safe
+`INTERNAL_SERVER_ERROR` and disconnects affected sockets without sending trace data.
+Membership removal or parent archive emits `access.revoked`; demotion to MEMBER does not.
+
+Origin policy is defined in SECURITY.md. Same-origin polling GETs may omit Origin;
+the documented Fetch Metadata + Referer exception is deliberate.
+
+TSE-76 must subscribe after every connection, refetch after every successful acknowledgement,
+refetch on `traces.changed`, on visible focus and every 30 seconds while visible.
+Keep the applied dates/filters when refetching. Stop/re-subscribe when project changes.
+Treat revoked access as project unavailability; do not clear an otherwise valid login.
+Expired/invalid JWT requires the existing session-expiry behavior. A transport outage
+alone must preserve the session. Reconnect with bounded backoff; there is no event replay.
+Do not calculate totals from notifications, and do not change an in-flight assistant context.
 
 ### Assistant — TSE-80 / TSE-81
 
