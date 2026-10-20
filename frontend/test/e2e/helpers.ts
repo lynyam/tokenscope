@@ -8,6 +8,7 @@ export const fixtureBytes = (name: string) => readFileSync(fixturePath(name));
 
 const API = "/api/v1";
 const PASSWORD = "e2e-password-12345";
+export { PASSWORD as TEST_PASSWORD };
 const MIME: Record<string, string> = { pdf: "application/pdf", md: "text/markdown", txt: "text/plain" };
 let counter = 0;
 

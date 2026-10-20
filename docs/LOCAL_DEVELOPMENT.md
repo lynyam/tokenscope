@@ -404,13 +404,13 @@ Node 24, matching the development containers.
 
 The shared authentication, organization, membership and project integrations are present in the Sprint 1 baseline. Run the complete frontend suite when changing their shared transport or session behavior.
 
-New unit/component tests remain under `frontend/test/`. Real browser journeys belong under `frontend/test/e2e/` once browser-test infrastructure is introduced.
+New unit/component tests remain under `frontend/test/`.
 
-Browser tests use Playwright; see "Browser end-to-end tests" below.
+Browser tests use Playwright; see "Browser end-to-end tests" below. The API-key journeys display one-time plaintext secrets, so never enable traces, videos or screenshots for them.
 
 TSE-72 extends transport for multipart uploads, private binary responses and assistant streams while preserving current JSON callers.
 
-For TSE-74, document that the returned key must remain only in transient UI memory.
+API keys (TSE-74): the plaintext key returned at creation exists only in the page's transient disclosure state. It is never written to browser storage, URLs, logs or test artifacts. Unit tests use obviously fake placeholder keys.
 
 See `EVALUATION_ARCHITECTURE.md` for current integration boundaries and `SPRINT_1_ARCHITECTURE.md` for the existing client/session design.
 
@@ -906,3 +906,16 @@ and polling upgrade with actual browser-generated headers and two real accounts.
 The test archives its disposable organizations; it does not reset the development database.
 Test JWTs/API keys are not logged or recorded in Playwright artifacts.
 This verifies transport and notifications, not the dashboard chart refresh owned by TSE-76.
+
+### API-key browser tests — TSE-74
+
+Use the existing browser setup and trusted HTTPS instructions above. Import the
+canonical price catalogue using the same operator command documented for the
+Trace Explorer tests before running `api-keys.spec.ts`. Its setup checks that
+catalogue, and the main journey uses a canonical fixture with a unique external ID.
+
+Run `E2E_ARGS=api-keys.spec.ts make frontende2e` with the chosen `E2E_BASE_URL`.
+The key created in the UI must create a real trace, remain absent after closing
+and reloading the disclosure, and fail with `401 INVALID_API_KEY` after UI
+revocation. The suite also checks cross-project reads and archived parents.
+Keep plaintext out of shared test evidence, including error reports on failures.

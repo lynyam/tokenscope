@@ -602,6 +602,34 @@ Do not reuse older test totals as fresh evidence.
 | Browsers | Chrome, Firefox and Edge evidence |
 | Public pages | Accessible Privacy/Terms reflecting actual implementation |
 
+### API keys management UI — TSE-74
+
+Status: NOT RUN. These steps can be performed by hand. `frontend/test/e2e/api-keys.spec.ts` automates the same journey against a running stack (see [LOCAL_DEVELOPMENT.md](./LOCAL_DEVELOPMENT.md)); a skipped journey is not a pass.
+
+Use Alice (OWNER) and Bob (MEMBER) in two browser windows, as in section 3. Never record a real key: take screenshots before the key is displayed or with the key field hidden, and keep it out of notes, logs and shared recordings.
+
+| # | Steps | Expected |
+|---|---|---|
+| 1 | Alice opens `UI Demo Project` and selects **API keys** | The list loads; with no key it reads "No API keys yet." |
+| 2 | Alice creates a key named `Demo writer` | A dialog shows the full key once, with a Copy button and the scope wording |
+| 3 | Alice clicks **Copy** and pastes into a scratch editor | "Copied to clipboard." appears only after the clipboard accepted the key; the pasted value is complete |
+| 4 | Alice closes the dialog and reloads the page | The list shows the name, the prefix and `Active`; the full key appears nowhere |
+| 5 | Alice clicks **Revoke**, then **Cancel** | No request is sent (browser network tab) |
+| 6 | Alice clicks **Revoke**, then **Revoke key** | The row shows `Revoked` and a date after the list refresh |
+| 7 | Bob opens the same URL | A permission-denied message, no controls and no list request |
+| 8 | Alice archives the project and reopens the page | "Project not found." and no list request (the backend would answer 404 for an archived project) |
+| 9 | Before revocation, use the UI-created key to POST a canonical trace; after UI revocation, GET that trace with the same key | POST returns 201; the JWT project detail endpoint finds the trace in the intended project; after revocation the public GET returns 401 INVALID_API_KEY |
+| 10 | Alice creates a key, then presses Escape on the secret dialog | "Close without saving?" appears and the key stays visible; a second Escape goes back to the key |
+| 11 | With the secret dialog open, Alice clicks outside it, then **Close and discard** | The same confirmation appears; after **Close and discard** the key is gone and cannot be shown again |
+
+Public clients send the key in exactly one header. A JWT is not accepted there, and the key is not accepted on browser workspace routes (see [API.md](./API.md)). The public trace routes and interactive documentation at `/api/v1/public/docs` are available:
+
+```sh
+curl "$TOKENSCOPE_ORIGIN/api/v1/public/traces" -H "X-API-Key: <PROJECT_API_KEY>"
+```
+
+For each row record the commit SHA, the environment, PASS, FAIL, BLOCKED or NOT RUN, and safe evidence only.
+
 ### Canonical analytics fixture
 
 Use the full UTC day:

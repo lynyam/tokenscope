@@ -848,6 +848,14 @@ Do not automatically retry creation after an uncertain network outcome. List met
 
 Implementation status: TSE-67 implements key management and the reusable public authentication foundation. Trace operations belong to TSE-68/69.
 
+Frontend behavior — TSE-74:
+
+- The management page is `/organizations/:organizationId/projects/:projectId/api-keys`. It is available to OWNER and ADMIN of an active project. The role comes from `GET /organizations/:organizationId` (`currentUserRole`), never from the URL, storage or token. A MEMBER sees a denied state and the key list is not requested.
+- The plaintext `key` exists only in the page's transient disclosure state. Closing the dialog, leaving the route, changing project or session, or detecting access loss discards it. It is never written to the list, the URL, browser storage or logs.
+- A creation whose outcome is uncertain (network failure) is never retried automatically. The page reloads the list and asks the user to check it.
+- `403 INSUFFICIENT_ORGANIZATION_ROLE` clears the list and any secret and re-reads the role. `404` on the project or organization clears the page content. `404 API_KEY_NOT_FOUND` on revocation closes the dialog and reloads the list. `429` uses the shared `ApiError.retryAfterSeconds` value to disable deliberate retries until its deadline. No mutation is retried automatically.
+- The browser calls these management routes with the user's JWT. The key created here is only for the `X-API-Key` header of public trace routes; see [Authentication and route ownership](#authentication-and-route-ownership).
+
 Public authentication uses exactly one X-API-Key header containing a canonical tsk_ secret. Query parameters, JSON fields, cookies and bearer JWTs are not alternative API-key locations.
 
 Missing, malformed, unknown, revoked and archived-parent credentials return 401 INVALID_API_KEY with the same message.
