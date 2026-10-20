@@ -245,10 +245,8 @@ function ProjectDetail({ organizationId, projectId }: { organizationId: string; 
         </Link>
       </nav>
       <div className="rounded-lg border p-4">
-        <p className="text-sm text-muted-foreground">
-          Cost analytics.
-        </p>
-        <p className="text-sm text-muted-foreground">API keys and cost analytics.</p>
+        <h2 className="font-semibold">Coming soon</h2>
+        <p className="text-sm text-muted-foreground">Cost analytics.</p>
       </div>
     </section>
   );

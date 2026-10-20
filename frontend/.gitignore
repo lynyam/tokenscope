@@ -1,4 +1,0 @@
-
-# Playwright output may contain one-time API keys: never commit it.
-test-results/
-playwright-report/
