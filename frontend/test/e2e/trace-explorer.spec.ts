@@ -1,6 +1,7 @@
 import {
   expect,
   test,
+  type APIRequestContext,
   type BrowserContext,
   type Page,
 } from "@playwright/test";
@@ -17,7 +18,7 @@ import {
 } from "./helpers";
 import {
   GOLDEN_FROM, GOLDEN_TO, createApiKey, deletePublic, fixtureBodies, goldenSearch, ingest, ingestAll,
-  requireCatalogue, tracesPath, visibleExternalIds, type Ingested, type TraceBody,
+  replacePublic, requireCatalogue, tracesPath, visibleExternalIds, type Ingested, type TraceBody,
 } from "./trace-helpers";
 
 // Real frontend + backend + PostgreSQL. The golden and pagination fixtures are ingested through the real
@@ -240,7 +241,7 @@ test("an invalid link is rejected visibly and another tenant never sees the proj
   await other.close();
 });
 test(
-  "ADMIN and MEMBER read traces; a parent archive clears rows on refresh without logout",
+  "ADMIN and MEMBER read traces; a parent archive clears rows without a manual refresh and without logout",
   async ({ browser, baseURL, request }) => {
     // Use a separate project so archiving it cannot break other scenarios.
     const projectId = await createProject(
@@ -342,10 +343,7 @@ test(
       expect(archived.status()).toBe(204);
 
       for (const { page, user } of clients) {
-        // Current integration discovers remote access loss on HTTP refresh.
-        await page
-          .getByRole("button", { name: "Refresh", exact: true })
-          .click();
+        // The realtime notice (access.revoked) clears the protected content: no manual Refresh.
 
         await expect(
           page.getByText("This project is not available."),
@@ -392,3 +390,183 @@ test("deleting the last row of the last page recovers to the previous page", asy
   await expect(page.getByRole("link", { name: /^View trace / })).toHaveCount(25);
 });
 
+
+// ---- Realtime refresh of the real Explorer (TSE-87) ----
+// A receiving browser stays open on the real screen while a separate authorized client (the public API)
+// changes traces. Nothing below reloads, clicks Refresh or waits for a timer: the Explorer has no such trigger.
+
+const rtBody = (externalId: string, occurredAt: string): TraceBody =>
+  ({ ...fixtureBodies("traces-golden.json")[0], externalId, occurredAt });
+
+async function realtimeProject(request: APIRequestContext, name: string) {
+  const projectId = await createProject(request, owner, organizationId, name);
+  const key = await createApiKey(request, owner, organizationId, projectId);
+  return { projectId, key };
+}
+
+const LIST_READ = /\/projects\/[^/]+\/traces$/;
+const DETAIL_READ = /\/projects\/[^/]+\/traces\/[0-9a-f-]{36}$/;
+
+/** What a receiving page saw: realtime notices, HTTP reads of its own resource, WebSocket opens, full page loads. */
+function observeRealtime(page: Page, readPath: RegExp) {
+  const notices: number[] = [];
+  const noticeProjects = new Set<string>();
+  const reads: number[] = [];
+  const sockets: string[] = [];
+  let loads = 0;
+  const note = (text: string) => {
+    if (!text.includes("traces.changed")) return;
+    notices.push(Date.now());
+    for (const match of text.matchAll(/"projectId":"([0-9a-f-]{36})"/g)) noticeProjects.add(match[1]);
+  };
+  page.on("load", () => { loads += 1; });
+  page.on("websocket", socket => {
+    sockets.push(socket.url());
+    socket.on("framereceived", frame => note(String(frame.payload)));
+  });
+  page.on("response", response => {
+    const url = response.url();
+    if (!url.includes("/socket.io/") || !url.includes("transport=polling")) return;
+    response.text().then(note, () => { /* the page closed before the body arrived */ });
+  });
+  page.on("request", request => {
+    if (request.method() === "GET" && readPath.test(new URL(request.url()).pathname)) reads.push(Date.now());
+  });
+  return { notices, noticeProjects, reads, sockets, loads: () => loads };
+}
+type Observed = ReturnType<typeof observeRealtime>;
+
+/** The subscription is acknowledged once the page has read a second time (first load, then the acknowledgement). */
+const subscribed = (seen: Observed) =>
+  expect.poll(() => seen.reads.length, { message: "realtime subscription acknowledged" }).toBeGreaterThanOrEqual(2);
+
+/** The screen changed because a notice arrived and an HTTP read followed, never because of a reload. */
+function expectNoticeThenRead(seen: Observed, readsBefore: number) {
+  expect(seen.notices.length, "a traces.changed notice reached the page").toBeGreaterThan(0);
+  expect(seen.reads.length, "an HTTP read followed the notice").toBeGreaterThan(readsBefore);
+  expect(seen.loads(), "the page was never reloaded").toBe(1);
+}
+
+test("realtime: a matching ingestion updates the list, the count and the order without a reload", async ({ page, request }) => {
+  const { projectId, key } = await realtimeProject(request, "RT ingest");
+  await ingest(request, key, rtBody("rt-old", "2026-10-01T09:00:00.000Z"));
+  const seen = observeRealtime(page, LIST_READ);
+  await open(page, projectId);
+  await idsEqual(page, ["rt-old"]);
+  await expect(summary(page)).toHaveText("1 traces · Page 1 of 1");
+  await subscribed(seen);
+
+  const readsBefore = seen.reads.length;
+  await ingest(request, key, rtBody("rt-new", "2026-10-01T12:00:00.000Z"));
+  await idsEqual(page, ["rt-new", "rt-old"]); // server order: newest first
+  await expect(summary(page)).toHaveText("2 traces · Page 1 of 1");
+  expectNoticeThenRead(seen, readsBefore);
+  expect(seen.sockets.some(url => url.includes("/socket.io/")), "a WebSocket was opened").toBe(true);
+  await expect(page).toHaveURL(new RegExp(`from=${GOLDEN_FROM.replace(/:/g, "(:|%3A)")}`)); // applied period unchanged
+});
+
+test("realtime: a corrected trace updates the list row and an open detail", async ({ page, request }) => {
+  const { projectId, key } = await realtimeProject(request, "RT correct");
+  const created = await ingest(request, key, rtBody("rt-fix", "2026-10-01T10:00:00.000Z"));
+  const list = observeRealtime(page, LIST_READ);
+  await open(page, projectId);
+  await idsEqual(page, ["rt-fix"]);
+  await expect(page.getByText("$0.0018", { exact: true })).toBeVisible();
+
+  const detailPage = await page.context().newPage();
+  const detail = observeRealtime(detailPage, DETAIL_READ);
+  await detailPage.goto(`${tracesPath(organizationId, projectId)}/${created.id}`);
+  await expect(detailPage.getByText("$0.001800000000", { exact: true })).toBeVisible();
+  await subscribed(list);
+  await subscribed(detail);
+
+  const listBefore = list.reads.length;
+  const detailBefore = detail.reads.length;
+  await replacePublic(request, key, created, { ...rtBody("rt-fix", "2026-10-01T10:00:00.000Z"), inputTokens: 3000 });
+  await expect(page.getByText("$0.0038", { exact: true })).toBeVisible();
+  await expect(detailPage.getByText("$0.003800000000", { exact: true })).toBeVisible();
+  expectNoticeThenRead(list, listBefore);
+  expectNoticeThenRead(detail, detailBefore);
+});
+
+test("realtime: deleting the open trace clears the detail with a not-found state and keeps the session", async ({ page, request }) => {
+  const { projectId, key } = await realtimeProject(request, "RT delete open");
+  const created = await ingest(request, key, rtBody("rt-gone", "2026-10-01T10:00:00.000Z"));
+  const seen = observeRealtime(page, DETAIL_READ);
+  await signInPage(page, owner);
+  await page.goto(`${tracesPath(organizationId, projectId)}/${created.id}`);
+  await expect(page.getByText("Trace rt-gone")).toBeVisible();
+  await subscribed(seen);
+
+  const readsBefore = seen.reads.length;
+  await deletePublic(request, key, created);
+  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(page.getByText("Trace rt-gone")).toHaveCount(0);
+  await expect(page.getByTestId("trace-metadata")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "← Back to traces" })).toBeVisible();
+  expectNoticeThenRead(seen, readsBefore);
+  expect(await page.evaluate(() => Boolean(localStorage.getItem("tokenscope.accessToken")))).toBe(true);
+});
+
+
+test("realtime: a change in another project does not reach this Explorer", async ({ page, request }) => {
+  const mine = await realtimeProject(request, "RT mine");
+  const other = await realtimeProject(request, "RT other");
+  await ingest(request, mine.key, rtBody("mine-1", "2026-10-01T09:00:00.000Z"));
+  const seen = observeRealtime(page, LIST_READ);
+  await open(page, mine.projectId);
+  await idsEqual(page, ["mine-1"]);
+  await subscribed(seen);
+
+  await ingest(request, other.key, rtBody("other-1", "2026-10-01T10:00:00.000Z"));
+  // Positive control: a change of MY project still arrives, so the earlier silence is meaningful.
+  await ingest(request, mine.key, rtBody("mine-2", "2026-10-01T11:00:00.000Z"));
+  await idsEqual(page, ["mine-2", "mine-1"]);
+  expect([...seen.noticeProjects], "only notices of this project reached the page").toEqual([mine.projectId]);
+  expect(await visibleExternalIds(page)).not.toContain("other-1");
+});
+
+test("realtime: changes outside the applied filter and period stay excluded and the query is unchanged", async ({ page, request }) => {
+  const { projectId, key } = await realtimeProject(request, "RT excluded");
+  await ingest(request, key, { ...rtBody("f-err-1", "2026-10-01T10:00:00.000Z"), status: "ERROR" });
+  const seen = observeRealtime(page, LIST_READ);
+  await open(page, projectId, goldenSearch("&status=ERROR"));
+  await idsEqual(page, ["f-err-1"]);
+  await subscribed(seen);
+  const urlBefore = page.url();
+
+  const readsBefore = seen.reads.length;
+  await ingest(request, key, rtBody("f-ok", "2026-10-01T10:30:00.000Z")); // SUCCESS: excluded by the status filter
+  await ingest(request, key, { ...rtBody("f-late", "2026-10-05T10:00:00.000Z"), status: "ERROR" }); // outside the period
+  await ingest(request, key, { ...rtBody("f-err-2", "2026-10-01T11:00:00.000Z"), status: "ERROR" }); // positive control
+  await idsEqual(page, ["f-err-2", "f-err-1"]);
+  await expect(summary(page)).toHaveText("2 traces · Page 1 of 1");
+  expect(await visibleExternalIds(page)).not.toContain("f-ok");
+  expect(await visibleExternalIds(page)).not.toContain("f-late");
+  expect(page.url(), "the applied query is unchanged").toBe(urlBefore);
+  expectNoticeThenRead(seen, readsBefore);
+});
+
+test("realtime: switching projects while a notice is pending never shows the old project", async ({ page, request }) => {
+  const a = await realtimeProject(request, "RT switch A");
+  const b = await realtimeProject(request, "RT switch B");
+  await ingest(request, a.key, rtBody("a-1", "2026-10-01T09:00:00.000Z"));
+  await ingest(request, b.key, rtBody("b-1", "2026-10-01T09:30:00.000Z"));
+  const seen = observeRealtime(page, LIST_READ);
+  await open(page, a.projectId);
+  await idsEqual(page, ["a-1"]);
+  await subscribed(seen);
+
+  await ingest(request, a.key, rtBody("a-2", "2026-10-01T10:00:00.000Z")); // a notice for A is on its way...
+  await page.evaluate(path => { // ...and the person moves to B inside the app (no reload)
+    window.history.pushState({}, "", path);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, tracesPath(organizationId, b.projectId, goldenSearch()));
+  await idsEqual(page, ["b-1"]);
+
+  // Positive control in the new project: it is subscribed and refreshes, and nothing of A ever shows.
+  await ingest(request, b.key, rtBody("b-2", "2026-10-01T11:00:00.000Z"));
+  await idsEqual(page, ["b-2", "b-1"]);
+  await expect(page.getByText(/^a-[12]$/)).toHaveCount(0);
+  expect(seen.loads(), "the page was never reloaded").toBe(1);
+});
