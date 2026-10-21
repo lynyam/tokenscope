@@ -12,7 +12,7 @@
 // - A transport failure alone never invalidates the session.
 import { io } from "socket.io-client";
 import {
-  getAccessToken,
+  isAuthSessionCurrent,
   getAuthSessionSnapshot,
   invalidateAuthSession,
   subscribeToAuthInvalidation,
@@ -34,6 +34,8 @@ export interface RealtimeListener {
 /** The small part of a Socket.IO client socket that this module uses. */
 export interface RealtimeSocket {
   on(event: string, listener: (...args: unknown[]) => void): unknown;
+  active?: boolean;
+  connected?: boolean;
   connect(): unknown;
   disconnect(): unknown;
   timeout(ms: number): {
@@ -52,6 +54,7 @@ const AUTH_ERROR_CODES = new Set(["AUTHENTICATION_REQUIRED", "INVALID_ACCESS_TOK
 const defaultFactory: RealtimeSocketFactory = auth =>
   io("/realtime", {
     path: "/socket.io",
+    autoConnect: false,
     auth,
     transports: ["polling", "websocket"],
     reconnection: true,
@@ -110,6 +113,7 @@ class ProjectConnection {
   add(listener: RealtimeListener): () => void {
     this.listeners.add(listener);
     listener.onState(this.state);
+    if (this.subscribed && this.isCurrent()) listener.onSynced();
     return () => {
       this.listeners.delete(listener);
       if (this.listeners.size === 0) {
@@ -121,22 +125,24 @@ class ProjectConnection {
 
   start(): void {
     if (this.session.token === null) { this.stopWithState("unavailable"); return; }
-    this.stopAuthWatch = subscribeToAuthInvalidation(() => this.close()); // signed out: clean up
+    this.stopAuthWatch = subscribeToAuthInvalidation(() => this.stopWithState("unavailable")); // signed out: clean up
     window.addEventListener("online", this.handleOnline);
     window.addEventListener("offline", this.handleOffline);
 
-    const socket = socketFactory(callback => callback({ token: getAccessToken() }));
+    const socket = socketFactory(callback => {
+      if (this.isCurrent()) callback({ token: this.session.token });
+    });
     this.socket = socket;
     this.setState(navigator.onLine === false ? "offline" : "connecting");
 
     socket.on("connect", () => {
-      if (this.closed) return;
+      if (!this.isCurrent()) return;
       this.subscribed = false;
       this.generation += 1;
       this.subscribe(this.generation);
     });
     socket.on("disconnect", reason => {
-      if (this.closed) return;
+      if (!this.isCurrent()) return;
       this.generation += 1; // answers to the old subscription are ignored
       this.subscribed = false;
       this.clearRetry();
@@ -145,39 +151,49 @@ class ProjectConnection {
       if (reason === "io server disconnect") this.scheduleReconnect();
     });
     socket.on("connect_error", error => {
-      if (this.closed) return;
+      if (!this.isCurrent()) return;
       const code = errorCode(error);
       if (code !== undefined && AUTH_ERROR_CODES.has(code)) { this.authFailed(); return; }
       if (code === "PROJECT_NOT_FOUND") { this.revoked(); return; }
-      // Network or server trouble: the session is still valid. Socket.IO retries by itself.
       this.setState(navigator.onLine === false ? "offline" : "reconnecting");
+      // A namespace middleware rejection disables Socket.IO's automatic retry.
+      // Transport failures (active=true) remain owned by Socket.IO.
+      if (socket.active === false) this.scheduleReconnect();
     });
     socket.on("realtime.error", payload => {
-      if (this.closed) return;
+      if (!this.isCurrent()) return;
       const code = errorCode(payload);
       if (code !== undefined && AUTH_ERROR_CODES.has(code)) this.authFailed();
       // Other codes: the server closes the connection next; the disconnect handler recovers.
     });
     socket.on("traces.changed", payload => {
-      if (this.closed || !this.subscribed) return;
+      if (!this.isCurrent() || !this.subscribed) return;
       if (!isRecord(payload) || payload.projectId !== this.projectId) return; // another project
       for (const listener of [...this.listeners]) listener.onChanged();
     });
     socket.on("access.revoked", payload => {
-      if (this.closed) return;
+      if (!this.isCurrent()) return;
       if (!isRecord(payload) || payload.projectId !== this.projectId) return;
       this.revoked();
     });
+    socket.connect();
+  }
+
+  isCurrent(): boolean {
+    if (this.closed) return false;
+    if (isAuthSessionCurrent(this.session)) return true;
+    this.stopWithState("unavailable");
+    return false;
   }
 
   private subscribe(generation: number): void {
     const socket = this.socket;
-    if (!socket || this.closed) return;
+    if (!socket || !this.isCurrent() || navigator.onLine === false) return;
     socket
       .timeout(SUBSCRIBE_TIMEOUT_MS)
       .emit("project.subscribe", { organizationId: this.organizationId, projectId: this.projectId }, (error, ack) => {
-        if (this.closed || generation !== this.generation) return; // an old attempt
-        if (!error && isRecord(ack) && ack.ok === true) {
+        if (!this.isCurrent() || generation !== this.generation) return; // an old attempt
+        if (!error && isRecord(ack) && ack.ok === true && ack.projectId === this.projectId) {
           this.subscribed = true;
           this.attempts = 0;
           this.setState("live"); // only now
@@ -193,7 +209,7 @@ class ProjectConnection {
         const delay = backoffDelayMs(this.attempts++);
         this.retryTimer = setTimeout(() => {
           this.retryTimer = null;
-          if (!this.closed && generation === this.generation) this.subscribe(generation);
+          if (this.isCurrent() && generation === this.generation) this.subscribe(generation);
         }, delay);
       });
   }
@@ -203,20 +219,27 @@ class ProjectConnection {
     const delay = backoffDelayMs(this.attempts++);
     this.retryTimer = setTimeout(() => {
       this.retryTimer = null;
-      if (!this.closed) this.socket?.connect();
+      if (this.isCurrent()) this.socket?.connect();
     }, delay);
   }
 
   private readonly handleOffline = () => {
-    if (this.closed || this.state === "unavailable") return;
+    if (!this.isCurrent() || this.state === "unavailable") return;
+    this.generation += 1;
+    this.subscribed = false;
+    this.clearRetry();
     this.setState("offline");
   };
 
   private readonly handleOnline = () => {
-    if (this.closed || this.state === "unavailable") return;
+    if (!this.isCurrent() || this.state === "unavailable") return;
     this.setState(this.subscribed ? "live" : "reconnecting");
     // The browser is back: do not wait for the next backoff step.
-    if (!this.subscribed) { this.clearRetry(); this.socket?.connect(); }
+    if (!this.subscribed) {
+      this.clearRetry();
+      if (this.socket?.connected) this.subscribe(++this.generation);
+      else this.socket?.connect();
+    }
   };
 
   private authFailed(): void {
@@ -277,8 +300,9 @@ export function subscribeToProjectRealtime(
   projectId: string,
   listener: RealtimeListener,
 ): () => void {
-  const key = organizationId + "/" + projectId;
+  const key = organizationId + "/" + projectId + "/" + getAuthSessionSnapshot().revision;
   let connection = connections.get(key);
+  if (connection && !connection.isCurrent()) connection = undefined;
   let created = false;
   if (!connection) {
     const fresh: ProjectConnection = new ProjectConnection(organizationId, projectId, () => {

@@ -36,12 +36,13 @@ export function resolvePreset(preset: PeriodPreset, now: Date = new Date()): Das
   };
 }
 
-const DATETIME_LOCAL = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
+const DATETIME_LOCAL = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?$/;
 
 // <input type="datetime-local"> gives "2026-10-05T14:30". It is read as UTC.
 function toInstantText(value: string): string {
   const text = value.trim();
-  return DATETIME_LOCAL.test(text) ? text + ":00.000Z" : text;
+  if (!DATETIME_LOCAL.test(text)) return text;
+  return text.length === 16 ? text + ":00.000Z" : text + "Z";
 }
 
 /**

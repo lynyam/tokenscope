@@ -18,12 +18,12 @@ export type RefreshKind = "coalesced" | "immediate";
 export type RefreshSchedulerOptions = {
   run: (signal: AbortSignal) => Promise<void>;
   coalesceMs?: number;
+  notBefore?: () => number;
   maxWaitMs?: number;
   // Cooldown in ms after a failed run, or undefined for "no cooldown".
   getCooldownMs?: (error: unknown) => number | undefined;
 };
 
-const MAX_COOLDOWN_MS = 5 * 60 * 1000;
 const DEFAULT_429_COOLDOWN_MS = 5000;
 
 function defaultCooldownMs(error: unknown): number | undefined {
@@ -33,7 +33,7 @@ function defaultCooldownMs(error: unknown): number | undefined {
     statusCode?: unknown;
   };
   if (typeof retryAfterSeconds === "number" && Number.isFinite(retryAfterSeconds)) {
-    return Math.min(Math.max(retryAfterSeconds, 1) * 1000, MAX_COOLDOWN_MS);
+    return Math.max(retryAfterSeconds, 0) * 1000;
   }
   return statusCode === 429 ? DEFAULT_429_COOLDOWN_MS : undefined;
 }
@@ -42,6 +42,7 @@ export class RefreshScheduler {
   private readonly runRequest: (signal: AbortSignal) => Promise<void>;
   private readonly coalesceMs: number;
   private readonly maxWaitMs: number;
+  private readonly notBefore: () => number;
   private readonly getCooldownMs: (error: unknown) => number | undefined;
 
   private controller: AbortController | null = null;
@@ -57,6 +58,7 @@ export class RefreshScheduler {
     this.runRequest = options.run;
     this.coalesceMs = options.coalesceMs ?? 250;
     this.maxWaitMs = options.maxWaitMs ?? 1000;
+    this.notBefore = options.notBefore ?? (() => 0);
     this.getCooldownMs = options.getCooldownMs ?? defaultCooldownMs;
   }
 
@@ -98,7 +100,7 @@ export class RefreshScheduler {
       kind === "immediate"
         ? now
         : Math.min(now + this.coalesceMs, this.firstPendingAt + this.maxWaitMs);
-    const target = Math.max(wanted, this.cooldownUntil);
+    const target = Math.max(wanted, this.cooldownUntil, this.notBefore());
 
     this.clearTimer();
     this.timer = setTimeout(() => this.fire(), Math.max(0, target - now));

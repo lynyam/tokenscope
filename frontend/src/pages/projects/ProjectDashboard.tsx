@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { getAuthSessionSnapshot, isAuthSessionCurrent } from "../../api/auth-session";
+import { parseTraceSearchParams, serializeTraceFilters, commonFilters } from "../../api/trace-filters";
+import { classifyTraceFailure } from "./trace-failure";
 import { isAbortError } from "../../api/http-client";
 import { getModelChoices } from "../../api/traces.api";
 import {
@@ -53,31 +56,47 @@ const DEFAULT_PRESET: PeriodPreset = "7d";
 
 type PeriodState = { period: DashboardPeriod; preset: PeriodPreset | "custom" };
 
-function initialSelection(organizationId: string, projectId: string) {
-  const period = resolvePreset(DEFAULT_PRESET);
-  const result = buildAppliedSelection(organizationId, projectId, period, EMPTY_FILTER_DRAFT);
-  if (!result.ok) throw new Error("The default selection must be valid.");
-  return { period, selection: result.selection };
-}
 
 export function ProjectDashboard({ organizationId, projectId, renderExtras, onUnavailable }: Props) {
-  // Lazy: the default period is resolved ONCE, to explicit dates.
-  const [initial] = useState(() => initialSelection(organizationId, projectId));
-  const [periodState, setPeriodState] = useState<PeriodState>({ period: initial.period, preset: DEFAULT_PRESET });
-  const [draft, setDraft] = useState<FilterDraft>(EMPTY_FILTER_DRAFT);
-  const [applied, setApplied] = useState<AppliedSelection>(initial.selection);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const search = searchParams.toString();
+  const parsed = useMemo(() => parseTraceSearchParams(new URLSearchParams(search)), [search]);
+  const applied = useMemo<AppliedSelection | null>(() => {
+    if (!parsed.ok) return null;
+    const { from, to, ...filters } = commonFilters(parsed.query);
+    return { organizationId, projectId, from, to, filters };
+  }, [parsed, organizationId, projectId]);
+  const [periodState, setPeriodState] = useState<PeriodState>(() => ({
+    period: applied ?? resolvePreset(DEFAULT_PRESET), preset: applied && search ? "custom" : DEFAULT_PRESET,
+  }));
+  const [draft, setDraft] = useState<FilterDraft>(() => ({ ...EMPTY_FILTER_DRAFT, ...applied?.filters }));
+  const draftRef = useRef(draft);
   const [errors, setErrors] = useState<string[]>([]);
   const [revoked, setRevoked] = useState(false);
+  const [controlsEpoch, setControlsEpoch] = useState(0);
+
+  useEffect(() => {
+    if (!applied) return;
+    const canonical = serializeTraceFilters({ from: applied.from, to: applied.to, ...applied.filters });
+    if (canonical.toString() !== search) setSearchParams(canonical, { replace: true });
+    const nextDraft = { ...EMPTY_FILTER_DRAFT, ...applied.filters };
+    draftRef.current = nextDraft;
+    setDraft(nextDraft);
+    setErrors([]);
+    setPeriodState(previous => previous.period.from === applied.from && previous.period.to === applied.to
+      ? previous : { period: { from: applied.from, to: applied.to }, preset: "custom" });
+  }, [applied, search, setSearchParams]);
 
   /** Applies a new selection only when it is valid; otherwise explains why and requests nothing. */
   const commit = useCallback((period: PeriodState, nextDraft: FilterDraft) => {
     const result = buildAppliedSelection(organizationId, projectId, period.period, nextDraft);
+    draftRef.current = nextDraft;
     setDraft(nextDraft);
     if (!result.ok) { setErrors(result.errors); return; }
     setErrors([]);
     setPeriodState(period);
-    setApplied(result.selection);
-  }, [organizationId, projectId]);
+    setSearchParams(serializeTraceFilters({ from: result.selection.from, to: result.selection.to, ...result.selection.filters }));
+  }, [organizationId, projectId, setSearchParams]);
 
   const analytics = useProjectAnalytics(revoked ? null : applied);
   const unavailable = revoked || analytics.status === "unavailable";
@@ -87,20 +106,22 @@ export function ProjectDashboard({ organizationId, projectId, renderExtras, onUn
     // After every acknowledged subscription: there is no event replay, so read again.
     onSynced: analytics.notifyChanged,
     onRevoked: () => setRevoked(true),
-  }, !unavailable);
+  }, !unavailable && applied !== null);
 
   useEffect(() => { if (unavailable) onUnavailable?.(); }, [unavailable, onUnavailable]);
 
   const [choices, setChoices] = useState<ChoicesState>({ phase: "loading" });
   const [choicesAttempt, setChoicesAttempt] = useState(0);
   useEffect(() => {
+    if (unavailable) return;
     const controller = new AbortController();
+    const session = getAuthSessionSnapshot();
     setChoices({ phase: "loading" });
     getModelChoices(controller.signal)
-      .then(result => { if (!controller.signal.aborted) setChoices({ phase: "ready", choices: result }); })
-      .catch(error => { if (!controller.signal.aborted && !isAbortError(error)) setChoices({ phase: "error" }); });
+      .then(result => { if (!controller.signal.aborted && isAuthSessionCurrent(session)) setChoices({ phase: "ready", choices: result }); })
+      .catch(error => { if (!controller.signal.aborted && isAuthSessionCurrent(session) && !isAbortError(error)) setChoices({ phase: "error", failure: classifyTraceFailure(error) }); });
     return () => controller.abort();
-  }, [choicesAttempt]);
+  }, [choicesAttempt, unavailable]);
 
   if (unavailable) {
     return (
@@ -114,13 +135,13 @@ export function ProjectDashboard({ organizationId, projectId, renderExtras, onUn
   }
 
   const { status, snapshot, failure } = analytics;
-  const handoff: DashboardHandoff = {
+  const handoff: DashboardHandoff | null = applied ? {
     selection: applied,
     snapshot,
     status,
     selectionState: toAssistantSelectionState(status, snapshot),
-    exportEnabled: snapshot !== null,
-  };
+    exportEnabled: snapshot !== null && status !== "error" && status !== "unavailable",
+  } : null;
 
   return (
     <section aria-label="Analytics" className="space-y-4">
@@ -132,12 +153,16 @@ export function ProjectDashboard({ organizationId, projectId, renderExtras, onUn
         </p>
       </div>
 
+      <p className="text-sm text-muted-foreground">
+        Live refreshes changes within the exact applied period. The period does not move automatically.
+      </p>
       <DashboardControls
+        key={controlsEpoch}
         period={periodState.period}
         preset={periodState.preset}
         filters={draft}
         choices={choices}
-        errors={errors}
+        errors={parsed.ok ? errors : parsed.errors}
         refreshing={status === "updating" || status === "loading"}
         onPreset={preset => commit({ period: resolvePreset(preset), preset }, draft)}
         onApplyCustom={(from, to) => {
@@ -146,8 +171,9 @@ export function ProjectDashboard({ organizationId, projectId, renderExtras, onUn
           commit({ period: custom.period, preset: "custom" }, draft);
           return null;
         }}
-        onFilterChange={patch => commit(periodState, { ...draft, ...patch })}
+        onFilterChange={patch => commit(periodState, { ...draftRef.current, ...patch })}
         onReset={() => {
+          setControlsEpoch(value => value + 1);
           const preset = DEFAULT_PRESET;
           commit({ period: resolvePreset(preset), preset }, EMPTY_FILTER_DRAFT);
         }}
@@ -176,7 +202,7 @@ export function ProjectDashboard({ organizationId, projectId, renderExtras, onUn
         </>
       )}
 
-      {renderExtras?.(handoff)}
+      {handoff && renderExtras?.(handoff)}
     </section>
   );
 }

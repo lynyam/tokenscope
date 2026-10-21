@@ -166,3 +166,11 @@ describe("getAnalytics", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+it("rejects fractional token totals without imposing an undocumented model-group cap", async () => {
+  fetchMock.mockResolvedValueOnce(json({ ...golden, summary: { ...golden.summary, inputTokens: "1.5" } }));
+  await expect(getAnalytics(selection)).rejects.toMatchObject({ code: "INVALID_API_RESPONSE" });
+  const byModel = Array.from({ length: 1001 }, (_, i) => ({ ...golden.byModel[0], model: `model-${i}` }));
+  fetchMock.mockResolvedValueOnce(json({ ...golden, byModel }));
+  expect((await getAnalytics(selection)).byModel).toHaveLength(1001);
+});

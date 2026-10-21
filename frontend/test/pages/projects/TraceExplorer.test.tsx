@@ -6,6 +6,7 @@ import { listTraces, getModelChoices } from "@/api/traces.api";
 import { ApiError } from "@/api/http-client";
 import { notifyProjectsChanged } from "@/api/project-events";
 import type { Trace, TracePage } from "@/types/trace.types";
+import { saveAccessToken } from "@/api/auth-session";
 
 vi.mock("@/api/traces.api", () => ({ listTraces: vi.fn(), getTrace: vi.fn(), getModelChoices: vi.fn() }));
 
@@ -210,6 +211,9 @@ it("hides old rows when the query changes but keeps them on a same-query refresh
   fireEvent.change(screen.getByLabelText("Status"), { target: { value: "ERROR" } });
   await waitFor(() => expect(screen.queryByText("First")).not.toBeInTheDocument());
   expect(screen.getByText("Loading traces…")).toBeInTheDocument();
+  await act(async () => {
+    changed.resolve(page([]));
+  });
 });
 
 it("recovers an out-of-range page once through a replace", async () => {
@@ -264,10 +268,132 @@ it("shows an unavailable state for a missing project and when it is archived her
 });
 
 it("keeps the list usable when the catalogue fails", async () => {
-  choicesMock.mockRejectedValue(new ApiError(500, "X", "boom"));
+  choicesMock.mockRejectedValue(new ApiError(500, "X", "boom", undefined, "req-catalogue"),);
   listMock.mockResolvedValue(page([]));
   renderAt(path("p1"));
+
+  // Catalogue loading fails asynchronously.
+  // Wait until React displays the resulting error and request ID.
+  expect(
+    await screen.findByText("Request ID: req-catalogue"),
+  ).toBeInTheDocument();
   expect(await screen.findByText("Provider and model choices could not be loaded.")).toBeInTheDocument();
   expect(await screen.findByText("No traces match this period and these filters.")).toBeInTheDocument();
   within(screen.getByLabelText("Trace filters")).getByRole("button", { name: "Retry choices" });
+});
+it("preserves exact milliseconds when applying an unchanged period", async () => {
+  listMock.mockResolvedValue(page([]));
+  renderAt(path("p1", GOLDEN.replaceAll(".000Z", ".123Z")));
+
+  await screen.findByText(
+    "No traces match this period and these filters.",
+  );
+
+  fireEvent.click(
+    screen.getByRole("button", { name: "Apply period" }),
+  );
+
+  expect(
+    new URLSearchParams(url().split("?")[1]).get("from"),
+  ).toBe("2026-10-01T00:00:00.123Z");
+
+  expect(listMock).toHaveBeenCalledTimes(1);
+});
+
+it("Reset cancels unapplied search and workflow drafts", async () => {
+  listMock.mockResolvedValue(page([]));
+  renderAt(path("p1"));
+
+  await screen.findByText(
+    "No traces match this period and these filters.",
+  );
+
+  vi.useFakeTimers();
+
+  fireEvent.change(screen.getByLabelText("Search"), {
+    target: { value: "stale" },
+  });
+  fireEvent.change(screen.getByLabelText("Workflow"), {
+    target: { value: "stale-work" },
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: "Reset" }));
+
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(400);
+  });
+
+  expect(lastQuery().q).toBeUndefined();
+  expect(lastQuery().workflow).toBeUndefined();
+  expect(screen.getByLabelText("Search")).toHaveValue("");
+  expect(screen.getByLabelText("Workflow")).toHaveValue("");
+});
+
+it("changing filters cannot bypass the rate-limit deadline", async () => {
+  vi.useFakeTimers();
+
+  listMock.mockRejectedValue(
+    new ApiError(
+      429, "RATE_LIMITED", "slow",
+      undefined, "req-limit", 3,
+    ),
+  );
+
+  renderAt(path("p1"));
+
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1_000);
+  });
+
+  fireEvent.change(screen.getByLabelText("Status"), {
+    target: { value: "ERROR" },
+  });
+
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(0);
+  });
+
+  expect(listMock).toHaveBeenCalledTimes(1);
+  expect(
+    screen.getByRole("button", { name: "Retry in 2s" }),
+  ).toBeDisabled();
+  expect(
+    screen.getByText("Request ID: req-limit"),
+  ).toBeInTheDocument();
+
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(2_000);
+  });
+
+  expect(listMock).toHaveBeenCalledTimes(1);
+
+  listMock.mockResolvedValueOnce(page([]));
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(0);
+  });
+
+  expect(lastQuery().status).toBe("ERROR");
+  expect(listMock).toHaveBeenCalledTimes(2);
+});
+
+it("discards a response from a superseded login", async () => {
+  saveAccessToken("session-a");
+
+  const pending = deferred<TracePage>();
+  listMock.mockReturnValueOnce(pending.promise);
+  renderAt(path("p1"));
+
+  saveAccessToken("session-b");
+
+  await act(async () => {
+    pending.resolve(
+      page([trace(1, { workflow: "old-private-data" })]),
+    );
+  });
+
+  expect(
+    screen.queryByText("old-private-data"),
+  ).not.toBeInTheDocument();
 });

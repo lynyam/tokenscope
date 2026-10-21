@@ -203,14 +203,7 @@ export function parseTraceSearchParams(params: URLSearchParams, now: Date = new 
  * Always built through URLSearchParams so user text can never inject another parameter.
  */
 export function serializeTraceQuery(query: TraceListQuery): URLSearchParams {
-  const params = new URLSearchParams();
-  params.set("from", query.from);
-  params.set("to", query.to);
-  if (query.q) params.set("q", query.q);
-  if (query.provider) params.set("provider", query.provider);
-  if (query.model) params.set("model", query.model);
-  if (query.workflow) params.set("workflow", query.workflow);
-  if (query.status) params.set("status", query.status);
+  const params = serializeTraceFilters(query);
   if (query.sortBy !== DEFAULT_SORT_BY) params.set("sortBy", query.sortBy);
   if (query.sortOrder !== DEFAULT_SORT_ORDER) params.set("sortOrder", query.sortOrder);
   if (query.page !== 1) params.set("page", String(query.page));
@@ -220,6 +213,16 @@ export function serializeTraceQuery(query: TraceListQuery): URLSearchParams {
 
 /** The backend request: every applied value is explicit, so server defaults can never differ from the screen. */
 export function traceQueryToApiParams(query: TraceListQuery): URLSearchParams {
+  const params = serializeTraceFilters(query);
+  params.set("sortBy", query.sortBy);
+  params.set("sortOrder", query.sortOrder);
+  params.set("page", String(query.page));
+  params.set("pageSize", String(query.pageSize));
+  return params;
+}
+
+/** Shared scope only: Explorer, analytics, and dashboard navigation use identical encoding. */
+export function serializeTraceFilters(query: TraceFilters): URLSearchParams {
   const params = new URLSearchParams();
   params.set("from", query.from);
   params.set("to", query.to);
@@ -228,9 +231,5 @@ export function traceQueryToApiParams(query: TraceListQuery): URLSearchParams {
   if (query.model) params.set("model", query.model);
   if (query.workflow) params.set("workflow", query.workflow);
   if (query.status) params.set("status", query.status);
-  params.set("sortBy", query.sortBy);
-  params.set("sortOrder", query.sortOrder);
-  params.set("page", String(query.page));
-  params.set("pageSize", String(query.pageSize));
   return params;
 }

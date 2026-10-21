@@ -404,13 +404,13 @@ Node 24, matching the development containers.
 
 The shared authentication, organization, membership and project integrations are present in the Sprint 1 baseline. Run the complete frontend suite when changing their shared transport or session behavior.
 
-New unit/component tests remain under `frontend/test/`. Real browser journeys belong under `frontend/test/e2e/` once browser-test infrastructure is introduced.
+New unit/component tests remain under `frontend/test/`.
 
-Browser tests use Playwright; see "Browser end-to-end tests" below.
+Browser tests use Playwright; see "Browser end-to-end tests" below. The API-key journeys display one-time plaintext secrets, so never enable traces, videos or screenshots for them.
 
 TSE-72 extends transport for multipart uploads, private binary responses and assistant streams while preserving current JSON callers.
 
-For TSE-74, document that the returned key must remain only in transient UI memory.
+API keys (TSE-74): the plaintext key returned at creation exists only in the page's transient disclosure state. It is never written to browser storage, URLs, logs or test artifacts. Unit tests use obviously fake placeholder keys.
 
 See `EVALUATION_ARCHITECTURE.md` for current integration boundaries and `SPRINT_1_ARCHITECTURE.md` for the existing client/session design.
 
@@ -834,8 +834,9 @@ make frontendtest
 docker compose exec frontend npm run build
 ```
 
-The screen is read-only and uses only existing backend endpoints. Contract, shared filters and limitations:
-`docs/FRONTEND_TRACE_EXPLORER.md`.
+The screen is read-only and uses existing backend endpoints documented in
+`docs/API.md`. Shared filters and integration limitations are documented in
+`docs/EVALUATION_ARCHITECTURE.md`, “Frontend Trace Explorer integration — TSE-75”.
 
 ### Trace Explorer browser tests
 
@@ -858,3 +859,98 @@ docker compose exec backend sh -c 'npm run build >/dev/null && npm run pricing:l
 ```
 
 The loader is idempotent. When the catalogue is missing, the suite stops at its first step with this pointer.
+
+## Realtime development and HTTPS verification — TSE-73
+
+Set this in the root `.env` (adapt exact origins when changing ports):
+
+```dotenv
+REALTIME_ALLOWED_ORIGINS=http://localhost:5173,https://localhost:8443
+```
+
+Recreate the backend after changing environment variables. `make up` uses the Vite
+proxy; `make eval-up` rebuilds the existing Caddy deployment. Both forward `/socket.io`
+for polling and WebSocket upgrades without exposing another backend port.
+Caddy compression stays in the frontend-only handler so API ETags remain unchanged.
+
+Backend verification: `make test-backend` runs unit, real-transport and guarded PostgreSQL tests.
+The 100-write burst test uses real ingestion transactions directly because 100 HTTP
+requests from one IP would exceed the separate public API quota of 60/minute.
+
+Browser proxy verification uses the test-only Socket.IO bundle installed under backend/node_modules.
+Run `npm ci` in backend and frontend on the host, then `npx playwright install chromium`
+in frontend. No production frontend dependency is added by TSE-73.
+
+Load the synthetic catalogue explicitly before running browser QA:
+
+```sh
+docker compose cp fixtures/evaluation/model-prices.json backend:/tmp/model-prices.json
+docker compose exec -T backend npm run pricing:load -- --file /tmp/model-prices.json
+```
+
+With the database health endpoint returning 200, run from frontend:
+
+```sh
+E2E_BASE_URL=http://localhost:5173 npm run test:e2e -- realtime.spec.ts
+```
+
+After `make eval-up`, trust the evaluation CA as described above. Then run from frontend:
+
+```sh
+NODE_EXTRA_CA_CERTS="$PWD/../.local/eval/caddy-root.crt" \
+E2E_BASE_URL=https://localhost:8443 npm run test:e2e -- realtime.spec.ts
+```
+
+Do not disable certificate verification. The three cases cover polling-only, WebSocket-only
+and polling upgrade with actual browser-generated headers and two real accounts.
+The test archives its disposable organizations; it does not reset the development database.
+Test JWTs/API keys are not logged or recorded in Playwright artifacts.
+This verifies transport and notifications, not the dashboard chart refresh owned by TSE-76.
+
+### API-key browser tests — TSE-74
+
+Use the existing browser setup and trusted HTTPS instructions above. Import the
+canonical price catalogue using the same operator command documented for the
+Trace Explorer tests before running `api-keys.spec.ts`. Its setup checks that
+catalogue, and the main journey uses a canonical fixture with a unique external ID.
+
+Run `E2E_ARGS=api-keys.spec.ts make frontende2e` with the chosen `E2E_BASE_URL`.
+The key created in the UI must create a real trace, remain absent after closing
+and reloading the disclosure, and fail with `401 INVALID_API_KEY` after UI
+revocation. The suite also checks cross-project reads and archived parents.
+Keep plaintext out of shared test evidence, including error reports on failures.
+
+
+### Dashboard tests — TSE-76
+
+The frontend Compose service mounts `fixtures/evaluation` read-only at `/fixtures/evaluation`
+so the same golden JSON files work for Vitest on the host and inside `/app`.
+Do not copy fixture values into another frontend-owned catalogue.
+
+After starting development mode, run from the repository root:
+
+```sh
+make frontendcheck
+make frontendtest
+docker compose exec -T frontend npm run build
+```
+
+Browser tests use the host runner and the existing explicit price-catalogue loading instructions.
+Load prices once into the running application database, then run:
+
+```sh
+cd frontend
+E2E_BASE_URL=http://localhost:5173 npm run test:e2e -- project-dashboard.spec.ts
+```
+
+For evaluation mode, rebuild with `make eval-up`, keep certificate validation enabled,
+and use the exported/trusted evaluation CA. From `frontend/`:
+
+```sh
+NODE_EXTRA_CA_CERTS="$PWD/../.local/eval/caddy-root.crt" \
+E2E_BASE_URL=https://localhost:8443 npm run test:e2e -- project-dashboard.spec.ts
+```
+
+Retain the Vite and Caddy `/socket.io` proxies already provided by TSE-73.
+Record the tested commit, mode, exact commands and results. A unit test does not prove HTTPS
+or real socket/browser integration. Full responsive validation remains tracked by TSE-88.

@@ -8,6 +8,7 @@ export const fixtureBytes = (name: string) => readFileSync(fixturePath(name));
 
 const API = "/api/v1";
 const PASSWORD = "e2e-password-12345";
+export { PASSWORD as TEST_PASSWORD };
 const MIME: Record<string, string> = { pdf: "application/pdf", md: "text/markdown", txt: "text/plain" };
 let counter = 0;
 
@@ -65,7 +66,7 @@ export async function apiGet(request: APIRequestContext, user: TestUser, url: st
 
 /** A browser context that is already signed in as this user (the app reads the token from storage). */
 export async function signedInContext(browser: Browser, baseURL: string | undefined, user: TestUser): Promise<BrowserContext> {
-  const context = await browser.newContext({ baseURL, ignoreHTTPSErrors: true, acceptDownloads: true });
+  const context = await browser.newContext({ baseURL, acceptDownloads: true });
   await context.addInitScript(token => localStorage.setItem("tokenscope.accessToken", token), user.token);
   return context;
 }

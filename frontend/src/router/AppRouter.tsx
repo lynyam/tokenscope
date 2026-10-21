@@ -20,6 +20,7 @@ import { TracesPage } from "../pages/projects/TracesPage";
 import { ProjectDashboardPage } from "../pages/projects/ProjectDashboardPage";
 import { TraceDetailPage } from "../pages/projects/TraceDetailPage";
 import { LandingPage } from "../pages/LandingPage";
+import { ApiKeysPage } from "../pages/projects/ApiKeysPage";
 
 //Root redirection
 // function RootRedirect() {
@@ -90,6 +91,10 @@ export function AppRouter()
                     <Route
                     path="/organizations/:organizationId/projects/:projectId/traces/:traceId"
                     element={<TraceDetailPage />}
+                    />
+                    <Route
+                        path="/organizations/:organizationId/projects/:projectId/api-keys"
+                        element={<ApiKeysPage />}
                     />
                 </Route>
 

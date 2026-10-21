@@ -1,5 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { saveAccessToken } from "@/api/auth-session";
 import { ApiError } from "@/api/http-client";
 import {
   ANALYTICS_REFRESH_INTERVAL_MS,
@@ -351,5 +352,48 @@ describe("toAssistantSelectionState", () => {
     expect(toAssistantSelectionState("updating", golden)).toBe("ready");
     expect(toAssistantSelectionState("stale", golden)).toBe("ready");
     expect(toAssistantSelectionState("ready", empty)).toBe("empty");
+  });
+});
+
+
+describe("develop integration regressions", () => {
+  it("does not accept a response from a superseded login", async () => {
+    saveAccessToken("old");
+    const pending = deferred();
+    mocked.mockReturnValueOnce(pending.promise);
+    const { result } = renderHook(() => useProjectAnalytics(selection));
+    await flush();
+    saveAccessToken("new");
+    pending.resolve(golden);
+    await flush();
+    expect(result.current.snapshot).toBeNull();
+  });
+
+  it("changing filters cannot bypass Retry-After", async () => {
+    mocked.mockRejectedValueOnce(new ApiError(429, "RATE_LIMITED", "slow", undefined, "req-limit", 20));
+    mocked.mockResolvedValue(golden);
+    const { result, rerender } = renderHook(({ s }) => useProjectAnalytics(s), { initialProps: { s: selection } });
+    await flush();
+    expect(result.current.failure).toMatchObject({ requestId: "req-limit" });
+    rerender({ s: other });
+    await flush(19_000);
+    expect(mocked).toHaveBeenCalledTimes(1);
+    await flush(1_000);
+    expect(mocked).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not fetch on realtime notifications while hidden or offline", async () => {
+    mocked.mockResolvedValue(golden);
+    const { result } = renderHook(() => useProjectAnalytics(selection));
+    await flush();
+    setVisibility("hidden");
+    act(() => result.current.notifyChanged());
+    await flush(1000);
+    expect(mocked).toHaveBeenCalledTimes(1);
+    setVisibility("visible");
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    act(() => result.current.notifyChanged());
+    await flush(1000);
+    expect(mocked).toHaveBeenCalledTimes(1);
   });
 });

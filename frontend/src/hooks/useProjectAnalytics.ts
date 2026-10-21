@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { analyticsSelectionKey, getAnalytics } from "../api/analytics.api";
 import { ApiError, isAbortError } from "../api/http-client";
+import { getAuthSessionSnapshot, isAuthSessionCurrent, subscribeToAuthInvalidation } from "../api/auth-session";
 import { RefreshScheduler } from "../lib/refresh-scheduler";
 import { classifyTraceFailure } from "../pages/projects/trace-failure";
 import type { AnalyticsSnapshot, AppliedSelection } from "../types/analytics.types";
 
 export const ANALYTICS_REFRESH_INTERVAL_MS = 30_000;
 
-export type AnalyticsFailure =
+export type AnalyticsFailure = { requestId?: string } & (
   | { kind: "validation"; message: string }
   | { kind: "rate-limit"; message: string; retryAfterSeconds: number }
-  | { kind: "error"; message: string };
+  | { kind: "error"; message: string });
 
 export type AnalyticsStatus =
   | "idle" //        no valid selection: no request is made
@@ -50,11 +51,11 @@ function classify(error: unknown): AnalyticsFailure | "project-unavailable" {
     case "project-unavailable":
       return "project-unavailable";
     case "validation":
-      return { kind: "validation", message: failure.message };
+      return failure;
     case "rate-limit":
-      return { kind: "rate-limit", message: failure.message, retryAfterSeconds: failure.retryAfterSeconds };
+      return failure;
     default:
-      return { kind: "error", message: "Failed to load analytics." };
+      return { kind: "error", message: error instanceof ApiError ? error.message : "Failed to load analytics.", requestId: failure.requestId };
   }
 }
 
@@ -67,9 +68,11 @@ function classify(error: unknown): AnalyticsFailure | "project-unavailable" {
  * - Pass `null` when the selection is invalid: nothing is requested.
  */
 export function useProjectAnalytics(selection: AppliedSelection | null): ProjectAnalytics {
-  const key = selection ? analyticsSelectionKey(selection) : "";
+  const session = getAuthSessionSnapshot();
+  const key = selection ? analyticsSelectionKey(selection) + "/" + session.revision : "";
   const [loaded, setLoaded] = useState<Loaded>(() => blank(""));
   const schedulerRef = useRef<RefreshScheduler | null>(null);
+  const cooldownUntil = useRef(0);
   const selectionRef = useRef(selection);
   selectionRef.current = selection;
 
@@ -78,18 +81,31 @@ export function useProjectAnalytics(selection: AppliedSelection | null): Project
     if (!current || key === "") return;
 
     let stopped = false;
+    const requestSession = getAuthSessionSnapshot();
+    const isVisible = () => document.visibilityState === "visible";
+    const isOnline = () => navigator.onLine !== false;
+    const isCurrent = () => !stopped && isAuthSessionCurrent(requestSession);
 
     const scheduler: RefreshScheduler = new RefreshScheduler({
+      notBefore: () => cooldownUntil.current,
+      getCooldownMs: error => {
+        const failure = classifyTraceFailure(error);
+        return failure.kind === "rate-limit" ? failure.retryAfterSeconds * 1000 : undefined;
+      },
       run: async signal => {
+        if (!isCurrent() || !isVisible() || !isOnline()) return;
         setLoaded(previous =>
           previous.key === key ? { ...previous, updating: true } : { ...blank(key), updating: true });
         try {
           const snapshot = await getAnalytics(current, signal);
-          if (stopped || signal.aborted) return;
+          if (!isCurrent() || signal.aborted) return;
           setLoaded({ key, snapshot, updating: false, failure: null, unavailable: false });
         } catch (error) {
-          if (stopped || signal.aborted || isAbortError(error)) return;
+          if (!isCurrent() || signal.aborted || isAbortError(error)) return;
           const failure = classify(error);
+          if (typeof failure !== "string" && failure.kind === "rate-limit") {
+            cooldownUntil.current = Date.now() + failure.retryAfterSeconds * 1000;
+          }
           if (failure === "project-unavailable") {
             // Clear protected content and stop everything for this selection.
             setLoaded({ ...blank(key), unavailable: true });
@@ -114,8 +130,11 @@ export function useProjectAnalytics(selection: AppliedSelection | null): Project
     });
     schedulerRef.current = scheduler;
 
-    const isVisible = () => document.visibilityState === "visible";
-    const isOnline = () => navigator.onLine !== false;
+    const stopAuthWatch = subscribeToAuthInvalidation(() => {
+      stopped = true;
+      scheduler.dispose();
+      setLoaded(blank(""));
+    });
     // Routine triggers never run while the browser is offline or the tab is hidden.
     const routine = () => { if (isVisible() && isOnline()) scheduler.request("coalesced"); };
 
@@ -132,6 +151,7 @@ export function useProjectAnalytics(selection: AppliedSelection | null): Project
 
     return () => {
       stopped = true;
+      stopAuthWatch();
       scheduler.dispose();
       if (schedulerRef.current === scheduler) schedulerRef.current = null;
       window.clearInterval(tick);
@@ -145,7 +165,7 @@ export function useProjectAnalytics(selection: AppliedSelection | null): Project
   const notifyChanged = useCallback(() => schedulerRef.current?.request("coalesced"), []);
 
   // Figures of another selection are never shown.
-  const state = loaded.key === key ? loaded : blank(key);
+  const state = loaded.key === key && isAuthSessionCurrent(session) ? loaded : blank(key);
 
   let status: AnalyticsStatus;
   if (!selection) status = "idle";

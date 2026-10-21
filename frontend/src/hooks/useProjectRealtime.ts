@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { getAuthSessionSnapshot } from "../api/auth-session";
 import { subscribeToProjectRealtime, type RealtimeState } from "../api/realtime-client";
 
 export interface ProjectRealtimeHandlers {
@@ -21,6 +22,7 @@ export function useProjectRealtime(
   handlers: ProjectRealtimeHandlers,
   enabled = true,
 ): RealtimeState {
+  const sessionRevision = getAuthSessionSnapshot().revision;
   const [state, setState] = useState<RealtimeState>("connecting");
   const handlersRef = useRef(handlers);
   handlersRef.current = handlers;
@@ -34,7 +36,7 @@ export function useProjectRealtime(
       onSynced: () => handlersRef.current.onSynced(),
       onRevoked: () => handlersRef.current.onRevoked(),
     });
-  }, [organizationId, projectId, enabled]);
+  }, [organizationId, projectId, enabled, sessionRevision]);
 
   return state;
 }

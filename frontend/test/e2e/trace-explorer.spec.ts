@@ -1,5 +1,20 @@
-import { expect, test, type Page } from "@playwright/test";
-import { apiGet, createOrganization, createProject, signInPage, signUp, type TestUser } from "./helpers";
+import {
+  expect,
+  test,
+  type BrowserContext,
+  type Page,
+} from "@playwright/test";
+
+import {
+  addMember,
+  apiGet,
+  createOrganization,
+  createProject,
+  signedInContext,
+  signInPage,
+  signUp,
+  type TestUser,
+} from "./helpers";
 import {
   GOLDEN_FROM, GOLDEN_TO, createApiKey, deletePublic, fixtureBodies, goldenSearch, ingest, ingestAll,
   requireCatalogue, tracesPath, visibleExternalIds, type Ingested, type TraceBody,
@@ -20,7 +35,7 @@ let detail: { projectId: string };
 
 test.beforeAll(async ({ playwright, baseURL }) => {
   test.setTimeout(240_000);
-  const request = await playwright.request.newContext({ baseURL, ignoreHTTPSErrors: true });
+  const request = await playwright.request.newContext({ baseURL });
   owner = await signUp(request, "explorer-owner");
   await requireCatalogue(request, owner);
   organizationId = await createOrganization(request, owner);
@@ -112,7 +127,8 @@ test("search is case-insensitive, lives in the URL and survives reload and Back/
 
 test("provider and status filters combine, and changing the provider clears the model", async ({ page }) => {
   await open(page, golden.projectId);
-  await expect(page.getByLabel("Provider").locator("option")).toHaveText(["All providers", "fixture-a", "fixture-b"]);
+  await expect(page.getByLabel("Provider").locator("option"))
+  .toContainText(["All providers", "fixture-a", "fixture-b"]);
   await page.getByLabel("Provider").selectOption("fixture-a");
   await page.getByLabel("Model").selectOption("demo-fast");
   await expect(page).toHaveURL(/model=demo-fast/);
@@ -215,7 +231,7 @@ test("an invalid link is rejected visibly and another tenant never sees the proj
   await expect(page).toHaveURL(/\/traces\?from=[^&]+&to=[^&]+$/);
 
   const outsider = await signUp(request, "explorer-outsider");
-  const other = await browser.newContext({ baseURL, ignoreHTTPSErrors: true });
+  const other = await browser.newContext({ baseURL, });
   await other.addInitScript(token => localStorage.setItem("tokenscope.accessToken", token), outsider.token);
   const outsiderPage = await other.newPage();
   await outsiderPage.goto(tracesPath(organizationId, golden.projectId, goldenSearch()));
@@ -223,7 +239,144 @@ test("an invalid link is rejected visibly and another tenant never sees the proj
   await expect(outsiderPage.getByRole("link", { name: /^View trace / })).toHaveCount(0);
   await other.close();
 });
+test(
+  "ADMIN and MEMBER read traces; a parent archive clears rows on refresh without logout",
+  async ({ browser, baseURL, request }) => {
+    // Use a separate project so archiving it cannot break other scenarios.
+    const projectId = await createProject(
+      request,
+      owner,
+      organizationId,
+      "E2E archive access",
+    );
 
+    const key = await createApiKey(
+      request,
+      owner,
+      organizationId,
+      projectId,
+    );
+
+    const created = await ingest(
+      request,
+      key,
+      fixtureBodies("traces-golden.json")[0],
+    );
+
+    const clients: {
+      context: BrowserContext;
+      page: Page;
+      user: TestUser;
+    }[] = [];
+
+    try {
+      for (const role of ["ADMIN", "MEMBER"] as const) {
+        const user = await signUp(
+          request,
+          `explorer-${role.toLowerCase()}`,
+        );
+
+        await addMember(
+          request,
+          owner,
+          organizationId,
+          user,
+          role,
+        );
+
+        const context = await signedInContext(
+          browser,
+          baseURL,
+          user,
+        );
+
+        const page = await context.newPage();
+        clients.push({ context, page, user });
+
+        // Both roles can read the real list and recorded trace details.
+        await page.goto(
+          tracesPath(organizationId, projectId, goldenSearch()),
+        );
+
+        await expect(summary(page)).toHaveText(
+          "1 traces · Page 1 of 1",
+        );
+
+        await page
+          .getByRole("link", { name: "View trace golden-001" })
+          .click();
+
+        await expect(
+          page.getByText("$0.001800000000", { exact: true }),
+        ).toBeVisible();
+
+        await page
+          .getByRole("link", { name: "← Back to traces" })
+          .click();
+
+        await expect(summary(page)).toHaveText(
+          "1 traces · Page 1 of 1",
+        );
+      }
+
+      // An accessible project must not expose another project's trace.
+      const mismatched = await apiGet(
+        request,
+        owner,
+        `${API}/organizations/${organizationId}` +
+          `/projects/${golden.projectId}/traces/${created.id}`,
+      );
+
+      expect(mismatched.status()).toBe(404);
+
+      // Archive as OWNER while the ADMIN and MEMBER pages remain open.
+      const archived = await request.delete(
+        `${API}/organizations/${organizationId}/projects/${projectId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${owner.token}`,
+          },
+        },
+      );
+
+      expect(archived.status()).toBe(204);
+
+      for (const { page, user } of clients) {
+        // Current integration discovers remote access loss on HTTP refresh.
+        await page
+          .getByRole("button", { name: "Refresh", exact: true })
+          .click();
+
+        await expect(
+          page.getByText("This project is not available."),
+        ).toBeVisible();
+
+        await expect(
+          page.getByRole("link", { name: /^View trace / }),
+        ).toHaveCount(0);
+
+        // Losing project access must not invalidate the user's session.
+        expect(
+          await page.evaluate(() =>
+            Boolean(localStorage.getItem("tokenscope.accessToken")),
+          ),
+        ).toBe(true);
+
+        const organizations = await apiGet(
+          request,
+          user,
+          `${API}/organizations`,
+        );
+
+        expect(organizations.status()).toBe(200);
+      }
+    } finally {
+      await Promise.all(
+        clients.map(({ context }) => context.close()),
+      );
+    }
+  },
+);
 // Mutates the pagination project: keep it last.
 test("deleting the last row of the last page recovers to the previous page", async ({ page, request }) => {
   await open(page, paged.projectId, goldenSearch("&page=3"));

@@ -129,16 +129,19 @@ describe('RefreshScheduler : erreurs', () => {
     expect(run).toHaveBeenCalledTimes(2);
   });
 
-  it('un Retry-After énorme est plafonné à 5 minutes', async () => {
+  it('does not shorten the server Retry-After', async () => {
     const { run, calls } = controlledRun();
     const scheduler = new RefreshScheduler({ run });
     scheduler.request('immediate');
     await settle();
-    calls[0].fail({ statusCode: 429, retryAfterSeconds: 999999 });
+    calls[0].fail({ statusCode: 429, retryAfterSeconds: 600 });
     await settle();
     scheduler.request('immediate');
-    await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 100);
+    await vi.advanceTimersByTimeAsync(599_000);
+    expect(run).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1_000);
     expect(run).toHaveBeenCalledTimes(2);
+    scheduler.dispose();
   });
 
   it('une panne réseau ne relance rien toute seule (pas de boucle)', async () => {

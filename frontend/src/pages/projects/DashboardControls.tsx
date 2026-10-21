@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { TraceFailureNotice } from "./TraceFailureNotice";
 import { LIMITS } from "../../api/trace-filters";
 import type { DashboardPeriod, PeriodPreset } from "./dashboardPeriod";
 import { PERIOD_PRESET_LABELS } from "./dashboardPeriod";
@@ -13,7 +14,7 @@ export const FILTER_DEBOUNCE_MS = 300;
 const SELECT = "h-9 w-full rounded-md border bg-transparent px-2 text-sm";
 const PRESETS: PeriodPreset[] = ["24h", "7d", "30d"];
 
-const toInput = (iso: string) => iso.slice(0, 16);
+const toInput = (iso: string) => iso.slice(0, -1);
 const withCurrent = (options: string[], current: string) =>
   current && !options.includes(current) ? [current, ...options] : options;
 
@@ -95,12 +96,12 @@ export function DashboardControls({
         <form className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto]" aria-label="Custom period" onSubmit={applyCustom}>
           <div className="space-y-1">
             <Label htmlFor="dashboard-from">From (UTC)</Label>
-            <Input id="dashboard-from" type="datetime-local" value={fromDraft}
+            <Input id="dashboard-from" type="datetime-local" step={0.001} value={fromDraft}
               onChange={event => setFromDraft(event.target.value)} />
           </div>
           <div className="space-y-1">
             <Label htmlFor="dashboard-to">To (UTC)</Label>
-            <Input id="dashboard-to" type="datetime-local" value={toDraft}
+            <Input id="dashboard-to" type="datetime-local" step={0.001} value={toDraft}
               onChange={event => setToDraft(event.target.value)} />
           </div>
           <div className="flex items-end">
@@ -109,7 +110,7 @@ export function DashboardControls({
         </form>
         {customError && <p role="alert" className="text-sm text-destructive">{customError}</p>}
         <p className="text-xs text-muted-foreground" data-testid="applied-period">
-          Applied: {period.from.slice(0, 16).replace("T", " ")} → {period.to.slice(0, 16).replace("T", " ")} UTC
+          Applied: {period.from} → {period.to} UTC
         </p>
       </div>
 
@@ -159,10 +160,10 @@ export function DashboardControls({
       </div>
 
       {choices.phase === "error" && (
-        <p role="alert" className="text-sm text-destructive">
-          Provider and model choices could not be loaded.{" "}
-          <button type="button" className="underline" onClick={onRetryChoices}>Retry choices</button>
-        </p>
+        <div className="space-y-2">
+          <p>Provider and model choices could not be loaded.</p>
+          <TraceFailureNotice failure={choices.failure} onRetry={onRetryChoices} retryLabel="Retry choices" />
+        </div>
       )}
       {errors.length > 0 && (
         <ul role="alert" className="list-disc space-y-1 pl-5 text-sm text-destructive">

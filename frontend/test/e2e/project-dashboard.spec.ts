@@ -24,7 +24,7 @@ let live: { projectId: string; key: string };
 
 test.beforeAll(async ({ playwright, baseURL }) => {
   test.setTimeout(240_000);
-  const request = await playwright.request.newContext({ baseURL, ignoreHTTPSErrors: true });
+  const request = await playwright.request.newContext({ baseURL });
   owner = await signUp(request, "dashboard-owner");
   member = await signUp(request, "dashboard-member");
   await requireCatalogue(request, owner);
@@ -41,12 +41,12 @@ test.beforeAll(async ({ playwright, baseURL }) => {
   await request.dispose();
 });
 
-const dashboardPath = (projectId: string) => `/organizations/${organizationId}/projects/${projectId}/dashboard`;
+const dashboardPath = (projectId: string) => `/organizations/${organizationId}/projects/${projectId}`;
 
 async function openDashboard(page: Page, user: TestUser, projectId: string) {
   await signInPage(page, user);
   await page.goto(dashboardPath(projectId));
-  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Analytics" })).toBeVisible();
 }
 
 const metric = (page: Page, label: string) =>
@@ -131,10 +131,10 @@ test("two browsers see a new trace without reloading", async ({ browser, baseURL
     }
 
     await ingest(request, live.key, recentTrace("live", 2));
-    for (const page of pages) {
-      await expect(metric(page, "Traces")).toContainText("1", { timeout: 20_000 });
+    await Promise.all(pages.map(async page => {
+      await expect(metric(page, "Traces")).toContainText("1", { timeout: 2_000 });
       await expect(realtime(page)).toHaveText("Live");
-    }
+    }));
   } finally {
     await ownerContext.close();
     await memberContext.close();
@@ -183,11 +183,68 @@ test("removing a member makes the project unavailable for them without signing t
     });
     expect(removed.status()).toBeLessThan(300);
 
-    await expect(page.getByText("This project is not available.")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText("Project not found.", { exact: true })).toBeVisible({ timeout: 20_000 });
     await expect(page.getByTestId("metric")).toHaveCount(0); // protected figures are gone
     // Access loss is not a sign-out: the login is still stored.
     expect(await page.evaluate(() => localStorage.getItem("tokenscope.accessToken"))).not.toBeNull();
   } finally {
     await context.close();
   }
+});
+
+test("ADMIN reads Overview; corrections and deletions refresh it, outside-period writes do not change totals", async ({ browser, baseURL, request }) => {
+  const admin = await signUp(request, "dashboard-admin");
+  await addMember(request, owner, organizationId, admin, "ADMIN");
+  const projectId = await createProject(request, owner, organizationId, "E2E Dashboard Mutations");
+  const key = await createApiKey(request, owner, organizationId, projectId);
+  const body = { ...fixtureBodies("traces-golden.json")[0], externalId: crypto.randomUUID() };
+  const trace = await ingest(request, key, body);
+  const context = await signedInContext(browser, baseURL, admin);
+  try {
+    const page = await context.newPage();
+    await page.goto(dashboardPath(projectId) + "?from=2026-10-01T00:00:00.000Z&to=2026-10-02T00:00:00.000Z");
+    await expect(realtime(page)).toHaveText("Live", { timeout: 20_000 });
+    await expect(metric(page, "Traces")).toContainText("1");
+    const corrected = await request.put(`${API}/public/traces/${trace.id}`, {
+      headers: { "X-API-Key": key, "If-Match": trace.etag },
+      data: { ...body, inputTokens: 2000, outputTokens: 400 },
+    });
+    expect(corrected.status()).toBe(200);
+    await expect(metric(page, "Estimated cost")).toContainText("$0.0036", { timeout: 2_000 });
+
+    const refresh = page.waitForResponse(response => new URL(response.url()).pathname.endsWith("/analytics") && response.status() === 200);
+    await ingest(request, key, { ...body, externalId: crypto.randomUUID(), occurredAt: "2026-10-03T12:00:00.000Z" });
+    const unchanged = await refresh;
+    expect((await unchanged.json()).summary.traceCount).toBe(1);
+    await expect(metric(page, "Estimated cost")).toContainText("$0.0036");
+
+    const removed = await request.delete(`${API}/public/traces/${trace.id}`, {
+      headers: { "X-API-Key": key, "If-Match": corrected.headers()["etag"] },
+    });
+    expect(removed.status()).toBe(204);
+    await expect(page.getByText("No traces match this period and these filters.")).toBeVisible({ timeout: 2_000 });
+    await expect(metric(page, "Average latency")).toContainText("No observations");
+  } finally { await context.close(); }
+});
+
+test("a different project does not trigger an unrelated dashboard refresh", async ({ browser, baseURL, request }) => {
+  const projectId = await createProject(request, owner, organizationId, "E2E Dashboard Isolated");
+  const otherId = await createProject(request, owner, organizationId, "E2E Dashboard Other");
+  const otherKey = await createApiKey(request, owner, organizationId, otherId);
+  const context = await signedInContext(browser, baseURL, owner);
+  try {
+    const page = await context.newPage();
+    await page.goto(dashboardPath(projectId));
+    await expect(realtime(page)).toHaveText("Live", { timeout: 20_000 });
+    await expect(page.getByText("No traces match this period and these filters.")).toBeVisible();
+    // Allow the initial subscription repair request to settle before observing isolation.
+    await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeEnabled();
+    await page.waitForTimeout(500);
+    const requests = trackRequests(page, "GET", new RegExp(`/${projectId}/analytics$`));
+    await ingest(request, otherKey, recentTrace("unrelated", 2));
+    // A bounded negative observation window covers the server/client coalescing delays.
+    await page.waitForTimeout(1000);
+    expect(requests).toHaveLength(0);
+    await expect(page.getByText("No traces match this period and these filters.")).toBeVisible();
+  } finally { await context.close(); }
 });

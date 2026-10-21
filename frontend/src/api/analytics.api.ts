@@ -1,14 +1,11 @@
 import { ApiError, apiGet } from "./http-client";
-import { parseUtcInstant } from "./trace-filters";
+import { parseUtcInstant, serializeTraceFilters } from "./trace-filters";
 import type {
   AnalyticsBucket,
   AnalyticsSnapshot,
   AnalyticsTotals,
   AppliedSelection,
 } from "../types/analytics.types";
-
-const MAX_SERIES_POINTS = 5000;
-const MAX_MODEL_GROUPS = 1000;
 
 const invalid = () =>
   new ApiError(200, "INVALID_API_RESPONSE", "The server returned an unexpected response.");
@@ -28,8 +25,10 @@ const isString = (value: unknown): value is string => typeof value === "string";
 const isCount = (value: unknown): value is number =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 // Exact aggregates arrive as text. They are never converted to numbers here.
-const isDecimal = (value: unknown): value is string =>
-  typeof value === "string" && /^\d+(\.\d+)?$/.test(value);
+const isIntegerString = (value: unknown): value is string =>
+  typeof value === "string" && /^(0|[1-9]\d*)$/.test(value);
+const isCost = (value: unknown): value is string =>
+  typeof value === "string" && /^(0|[1-9]\d*)\.\d{12}$/.test(value);
 const isNullableNumber = (value: unknown): value is number | null =>
   value === null || (typeof value === "number" && Number.isFinite(value) && value >= 0);
 const isNullableString = (value: unknown): value is string | null =>
@@ -37,8 +36,8 @@ const isNullableString = (value: unknown): value is string | null =>
 
 function toTotals(value: Record<string, unknown>): AnalyticsTotals {
   if (
-    !isCount(value.traceCount) || !isDecimal(value.inputTokens) ||
-    !isDecimal(value.outputTokens) || !isDecimal(value.estimatedCostUsd)
+    !isCount(value.traceCount) || !isIntegerString(value.inputTokens) ||
+    !isIntegerString(value.outputTokens) || !isCost(value.estimatedCostUsd)
   ) {
     throw invalid();
   }
@@ -78,14 +77,12 @@ function toSnapshot(value: unknown): AnalyticsSnapshot {
   }
 
   if (
-    !isDecimal(summary.totalTokens) || !isCount(summary.errorCount) ||
+    !isIntegerString(summary.totalTokens) || !isCount(summary.errorCount) ||
     !isNullableNumber(summary.errorRatePct) || !isNullableNumber(summary.averageLatencyMs)
   ) {
     throw invalid();
   }
   const totals = toTotals(summary);
-
-  if (series.length > MAX_SERIES_POINTS || byModel.length > MAX_MODEL_GROUPS) throw invalid();
 
   return {
     snapshotId: value.snapshotId,
@@ -136,16 +133,11 @@ function assertSelectionMatches(snapshot: AnalyticsSnapshot, selection: AppliedS
 
 /** Explicit dates and only the active filters. No sorting, no pagination, no bucket (the server chooses it). */
 export function analyticsQueryParams(selection: AppliedSelection): URLSearchParams {
-  const params = new URLSearchParams();
-  params.set("from", selection.from);
-  params.set("to", selection.to);
-  const f = selection.filters;
-  if (f.q) params.set("q", f.q);
-  if (f.provider) params.set("provider", f.provider);
-  if (f.model) params.set("model", f.model);
-  if (f.workflow) params.set("workflow", f.workflow);
-  if (f.status) params.set("status", f.status);
-  return params;
+  return serializeTraceFilters({
+    from: selection.from,
+    to: selection.to,
+    ...selection.filters,
+  });
 }
 
 /** Two selections with the same key are the same selection (same project, exact dates, same filters). */

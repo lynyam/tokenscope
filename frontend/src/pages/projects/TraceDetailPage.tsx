@@ -9,6 +9,10 @@ import { useProjectArchived } from "../../hooks/useProjectArchived";
 import type { Trace } from "../../types/trace.types";
 import { TraceFailureNotice } from "./TraceFailureNotice";
 import { classifyTraceFailure, type TraceFailure } from "./trace-failure";
+import {
+  getAuthSessionSnapshot,
+  isAuthSessionCurrent,
+} from "../../api/auth-session";
 
 type State = { phase: "loading" } | { phase: "ready"; trace: Trace } | { phase: "error"; failure: TraceFailure };
 
@@ -37,13 +41,29 @@ function TraceDetail({ organizationId, projectId, traceId }: { organizationId: s
   const returnTo = parsed?.ok ? listPath + "?" + parsed.canonicalSearch : listPath;
 
   useEffect(() => {
-    if (archived) return;
+    if (archived) {
+      setState({ phase: "loading" });
+      return;
+    }
     const controller = new AbortController();
+    const session = getAuthSessionSnapshot();
     setState({ phase: "loading" });
     getTrace(organizationId, projectId, traceId, controller.signal)
-      .then(trace => { if (!controller.signal.aborted) setState({ phase: "ready", trace }); })
-      .catch(error => {
-        if (controller.signal.aborted || isAbortError(error)) return;
+      .then(trace => {
+        if (
+          !controller.signal.aborted &&
+          isAuthSessionCurrent(session)
+        ) {
+          setState({ phase: "ready", trace });
+        }
+      }).catch(error => {
+        if (
+          controller.signal.aborted ||
+          !isAuthSessionCurrent(session) ||
+          isAbortError(error)
+        ) {
+          return;
+        }
         setState({ phase: "error", failure: classifyTraceFailure(error) });
       });
     return () => controller.abort();
@@ -53,6 +73,11 @@ function TraceDetail({ organizationId, projectId, traceId }: { organizationId: s
 
   if (archived || (state.phase === "error" && state.failure.kind === "project-unavailable")) {
     return <section className="space-y-3 p-6"><p role="alert">This project is not available.</p>
+      {state.phase === "error" && state.failure.requestId && (
+        <p className="break-all text-xs">
+          Request ID: {state.failure.requestId}
+        </p>
+      )}
       <Link to={"/organizations/" + encodeURIComponent(organizationId) + "/projects"}>Back to projects</Link></section>;
   }
   if (state.phase === "loading") return <section className="p-6"><p role="status">Loading trace…</p></section>;
@@ -61,7 +86,14 @@ function TraceDetail({ organizationId, projectId, traceId }: { organizationId: s
       <section className="space-y-3 p-6">
         {back}
         {state.failure.kind === "trace-not-found"
-          ? <p role="alert">{state.failure.message}</p>
+          ? <div role="alert">
+            <p>{state.failure.message}</p>
+            {state.failure.requestId && (
+              <p className="break-all text-xs">
+                Request ID: {state.failure.requestId}
+              </p>
+            )}
+          </div>
           : <TraceFailureNotice failure={state.failure} onRetry={() => setAttempt(value => value + 1)} />}
       </section>
     );

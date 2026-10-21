@@ -1,10 +1,12 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, expect, it, vi } from "vitest";
 import { TraceDetailPage } from "@/pages/projects/TraceDetailPage";
 import { getTrace } from "@/api/traces.api";
 import { ApiError } from "@/api/http-client";
 import type { Trace } from "@/types/trace.types";
+import { saveAccessToken } from "@/api/auth-session";
+import { notifyProjectsChanged } from "@/api/project-events";
 
 vi.mock("@/api/traces.api", () => ({ listTraces: vi.fn(), getTrace: vi.fn(), getModelChoices: vi.fn() }));
 const getMock = vi.mocked(getTrace);
@@ -71,4 +73,72 @@ it("offers Retry on a server failure", async () => {
   renderDetail();
   expect(await screen.findByText("Server broke")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Retry" })).toBeEnabled();
+});
+
+it("does not accept detail data from an earlier login", async () => {
+  saveAccessToken("session-a");
+
+  let resolve!: (value: Trace) => void;
+  getMock.mockReturnValueOnce(
+    new Promise<Trace>(done => { resolve = done; }),
+  );
+
+  renderDetail();
+  saveAccessToken("session-b");
+
+  await act(async () => { resolve(trace); });
+
+  expect(
+    screen.queryByText("$0.001800000000"),
+  ).not.toBeInTheDocument();
+});
+
+it("an archive aborts loading and a late response cannot restore detail", async () => {
+  let resolve!: (value: Trace) => void;
+  getMock.mockReturnValueOnce(
+    new Promise<Trace>(done => { resolve = done; }),
+  );
+
+  renderDetail();
+  const signal = getMock.mock.calls[0][3];
+
+  act(() => {
+    notifyProjectsChanged({
+      organizationId: "o1",
+      kind: "archive",
+      projectId: "p1",
+    });
+  });
+
+  expect(signal?.aborted).toBe(true);
+  await act(async () => { resolve(trace); });
+
+  expect(
+    screen.getByText("This project is not available."),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByText("$0.001800000000"),
+  ).not.toBeInTheDocument();
+});
+
+it.each([
+  "TRACE_NOT_FOUND",
+  "PROJECT_NOT_FOUND",
+  "INTERNAL_SERVER_ERROR",
+])("keeps the request ID for %s", async code => {
+  getMock.mockRejectedValueOnce(
+    new ApiError(
+      code === "INTERNAL_SERVER_ERROR" ? 500 : 404,
+      code,
+      "Request failed",
+      undefined,
+      "req-detail",
+    ),
+  );
+
+  renderDetail();
+
+  expect(
+    await screen.findByText("Request ID: req-detail"),
+  ).toBeInTheDocument();
 });
