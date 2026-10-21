@@ -21,6 +21,9 @@ import { getAccessToken, saveAccessToken } from "@/api/auth-session";
 import type { MembershipRole, Project } from "@/types/workspace.types";
 import { notifyProjectsChanged } from "@/api/project-events";
 
+// Dashboard behavior is covered by its own component and real-browser suites.
+vi.mock("@/pages/projects/ProjectDashboard", () => ({ ProjectDashboard: () => null }));
+
 const org = "00000000-0000-4000-8000-000000000001";
 const otherOrg = "00000000-0000-4000-8000-000000000003";
 

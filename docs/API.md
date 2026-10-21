@@ -1291,7 +1291,7 @@ Membership removal or parent archive emits `access.revoked`; demotion to MEMBER 
 Origin policy is defined in SECURITY.md. Same-origin polling GETs may omit Origin;
 the documented Fetch Metadata + Referer exception is deliberate.
 
-TSE-76 must subscribe after every connection, refetch after every successful acknowledgement,
+The TSE-76 client subscribes after every connection, refetches after every successful acknowledgement,
 refetch on `traces.changed`, on visible focus and every 30 seconds while visible.
 Keep the applied dates/filters when refetching. Stop/re-subscribe when project changes.
 Treat revoked access as project unavailability; do not clear an otherwise valid login.
@@ -1475,3 +1475,16 @@ Evaluation contracts additionally use:
 Use explicit application codes. Do not assume the existing exception filter already supplies every new code.
 
 Only an authentication failure for the captured user session invalidates that session. Permission errors, missing resources, conflicts, rate limits, provider failures and network failures do not sign the user out.
+
+
+### Dashboard frontend handoff — TSE-76
+
+`AppliedSelection` contains organization/project IDs, exact UTC `from`/`to` and normalized
+`q`, `provider`, `model`, `workflow`, `status` filters. Dates are inclusive/exclusive as above.
+Analytics requests use the existing authenticated HTTP client and omit list sorting/pagination.
+Responses must match the requested project, period and filters before being displayed.
+Money and aggregate token counts remain strings; only chart coordinates use numbers.
+`ProjectDashboard.renderExtras` receives `{ selection, snapshot, status, selectionState, exportEnabled }`.
+The selection remains stable during background refreshes. A matching empty snapshot is exportable.
+Scope changes clear old figures; access loss clears the complete project Overview and its handoff.
+There are no new backend routes, export generation or assistant calls in TSE-76.

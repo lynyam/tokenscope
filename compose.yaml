@@ -8,6 +8,10 @@ services:
       - type: bind
         source: ./frontend
         target: /app
+      - type: bind
+        source: ./fixtures/evaluation
+        target: /fixtures/evaluation
+        read_only: true
       - type: volume
         source: tokenscope_frontend_node_modules
         target: /app/node_modules

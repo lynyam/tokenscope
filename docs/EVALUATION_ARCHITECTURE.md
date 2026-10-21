@@ -323,11 +323,11 @@ The applied list query is stored in the URL. List and detail views preserve reco
 Project access loss clears protected content without signing the user out.
 
 TSE-73 provides the backend realtime transport and notifications.
-TSE-76 owns the shared frontend project realtime client, which is not yet available on develop.
+TSE-76 provides the shared frontend project realtime client in `frontend/src/api/realtime-client.ts` and `useProjectRealtime`.
 
-Until that client is integrated, the Explorer supports manual Refresh and detects remote access loss on its next HTTP request.
+TSE-87 owns connecting the existing Explorer list/detail to this client. Until that integration is verified, the Explorer supports manual Refresh and detects remote access loss on its next HTTP request.
 
-When the shared client is available, connect active list/detail views to trace-change, reconnection and access-revocation handling. Reuse that client; do not create another socket implementation. Verify the combined browser behavior before claiming realtime acceptance complete.
+In TSE-87, connect active list/detail views to trace-change, reconnection and access-revocation handling. Reuse that client; do not create another socket implementation. Verify the combined browser behavior before claiming realtime acceptance complete.
 
 ### Analytics integration — TSE-71
 The implementation is registered through AnalyticsModule, which exports
@@ -482,3 +482,19 @@ Keep feature verification proportional to changed behavior:
 Do not report mocked tests as database integration or browser tests as proof of live Gemini behavior.
 
 Before merging, record the tested commit, actual commands, results and remaining limitations. Update the relevant contract documents in the same PR.
+
+
+### Dashboard integration — TSE-76
+
+Project Overview embeds `ProjectDashboard` below existing project information and section navigation.
+The `/dashboard` URL redirects to Overview and preserves its query string.
+Dates and filters use `trace-filters.ts`; `serializeTraceFilters` is shared by Explorer and analytics.
+One applied selection is stored in the URL. Presets resolve once; background refreshes never slide it.
+`useProjectAnalytics` owns request generations, same-selection snapshot retention and the refresh scheduler.
+Its Retry-After deadline survives filter changes. Session snapshots guard all asynchronous results.
+`realtime-client.ts` shares connections within the captured session and project.
+The dashboard refetches authoritative HTTP snapshots; notifications never change totals locally.
+`renderExtras` supplies the stable applied selection, confirmed snapshot, status and export eligibility.
+TSE-77 adds exports using the already loaded project identity; TSE-81 adds assistant UI.
+Same-selection refreshes preserve an assistant answer; actual selection changes stop and clear it.
+TSE-88 retains ownership of the final whole-application responsive validation.

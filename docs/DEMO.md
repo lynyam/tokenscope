@@ -736,3 +736,22 @@ curl --fail-with-body --cacert .local/eval/caddy-root.crt \
 ```
 
 Keep the returned trace id and ETag for PUT/DELETE. Do not commit the key.
+
+
+### Project Overview dashboard — TSE-76
+
+1. Load the canonical price catalogue explicitly and ingest the six golden traces into a disposable project.
+2. Open its Overview and apply `2026-10-01T00:00:00.000Z` to `2026-10-02T00:00:00.000Z`.
+3. Confirm 6 traces, 6,000 input tokens, 1,200 output tokens and estimated cost USD 0.015350000000.
+4. Open each chart's exact-value table and operate its legend with the keyboard.
+5. Open the project in two authorized browser contexts and wait for Live.
+6. Ingest `fixtures/evaluation/realtime/live-trace-request.json` with a new externalId.
+   Its fixed occurrence time is inside the selected golden period. Both dashboards must update within two seconds.
+7. Correct and delete that new trace with its current ETag; both dashboards must refetch authoritative totals.
+8. Disconnect one browser, write again, reconnect and verify recovery. Remove a member and confirm their
+   project content disappears while their login remains valid.
+9. For genuinely current traces, deliberately choose a custom UTC window covering their occurrence times.
+   Presets resolve once: Live does not silently advance their upper boundary.
+
+Record dev and trusted-HTTPS browser results separately. Dashboard realtime does not establish
+that Explorer realtime is integrated; verify that separately in TSE-87.

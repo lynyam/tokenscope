@@ -919,3 +919,38 @@ The key created in the UI must create a real trace, remain absent after closing
 and reloading the disclosure, and fail with `401 INVALID_API_KEY` after UI
 revocation. The suite also checks cross-project reads and archived parents.
 Keep plaintext out of shared test evidence, including error reports on failures.
+
+
+### Dashboard tests — TSE-76
+
+The frontend Compose service mounts `fixtures/evaluation` read-only at `/fixtures/evaluation`
+so the same golden JSON files work for Vitest on the host and inside `/app`.
+Do not copy fixture values into another frontend-owned catalogue.
+
+After starting development mode, run from the repository root:
+
+```sh
+make frontendcheck
+make frontendtest
+docker compose exec -T frontend npm run build
+```
+
+Browser tests use the host runner and the existing explicit price-catalogue loading instructions.
+Load prices once into the running application database, then run:
+
+```sh
+cd frontend
+E2E_BASE_URL=http://localhost:5173 npm run test:e2e -- project-dashboard.spec.ts
+```
+
+For evaluation mode, rebuild with `make eval-up`, keep certificate validation enabled,
+and use the exported/trusted evaluation CA. From `frontend/`:
+
+```sh
+NODE_EXTRA_CA_CERTS="$PWD/../.local/eval/caddy-root.crt" \
+E2E_BASE_URL=https://localhost:8443 npm run test:e2e -- project-dashboard.spec.ts
+```
+
+Retain the Vite and Caddy `/socket.io` proxies already provided by TSE-73.
+Record the tested commit, mode, exact commands and results. A unit test does not prove HTTPS
+or real socket/browser integration. Full responsive validation remains tracked by TSE-88.
