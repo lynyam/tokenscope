@@ -18,7 +18,7 @@ import emptyJson from "./fixtures/analytics-empty.json";
 const golden = goldenJson as AnalyticsSnapshot;
 const empty = emptyJson as AnalyticsSnapshot;
 
-// Noms tirés de identities.json
+// Names taken from identities.json
 const goldenInput: DashboardExportInput = {
   project: { id: golden.projectId, name: "Support Golden" },
   snapshot: golden,
@@ -39,7 +39,7 @@ function deepFreeze<T>(obj: T): T {
   return Object.freeze(obj);
 }
 
-/** Parseur CSV minimal (RFC 4180) utilisé uniquement pour vérifier la sortie. */
+/** Minimal CSV parser (RFC 4180) used only to check the output. */
 function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
@@ -78,7 +78,7 @@ function parseCsv(text: string): string[][] {
   return rows;
 }
 
-/** Renvoie les lignes sous forme d'objets { colonne: valeur }. */
+/** Returns the rows as { column: value } objects. */
 function records(csv: string): Record<string, string>[] {
   const [header, ...data] = parseCsv(csv);
   return data.map((cells) =>
@@ -88,28 +88,28 @@ function records(csv: string): Record<string, string>[] {
 
 // ---------------------------------------------------------------- tests
 
-describe("buildDashboardCsv — fixture golden", () => {
+describe("buildDashboardCsv — golden fixture", () => {
   const csv = buildDashboardCsv(goldenInput);
   const rows = records(csv);
 
-  it("utilise exactement l'en-tête du ticket", () => {
+  it("uses exactly the header from the ticket", () => {
     expect(parseCsv(csv)[0]).toEqual([...CSV_COLUMNS]);
   });
 
-  it("contient 1 summary, 24 lignes de série et 2 lignes de modèle", () => {
+  it("contains 1 summary row, 24 series rows and 2 model rows", () => {
     expect(rows).toHaveLength(27);
     expect(rows.filter((r) => r.section === "summary")).toHaveLength(1);
     expect(rows.filter((r) => r.section === "series")).toHaveLength(24);
     expect(rows.filter((r) => r.section === "model")).toHaveLength(2);
   });
 
-  it("chaque ligne a le même nombre de cellules que l'en-tête", () => {
+  it("every row has the same number of cells as the header", () => {
     for (const cells of parseCsv(csv)) {
       expect(cells).toHaveLength(CSV_COLUMNS.length);
     }
   });
 
-  it("conserve exactement les valeurs du summary", () => {
+  it("keeps the summary values exactly", () => {
     const s = rows.find((r) => r.section === "summary")!;
     expect(s.estimatedCostUsd).toBe("0.015350000000");
     expect(s.inputTokens).toBe("6000");
@@ -123,7 +123,7 @@ describe("buildDashboardCsv — fixture golden", () => {
     expect(s.model).toBe("");
   });
 
-  it("répète les métadonnées sur toutes les lignes", () => {
+  it("repeats the metadata on every row", () => {
     for (const r of rows) {
       expect(r.snapshotId).toBe(golden.snapshotId);
       expect(r.projectId).toBe(golden.projectId);
@@ -133,7 +133,7 @@ describe("buildDashboardCsv — fixture golden", () => {
       expect(r.generatedAt).toBe("2026-10-02T08:00:00.000Z");
       expect(r.timezone).toBe("UTC");
       expect(r.bucket).toBe("hour");
-      // Aucun filtre actif dans la golden
+      // No active filter in the golden fixture
       expect(r.q).toBe("");
       expect(r.filterProvider).toBe("");
       expect(r.filterModel).toBe("");
@@ -142,7 +142,7 @@ describe("buildDashboardCsv — fixture golden", () => {
     }
   });
 
-  it("recopie chaque bucket de la série dans l'ordre, y compris ceux à zéro", () => {
+  it("copies every series bucket in order, including zero ones", () => {
     const series = rows.filter((r) => r.section === "series");
     golden.series.forEach((b, i) => {
       expect(series[i].bucketStart).toBe(b.bucketStart);
@@ -150,7 +150,7 @@ describe("buildDashboardCsv — fixture golden", () => {
       expect(series[i].inputTokens).toBe(b.inputTokens);
       expect(series[i].outputTokens).toBe(b.outputTokens);
       expect(series[i].estimatedCostUsd).toBe(b.estimatedCostUsd);
-      // Pas de valeurs d'erreur/latence par bucket dans le snapshot → vide
+      // No per-bucket error/latency values in the snapshot → empty
       expect(series[i].errorCount).toBe("");
       expect(series[i].errorRatePct).toBe("");
       expect(series[i].averageLatencyMs).toBe("");
@@ -159,7 +159,7 @@ describe("buildDashboardCsv — fixture golden", () => {
     expect(series[10].estimatedCostUsd).toBe("0.001800000000");
   });
 
-  it("recopie les lignes byModel dans provider/model, pas dans les filtres", () => {
+  it("copies the byModel rows into provider/model, not into the filters", () => {
     const models = rows.filter((r) => r.section === "model");
     expect(models.map((m) => [m.provider, m.model, m.estimatedCostUsd])).toEqual([
       ["fixture-b", "demo-large", "0.008200000000"],
@@ -172,26 +172,26 @@ describe("buildDashboardCsv — fixture golden", () => {
     }
   });
 
-  it("utilise CRLF entre les lignes et termine par CRLF", () => {
+  it("uses CRLF between rows and ends with CRLF", () => {
     expect(csv.endsWith("\r\n")).toBe(true);
     expect(csv.replace(/\r\n/g, "")).not.toMatch(/[\r\n]/);
   });
 
-  it("ne modifie pas l'entrée capturée", () => {
+  it("does not modify the captured input", () => {
     const frozen = deepFreeze(clone(goldenInput));
     expect(() => buildDashboardCsv(frozen)).not.toThrow();
   });
 });
 
-describe("buildDashboardCsv — snapshot vide", () => {
+describe("buildDashboardCsv — empty snapshot", () => {
   const rows = records(buildDashboardCsv(emptyInput));
 
-  it("fonctionne : 1 summary, 24 buckets à zéro, aucune ligne modèle", () => {
+  it("works: 1 summary row, 24 zero buckets, no model rows", () => {
     expect(rows).toHaveLength(25);
     expect(rows.filter((r) => r.section === "model")).toHaveLength(0);
   });
 
-  it("laisse vides les moyennes/taux null (pas de 0)", () => {
+  it("leaves null averages/rates empty (not 0)", () => {
     const s = rows[0];
     expect(s.errorRatePct).toBe("");
     expect(s.averageLatencyMs).toBe("");
@@ -200,8 +200,8 @@ describe("buildDashboardCsv — snapshot vide", () => {
   });
 });
 
-describe("buildDashboardCsv — filtres actifs", () => {
-  it("écrit chaque filtre dans sa colonne sur toutes les lignes", () => {
+describe("buildDashboardCsv — active filters", () => {
+  it("writes each filter in its own column on every row", () => {
     const input = clone(goldenInput);
     input.snapshot.filters = {
       q: "refund",
@@ -220,8 +220,8 @@ describe("buildDashboardCsv — filtres actifs", () => {
   });
 });
 
-describe("buildDashboardCsv — texte difficile", () => {
-  it("échappe guillemets, virgules, sauts de ligne et garde l'Unicode", () => {
+describe("buildDashboardCsv — hard text", () => {
+  it("escapes quotes, commas, line breaks and keeps Unicode", () => {
     const input = clone(goldenInput);
     const name = 'Équipe "東京", v2\nligne 2';
     (input.project as { name: string }).name = name;
@@ -241,7 +241,7 @@ describe("buildDashboardCsv — texte difficile", () => {
     ["   =1+1"],
     ["\u0001=1+1"],
     [" \t@x"],
-  ])("neutralise le texte de type formule %j", (evil) => {
+  ])("neutralizes formula-like text %j", (evil) => {
     const input = clone(goldenInput);
     (input.project as { name: string }).name = evil;
     input.snapshot.filters.workflow = evil;
@@ -252,22 +252,22 @@ describe("buildDashboardCsv — texte difficile", () => {
     expect(rows.find((r) => r.section === "model")!.provider).toBe(`'${evil}`);
   });
 
-  it("ne touche pas au texte normal", () => {
+  it("does not touch normal text", () => {
     expect(neutralizeFormula("Support Golden")).toBe("Support Golden");
     expect(neutralizeFormula("a=b")).toBe("a=b");
     expect(neutralizeFormula("")).toBe("");
   });
 });
 
-describe("buildDashboardCsv — précision", () => {
-  it("conserve les très grands entiers de tokens sans perte", () => {
+describe("buildDashboardCsv — precision", () => {
+  it("keeps very large token integers without loss", () => {
     const input = clone(goldenInput);
     input.snapshot.summary.inputTokens = "123456789012345678901234567890";
     const s = records(buildDashboardCsv(input))[0];
     expect(s.inputTokens).toBe("123456789012345678901234567890");
   });
 
-  it("conserve les 12 décimales des petits coûts", () => {
+  it("keeps the 12 decimals of small costs", () => {
     const input = clone(goldenInput);
     input.snapshot.series[0].estimatedCostUsd = "0.000000000001";
     const series = records(buildDashboardCsv(input)).filter((r) => r.section === "series");
@@ -275,13 +275,13 @@ describe("buildDashboardCsv — précision", () => {
   });
 });
 
-describe("garde-fous", () => {
-  it("refuse un projet qui ne correspond pas au snapshot", () => {
+describe("safeguards", () => {
+  it("rejects a project that does not match the snapshot", () => {
     const input = { ...goldenInput, project: { id: "other", name: "X" } };
     expect(() => buildDashboardCsv(input)).toThrow();
   });
 
-  it("escapeCsvCell ne met des guillemets que si nécessaire", () => {
+  it("escapeCsvCell only adds quotes when necessary", () => {
     expect(escapeCsvCell("abc")).toBe("abc");
     expect(escapeCsvCell("a,b")).toBe('"a,b"');
     expect(escapeCsvCell('a"b')).toBe('"a""b"');
@@ -289,7 +289,7 @@ describe("garde-fous", () => {
 });
 
 describe("csvFilename", () => {
-  it("suit le format tokenscope-dashboard-YYYYMMDDTHHmmssZ.csv", () => {
+  it("follows the format tokenscope-dashboard-YYYYMMDDTHHmmssZ.csv", () => {
     expect(csvFilename(new Date("2026-10-15T17:05:09.123Z"))).toBe(
       "tokenscope-dashboard-20261015T170509Z.csv",
     );
