@@ -4,18 +4,22 @@ This document explains how to run TokenScope locally and how the development env
 
 Current architecture and feature ownership are defined in [EVALUATION_ARCHITECTURE.md](./EVALUATION_ARCHITECTURE.md).
 
-Commands in this document describe implemented tooling unless explicitly marked as planned. Adding an architecture contract does not create its Make target, environment variable or test configuration.
+For the ordered evaluation walkthrough and results, see [DEMO.md](./DEMO.md).
 
 ## Requirements
 
 Install:
 
 * Docker
-* Docker Compose
+* Docker Compose v2 with `up --wait` support
 * Make
 * Git
 
-Node.js does not need to be installed on the host because frontend and backend run inside Docker containers.
+Node.js does not need to be installed on the host to run the application because frontend and backend run inside Docker containers. Host-side checks and browser tests require Node.js 24 and dependencies installed with `npm ci` in the relevant directory.
+
+Keep Docker running. HTTPS setup also requires curl and OpenSSL; the API and assistant examples use jq. Use an available application port (5173 for development or 8443 for evaluation by default).
+
+Unless a section says otherwise, run commands on the host from the repository root. `docker compose exec` runs the requested command inside a running container. Database commands require PostgreSQL and the backend; frontend container checks require development mode. Shell examples use Bash; on macOS, enter `bash` before following examples that use `read -p`.
 
 ---
 
@@ -24,11 +28,11 @@ Node.js does not need to be installed on the host because frontend and backend r
 Clone the repository:
 
 ```bash
-git clone git@github.com:lynyam/tokenscope.git
+git clone --branch main git@github.com:lynyam/tokenscope.git
 cd tokenscope
 ```
 
-Create the local environment file:
+Create the local environment file if it does not already exist (keep your existing settings when returning to the project):
 
 ```bash
 cp .env.example .env
@@ -41,7 +45,7 @@ docker run --rm node:24-alpine \
 ```
 Copy the generated value into:
 JWT_SECRET=<generated-value>
-in your local .env. Never commit .env.
+in your local .env. Never commit .env. Keep an existing valid secret when restarting.
 
 Start the application:
 
@@ -49,6 +53,8 @@ Start the application:
 make up
 make db-setup
 ```
+
+Wait for dependency installation and the backend to finish starting before running `make db-setup`. It generates Prisma Client, applies development migrations and runs the development seed. Expect each stage to finish without an error. The seed accounts contain placeholder password hashes; create a user through sign-up for local login. Evaluation accounts use the separate [evaluation dataset](#prepare-the-evaluation-dataset).
 
 The frontend is available at:
 
@@ -188,7 +194,7 @@ The backend waits for PostgreSQL to become healthy before starting.
 
 It is committed to Git and must not contain secrets.
 
-Each developer creates the local environment from it:
+Each developer creates the local environment from it once, without overwriting an existing `.env`:
 
 ```bash
 cp .env.example .env
@@ -232,6 +238,29 @@ Real secrets must never be committed.
 
 ---
 
+### Configuration details
+
+| Setting | Value or default | Required for | Secret? |
+|---|---|---|---|
+| `POSTGRES_USER`, `POSTGRES_DB` | Template: `tokenscope` | Database | No |
+| `POSTGRES_PASSWORD` | Replace the local example password | Database | Yes |
+| `DATABASE_URL` | Must match database credentials; Compose host is `postgres:5432` | Backend/Prisma | Yes |
+| `FRONTEND_PORT`, `BACKEND_PORT` | Template: `5173`, `3000` | Application | No |
+| `JWT_SECRET` | Generated locally; at least 32 bytes, without whitespace or placeholder values | Authentication | Yes |
+| `JWT_ISSUER`, `JWT_AUDIENCE` | Template: `tokenscope`, `tokenscope-web` | Authentication | No |
+| `JWT_ACCESS_TTL_SECONDS` | Template: `3600`; positive integer | Authentication | No |
+| `TRUSTED_PROXY_HOST` | Compose supplies `frontend` | Trusted proxy handling | No |
+| `REALTIME_ALLOWED_ORIGINS` | Exact origins; template: `http://localhost:5173,https://localhost:8443` | Realtime | No |
+| `EVAL_HTTPS_PORT` | Host-shell setting; default `8443` | HTTPS port override | No |
+| `COMPOSE_PROJECT_NAME` | Optional unique name; retain it for follow-up commands | Isolated rehearsal | No |
+| `DOCUMENT_STORAGE_ROOT` | Compose: `/var/lib/tokenscope/documents`; absolute writable path | Backend with private documents | No; private server path |
+| `GEMINI_API_KEY`, `LLM_MODEL` | No fallback; supply an authorized key and model ID | Assistant requests | Key: yes; model: no |
+| `DEMO_PASSWORD` | No committed default; loader setup below | Evaluation accounts | Yes |
+
+Change `REALTIME_ALLOWED_ORIGINS` when changing the application port. The evaluation hostname is `localhost`; the public certificate is exported to `.local/eval/caddy-root.crt`.
+
+`DOCUMENT_STORAGE_ROOT` is also required by the private-document backend. Compose supplies it; outside Compose, configure it explicitly as described in [Private document storage](#private-document-storage).
+
 ## Common commands
 
 ### Start
@@ -261,7 +290,7 @@ Stops the containers without deleting them or their volumes.
 make logs
 ```
 
-Follows logs from the Docker Compose services.
+Follows logs from the Docker Compose services. Press Ctrl+C to stop following logs; the services remain running.
 
 ---
 
@@ -281,8 +310,7 @@ Opens a shell inside the backend container.
 make db-setup
 ```
 
-Generate prisma cient code source + migrate data model (sql) + seed
-
+Generate Prisma Client, apply development migrations and seed the database.
 ---
 
 ### PostgreSQL shell
@@ -317,7 +345,7 @@ make fullclean
 
 Removes containers, networks, and named volumes.
 
-**Warning:** this deletes the local PostgreSQL database and the frontend/backend `node_modules` volumes.
+**Warning:** this deletes the local PostgreSQL database, frontend/backend `node_modules` volumes, Caddy CA and any private-document volume in the stack. It also removes locally built images.
 
 Use it only when a complete local reset is required.
 
@@ -325,7 +353,7 @@ Use it only when a complete local reset is required.
 
 ## Verify the environment
 
-After:
+For a first startup, complete `make up` and `make db-setup` above. To resume containers that already exist, run:
 
 ```bash
 make start
@@ -349,6 +377,14 @@ Verify that:
 2. The health-check action can call `/api/v1/health/db`.
 3. The backend responds successfully.
 4. The backend can communicate with PostgreSQL.
+
+You can also check database health directly from the host:
+
+```bash
+curl --fail --show-error --max-time 10 http://localhost:5173/api/v1/health/db
+```
+
+Expect HTTP 200 and `{"status":"healthy"}`. Use your configured frontend port if different. In HTTPS mode, use the certificate-verified command in [Evaluation mode](#evaluation-mode-https).
 
 For problems, inspect:
 
@@ -404,13 +440,13 @@ Node 24, matching the development containers.
 
 The shared authentication, organization, membership and project integrations are present in the Sprint 1 baseline. Run the complete frontend suite when changing their shared transport or session behavior.
 
-New unit/component tests remain under `frontend/test/`. Real browser journeys belong under `frontend/test/e2e/` once browser-test infrastructure is introduced.
+New unit/component tests remain under `frontend/test/`. Real browser journeys belong under `frontend/test/e2e/`.
 
 Browser tests use Playwright; see "Browser end-to-end tests" below.
 
 TSE-72 extends transport for multipart uploads, private binary responses and assistant streams while preserving current JSON callers.
 
-For TSE-74, document that the returned key must remain only in transient UI memory.
+Returned API-key plaintext must remain only in transient UI memory.
 
 See `EVALUATION_ARCHITECTURE.md` for current integration boundaries and `SPRINT_1_ARCHITECTURE.md` for the existing client/session design.
 
@@ -437,7 +473,7 @@ or credential-bearing artifacts to a PR.
 
 ### Backend
 
-From `backend/`:
+From `backend/` on the host with Node.js 24 and `npm ci` completed, or from `/app` in the backend development container:
 
 ```bash
 npm run check
@@ -489,7 +525,7 @@ It writes two committed copies:
 Edit the generator and regenerate both copies. Do not edit generated JSON
 directly.
 
-With Node 24 installed on the host, run from the repository root:
+With Node 24 installed on the host and backend dependencies installed (`npm ci` from `backend/`), run from the repository root:
 
 ```bash
 cd backend
@@ -599,17 +635,11 @@ For the current architecture, see
 
 ## Evaluation setup and feature ownership
 
-TSE-65 implements HTTPS evaluation startup using the existing Compose stack.
-The ownership table below also includes separately delivered features;
-their configuration and commands must be documented when implemented.
+HTTPS evaluation startup uses the existing Compose stack. The table below links each configuration area to its implementation ticket.
 
 ### Deployment ownership
 
 TSE-65 introduces evaluation mode using the existing `compose.yaml`, service names and PostgreSQL volume.
-
-The planned entry point is `make eval-up`, serving the built application at `https://localhost:8443`.
-
-Do not create a second application stack merely for evaluation. Development/evaluation mode switching preserves the database.
 
 TSE-65 provides `make eval-up`, serving the built application at `https://localhost:8443`.
 
@@ -649,7 +679,7 @@ Use existing commands where applicable:
 
 ```bash
 make db-generate
-make db-migration name=<migration_name>
+make db-migration name=describe_your_change
 make db-status
 
 make test-backend
@@ -658,11 +688,13 @@ make frontendtest
 docker compose exec frontend npm run build
 ```
 
+Replace `describe_your_change` with a short migration name. Run these commands in development mode.
+
 `db-migration` creates/applies a development migration against the configured development database. Use isolated disposable databases for migration-upgrade and destructive test scenarios.
 
 The existing backend gate runs type checks, builds, migrations, unit tests, HTTP tests and PostgreSQL integration tests through the test Compose configuration.
 
-New browser and seed commands must be documented when implemented. Do not substitute development data resets for isolated evaluation tests.
+Use a disposable environment for evaluation data; keep it separate from your working database.
 
 ## Evaluation mode (HTTPS)
 
@@ -794,11 +826,20 @@ and the Caddy CA. A newly generated CA must be trusted again.
 
 Catalogue loading is never automatic.
 
-For the development backend:
+With the backend and PostgreSQL running, compile the loader in development mode:
 
+```bash
 docker compose exec backend npm run build
+```
+
+Evaluation images already contain the compiled loader. In either mode, run from the host repository root:
+
+```bash
 docker compose cp fixtures/evaluation/model-prices.json backend:/tmp/model-prices.json
 docker compose exec backend npm run pricing:load -- --file /tmp/model-prices.json
+```
+
+Expect the import to finish successfully; an identical repeat leaves the catalogue unchanged.
 
 Repeating an identical catalogue is a no-op. Existing identities cannot
 be overwritten. Add a new effective date for a new price version.
@@ -807,7 +848,7 @@ The complete catalogue is limited to 1,000 rows and input files to 1 MiB.
 Rates must be decimal strings. Non-synthetic entries require an HTTPS
 pricing source and an explicit effective date.
 
-Price catalogue loading never runs during normal application startup. The evaluation setup command loads the canonical synthetic catalogue before seeding traces. The standalone pricing:load command remains available for deliberate catalogue imports.(TSE-70 connects it to the evaluation setup)
+Price catalogue loading never runs during normal application startup. Load the catalogue before submitting the fixture traces. This command imports prices only; it does not create evaluation accounts or traces.
 
 ### Troubleshooting
 
@@ -848,7 +889,7 @@ Browser proxy verification uses the test-only Socket.IO bundle installed under b
 Run `npm ci` in backend and frontend on the host, then `npx playwright install chromium`
 in frontend. No production frontend dependency is added by TSE-73.
 
-Load the synthetic catalogue explicitly before running browser QA:
+Load the synthetic catalogue explicitly before running browser QA. In development mode, first run `docker compose exec backend npm run build` as described in [Explicit price catalogue loading](#explicit-price-catalogue-loading):
 
 ```sh
 docker compose cp fixtures/evaluation/model-prices.json backend:/tmp/model-prices.json
@@ -873,3 +914,133 @@ and polling upgrade with actual browser-generated headers and two real accounts.
 The test archives its disposable organizations; it does not reset the development database.
 Test JWTs/API keys are not logged or recorded in Playwright artifacts.
 This verifies transport and notifications, not the dashboard chart refresh owned by TSE-76.
+
+
+## Prepare the evaluation dataset
+
+The evaluation dataset supplies known accounts, traces and expected totals for the demonstration. It is not needed to start the application. Load it into a disposable rehearsal environment. HTTPS startup applies committed migrations without seeding or resetting data. The development `make db-setup` command runs its own development seed; it does not load this evaluation dataset. Evaluation accounts require an operator-supplied password rather than a committed default.
+
+**To complete with TSE-70:** the evaluation loader command, how to supply `DEMO_PASSWORD`, required services, password hashing, safe repeat/reset behaviour and the printed success output/effective period. The fixture files and standalone price loader do not create the evaluation accounts or load the full dataset.
+
+Use [the fixture manifest](../fixtures/evaluation/manifest.json), [identities](../fixtures/evaluation/identities.json) and [expected results](../fixtures/evaluation/expected-results.json). The golden interval is `2026-10-01T00:00:00.000Z` inclusive to `2026-10-02T00:00:00.000Z` exclusive. If the loader prints a different anchor, use its effective period consistently.
+
+The expected loaded dataset contains working accounts and six golden traces totalling 6,000 input tokens, 1,200 output tokens and USD `0.015350000000` in synthetic estimated cost. Keep pagination and destructive demonstrations in separate projects. See [DEMO.md](DEMO.md#golden-checkpoint) for the full checkpoint.
+
+## Configure the Gemini assistant
+
+These settings enable real assistant responses. They are not required to start the rest of the application. Set both values in the root, untracked `.env` for the dashboard assistant:
+
+```dotenv
+GEMINI_API_KEY=<your Gemini API key>
+LLM_MODEL=<model ID available to your account>
+```
+
+Replace both placeholders before starting the assistant. Neither setting has a fallback value. Compose passes them to the backend, where typed configuration makes them available to the assistant. They must never use a frontend `VITE_` prefix. The standalone Chat/Translation demo has its own configuration file; setting that file does not configure the dashboard assistant.
+
+If either setting is missing, the application and non-assistant features remain available. An authorized assistant request returns HTTP `503` with application code `LLM_UNAVAILABLE`. Startup and health checks do not call Gemini.
+
+After editing the root `.env`, recreate the application in the same mode you were using. Run **one** command from the host repository root with Docker running:
+
+```bash
+make up
+```
+
+For HTTPS evaluation mode, use this instead:
+
+```bash
+make eval-up
+```
+
+A simple container restart does not apply changed environment variables. Check service health using [Verify the environment](#verify-the-environment). To check that the key reached the running backend without displaying it:
+
+```bash
+docker compose exec backend sh -c 'test -n "$GEMINI_API_KEY" && test -n "$LLM_MODEL" && printf "Assistant configuration is present\n"'
+```
+
+Expected: `Assistant configuration is present` and exit status 0. This confirms that both values are present, not that the provider accepts them. Avoid printing the resolved Compose configuration because it includes secrets.
+
+### Check the assistant
+
+With the complete stack healthy, sign in to a project you can access, select the intended dashboard dates and filters, and ask a short question about its analytics. Expect progressively displayed text. Check Stop and a subsequent request using the walkthrough in [DEMO.md](DEMO.md). The assistant sends authorized project metadata and analytics to Gemini; uploaded documents are excluded.
+
+The backend gate (`make test-backend`, from the host repository root) uses a fake provider for automated assistant tests. Live provider checks use real quota and are separate. Record the actual model, account tier, commit, environment and live results in [the evaluation run record](DEMO.md#evaluation-run-record). Use a model available to the configured account, not a synthetic fixture model label.
+
+For the scripted streaming and Stop checks, use Linux with Bash, jq, curl and GNU coreutils (`timeout` and `date` with millisecond formatting). The proxy script is not directly portable to the default macOS command-line tools; on macOS, use the browser walkthrough above or run the script in a Linux environment that can reach the application. Use a disposable project with known analytics. The assistant's manual scripts live in `backend/test/manual/`. Load the [synthetic price catalogue](#explicit-price-catalogue-loading) first, then sign in, create a disposable organization/project and create its project API key.
+
+From the host repository root, in Bash, read the project key without displaying it and load the six golden traces:
+
+```bash
+read -r -s -p "Disposable project API key: " API_KEY
+printf '\n'
+export API_KEY
+BASE_URL=http://localhost:5173 backend/test/manual/load-assistant-fixture.sh
+unset API_KEY
+```
+
+For evaluation, set `BASE_URL=https://localhost:8443` and prefix the script command with `CURL_CA_BUNDLE="$PWD/.local/eval/caddy-root.crt"` so curl verifies the exported CA. Check that each printed HTTP status is `201` for creation or `200` for an identical replay; the script’s final “Done” message alone does not establish success. Successful ingestion should produce the [golden totals](DEMO.md#golden-checkpoint) for the fixed fixture dates.
+
+The live proxy check makes three provider requests. In the same Bash shell, supply the signed-in user's token privately and replace the organization/project identifiers:
+
+```bash
+read -r -s -p "User access token: " TOKEN
+printf '\n'
+export TOKEN
+export ORG_ID="your-organization-id"
+export PROJECT_ID="your-project-id"
+BASE_URL=http://localhost:5173 backend/test/manual/assistant-proxy-check.sh
+unset TOKEN
+```
+
+For evaluation, use the HTTPS base URL and `CURL_CA_BUNDLE` setting above. Inspect the printed HTTP statuses and SSE events, not only the script exit status. Expect timestamped SSE output, an interrupted second request and a successful new request after Stop releases its slot. The stopped request's backend log records `"outcome":"client_left"`. Keep credentials out of shared output. Preserve the Vite/Caddy streaming configuration; changing proxy buffering or disconnect handling can affect Stop behaviour.
+
+## Private document storage
+
+`DOCUMENT_STORAGE_ROOT` must be an absolute path. Compose supplies `/var/lib/tokenscope/documents`, backed by the named volume `tokenscope_documents`. No additional host directory is needed when using that volume.
+
+When running the backend outside Compose, set `DOCUMENT_STORAGE_ROOT` to a private directory writable by the backend user, for example `$HOME/.tokenscope/documents`. Do not place it inside frontend assets or a publicly served directory. Downloads and previews use authenticated project routes.
+
+The cleanup service starts automatically with the backend. It resumes pending deletion work on startup, checks queued deletions every 10 seconds and sweeps old unreferenced files hourly. No separate worker command or extra cleanup environment variable is required. Failed deletions are retried. Organization/project archive retains files; individual document deletion removes metadata and schedules file cleanup.
+
+### Check storage and persistence
+
+With the complete stack healthy, use a disposable project and the small valid files in `backend/test/fixtures/documents/`:
+
+1. Upload `valid.txt`, `valid.md` or `valid.pdf`. Confirm it appears in the project's documents.
+2. Preview and download it through the application. Confirm the downloaded content matches the original.
+3. Run `make stop`, then `make start` from the host repository root. Wait for health checks to pass, then confirm the document is still downloadable.
+4. Recreate the stack with `make up` or `make eval-up`, matching the mode in use, and confirm the file remains available.
+5. Delete the disposable document. Confirm it disappears and is no longer downloadable.
+
+The encrypted PDF fixtures must be rejected. Backend document tests use temporary directories and real database/filesystem checks through `make test-backend`; they do not need the application's upload volume.
+
+`make clean` preserves the storage volume. **`make fullclean` deletes it and all uploaded files**, together with the other project volumes. Do not use a full reset to check persistence.
+
+## Clean-checkout rehearsal
+
+Use a separate checkout of `main` and an unused Compose project name. From that checkout's root, with `.env` prepared, select an available port and matching realtime origin:
+
+```bash
+git rev-parse HEAD
+export COMPOSE_PROJECT_NAME=tokenscope-rehearsal
+export EVAL_HTTPS_PORT=9443
+export REALTIME_ALLOWED_ORIGINS=https://localhost:9443
+make eval-up
+```
+
+Expected: a separate application database/volumes and successful readiness at `https://localhost:9443`. Trust this checkout's exported certificate. Keep these settings in the same host shell for follow-up commands; set them again if reopening the terminal. Use the same application Compose file, not a second evaluation stack.
+
+Record the tested commit, OS/tool versions, exact commands and results in [DEMO.md](DEMO.md#evaluation-run-record). Verify startup without Gemini first, then explicit data loading, optional provider/storage configuration and persistence across `make stop` / `make start`. Complete the browser matrix with Chrome, Firefox and Edge results. Keep setup failures and remaining issues with the affected result.
+
+### Command outcomes
+
+| Command group | Expected result |
+|---|---|
+| `make up`, `make eval-up` | Containers start; the database health endpoint returns HTTP 200. HTTPS startup also reports successful readiness checks. |
+| Prisma generate/migrate/status | Client generation and migrations finish without errors; status reports applied migrations. |
+| Type checks, builds and documentation checks | Exit status 0; builds produce their output files. |
+| Unit, integration and browser tests | A passing test summary; retain failures in the run record. |
+| `make shell`, `make db-shell` | A shell or PostgreSQL prompt opens; use `exit` or `\q` to leave it. |
+| `make stop`, `make start` | Containers stop or resume; after resuming, health checks pass again. |
+| `make clean` | Containers and network are removed; named volumes remain. |
+
+`make test-backend` creates its own test services and uses the fixed Compose project `tokenscope-test`; do not run multiple copies concurrently. Host-only type checks and builds do not require the application stack. Browser tests require all application services. Record actual commands, versions and results in the [evaluation run record](DEMO.md#evaluation-run-record), using PASS, FAIL, BLOCKED or NOT RUN.

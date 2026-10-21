@@ -1,24 +1,29 @@
 # TokenScope evaluation architecture
 
-## Purpose and implementation status
+## Purpose
 
-This document defines the agreed architecture for the evaluation scope coordinated by [TSE-63](https://linear.app/move2/issue/TSE-63).
+This document explains the architecture for the evaluation scope coordinated by [TSE-63](https://linear.app/move2/issue/TSE-63).
 
-It explains feature ownership, shared dependencies and decisions that multiple implementations must preserve.
+It describes the main request flows, feature responsibilities and shared decisions. Setup instructions are in [LOCAL_DEVELOPMENT.md](./LOCAL_DEVELOPMENT.md); demonstration steps, tested commits, environments and results are in [DEMO.md](./DEMO.md#evaluation-run-record).
 
-Baseline inspected: `develop` at commit `854da94f66582553738591a13a235ec379624394`.
+## Architecture at a glance
 
-At that baseline:
+TokenScope has a React frontend, a NestJS application API and a PostgreSQL database accessed through Prisma. The evaluation deployment serves the built frontend and proxies API traffic through Caddy over HTTPS. Private document bytes are stored separately from the database.
 
-- Real authentication, organizations, memberships and projects are implemented.
-- The frontend uses the shared HTTP client and real backend APIs.
-- Projects support soft archiving.
-- Organization archiving and the evaluation resources described below are not yet implemented.
-- The development environment uses Vite, NestJS and PostgreSQL through Docker Compose.
+| Request flow | Responsibilities |
+|---|---|
+| Browser → application API | React uses shared authenticated HTTP helpers. NestJS validates requests and checks the user's current organization membership and project access. |
+| API → PostgreSQL | Domain services apply business rules and use Prisma. Related authorization checks and data reads share a transaction where consistency is required. |
+| External client → public API | A project API key identifies the project for trace operations. The API validates trace data and calculates estimated costs from the applicable historical catalogue price. |
+| Trace write → dashboard refresh | A committed change produces a realtime notification. The browser then fetches authoritative analytics through HTTP; notifications carry no dashboard totals. |
+| Dashboard → assistant | The browser sends a question, exact dates and filters. The backend reads authorized analytics and project metadata, closes the transaction, and sends a fixed context to Gemini for a streamed answer. |
+| Browser → private document | Authenticated project routes check access before returning private bytes. PostgreSQL stores document metadata and cleanup jobs; file storage holds the content. |
 
-### TSE-64 foundation
+The dashboard displays analytics, exports capture the displayed snapshot, and the assistant reads a fresh context for each question. These operations share selection rules but have different responsibilities.
 
-TSE-64 adds:
+### Shared persistence foundation — TSE-64
+
+The shared persistence foundation includes:
 
 - Organization.archivedAt.
 - ApiKey, ModelPrice, Trace, ProjectDocument and FileDeletionJob.
@@ -29,15 +34,11 @@ TSE-64 adds:
 
 TSE-66 reuses the organization archive field and shared access checks. It owns the archive endpoint, confirmation flow and UI.
 
-The persistence foundation does not imply that API-key, trace, analytics, document, realtime or assistant endpoints are implemented.
+Feature modules use these models through their own validated and authorized endpoints.
 
 Downstream consumers use the existing generated Prisma client under backend/src/generated/prisma/client.
 
-These statements describe the inspected code, not a new acceptance-test result.
-
-Unless explicitly identified as baseline behavior, the evaluation architecture below is an agreed target awaiting implementation. Feature PRs must update implementation status and attach verification evidence.
-
-The evaluation target is 16 points against a 14-point minimum. The two-point margin is not an additional security module. Mandatory subject requirements remain separate release conditions.
+The evaluation plan targets 16 points against the subject’s 14-point minimum. The module breakdown and mandatory requirements are documented in [README.md](../README.md) and [DEMO.md](./DEMO.md).
 
 ## Documentation ownership
 
@@ -53,11 +54,7 @@ The evaluation target is 16 points against a 14-point minimum. The two-point mar
 | `ONBOARDING.md` | Historical product plan, team context and learning material |
 | Linear issues | Implementation steps, acceptance criteria, ownership and progress |
 
-Repository documentation records agreed contracts. Code and migrations establish what is implemented. Tests and recorded demonstrations establish what has been verified.
-
-When code, documentation and a ticket disagree, identify the conflict in the PR and resolve the affected contract explicitly. Do not silently implement an older example.
-
-A planned contract does not mean an endpoint, command, table or helper already exists.
+Keep API, data-model and security contracts aligned when changing a shared flow. Record evaluation results in `DEMO.md` rather than duplicating them here.
 
 ## Product scope
 
@@ -175,10 +172,7 @@ Existing bodyless DELETE callers keep their current signatures.
 Frontend screens/adapters remain responsible for discarding results after
 navigation, a selection change or a superseded session.
 
-Transport tests use controlled Fetch responses and XHR events.
-Real document and assistant integration must be recorded separately when
-their consumers are integrated. Passing transport tests alone does not
-prove browser upload, proxy streaming or backend cancellation behavior.
+Transport tests use controlled Fetch responses and XHR events. Browser upload, proxy streaming and cancellation are covered by separate integration demonstrations recorded in [DEMO.md](./DEMO.md).
 
 ## Feature ownership
 
@@ -203,6 +197,7 @@ prove browser upload, proxy streaming or backend cancellation behavior.
 | TSE-83 | Evaluation documentation and reproducible demonstration |
 | TSE-84 | Chrome, Firefox and Edge verification |
 | TSE-85 | Final candidate validation and team rehearsal |
+| TSE-86 | Independent Chat/Translation demo and shared trace-submission wrapper |
 
 Each ticket extends the existing application. It does not create an alternative stack or duplicate another ticket’s shared implementation.
 
@@ -216,7 +211,7 @@ Roles remain organization-scoped:
 - OWNER and ADMIN manage projects, API keys and private documents.
 - OWNER, ADMIN and MEMBER may read accessible project data and use its dashboard and assistant.
 
-Project API keys are a separate authentication mechanism for public trace operations. They do not authorize browser workspace APIs.
+Project API keys are a separate authentication mechanism for public trace operations. They do not authorize browser workspace APIs. User JWTs identify signed-in users; access decisions still use current membership. API-key plaintext is displayed once when created. Frontend controls reflect permissions, while the backend enforces them.
 
 Organization deletion sets `Organization.archivedAt`. Project deletion preserves the existing project archive behavior.
 
@@ -252,7 +247,9 @@ An unchanged replay or no-op correction does not reprice a trace. A genuinely ch
 
 Reads and analytics sum stored costs. Adding a new price does not rewrite historical traces.
 
-Costs are estimates, not provider invoices. Synthetic evaluation prices must be identified as synthetic.
+Costs are estimates, not provider invoices. Synthetic evaluation prices are labelled separately from prices sourced from provider catalogues. Recording a provider/model in a trace does not itself call that provider.
+
+The dashboard assistant calls Gemini to answer analytics questions. The independent Chat/Translation demo also calls Gemini, then submits usage through its shared `callWithTrace` wrapper to separate TokenScope projects. Its Gemini credentials and TokenScope project API keys serve different purposes.
 
 ## Selection and analytics
 
@@ -334,7 +331,8 @@ These features have different responsibilities:
 | TSE-73 realtime | Announce that project trace data changed |
 | TSE-76 dashboard | Fetch and display snapshots for the applied selection |
 | TSE-77 export | Capture and serialize the displayed snapshot |
-| TSE-80 assistant | Build a fresh fixed context for one submitted question |
+| TSE-80 assistant backend | Build a fresh fixed context for one submitted question and stream the provider response |
+| TSE-81 assistant frontend | Decode the stream and manage displayed answers, Stop and recoverable errors |
 
 ### Realtime — C07
 
@@ -390,7 +388,9 @@ Changing project, dates or filters stops and clears the previous answer. A same-
 
 Authorization remains live even though answer data is fixed.
 
-Use a small provider interface with one Gemini implementation. Keep credentials and model configuration on the backend. Verify model availability and account eligibility before the live demonstration; do not assume unlimited free usage.
+Stop ends TokenScope’s consumption and display of the answer. It does not guarantee that Gemini has stopped processing the request internally. The assistant does not save conversation history, search uploaded documents or perform actions on the user’s behalf.
+
+A small provider interface isolates the Gemini integration. Credentials and model configuration stay on the backend. The live demonstration record identifies the model and account tier used.
 
 No automatic provider retries, paid fallback, conversation storage or assistant-generated project traces are introduced.
 
@@ -402,7 +402,7 @@ Authorization occurs before accepting an upload and is checked again before comm
 
 A successful upload is complete only after the file and metadata are ready. Upload progress reaching 100% is not equivalent to HTTP `201`.
 
-Individual deletion removes metadata and creates a cleanup job in one transaction. File removal occurs after commit.
+Individual deletion removes metadata and creates a cleanup job in one transaction. File removal occurs after commit, with failed cleanup retried. Normal access ends when the metadata is deleted.
 
 Orphan cleanup must treat files referenced by archived parents as referenced. Archive is not permission to delete those bytes.
 
@@ -443,9 +443,7 @@ No backend secret belongs in frontend environment variables or the browser bundl
 
 ## Integration and verification rules
 
-Publish stable contracts and fixtures early so consumers can develop without waiting for complete pages.
-
-Coordinate TSE-64 and TSE-66 before generating migrations. Only one migration may add `Organization.archivedAt`.
+Shared contracts and fixtures keep feature modules consistent. The shared foundation owns the `Organization.archivedAt` migration; organization archive reuses that field.
 
 Keep feature verification proportional to changed behavior:
 
@@ -453,9 +451,7 @@ Keep feature verification proportional to changed behavior:
 - Backend HTTP tests for routes and response contracts.
 - Real PostgreSQL tests for transactions, tenant isolation and constraints.
 - Frontend component tests under `frontend/test/`.
-- Real browser journeys under `frontend/test/e2e/` once browser infrastructure is introduced.
+- Real browser journeys under `frontend/test/e2e/`.
 - Separate, deliberate live-provider verification.
 
-Do not report mocked tests as database integration or browser tests as proof of live Gemini behavior.
-
-Before merging, record the tested commit, actual commands, results and remaining limitations. Update the relevant contract documents in the same PR.
+Record automated tests, browser checks and live Gemini checks separately in [DEMO.md](./DEMO.md#evaluation-run-record), with the tested commit, environment, commands and PASS, FAIL, BLOCKED or NOT RUN result. The browser matrix records Chrome, Firefox and Edge results. Update the relevant contract documents when behavior changes.
