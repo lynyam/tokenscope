@@ -4,6 +4,7 @@ import {
   type APIRequestContext,
   type BrowserContext,
   type Page,
+  type WebSocketRoute,
 } from "@playwright/test";
 
 import {
@@ -414,6 +415,7 @@ function observeRealtime(page: Page, readPath: RegExp) {
   const reads: number[] = [];
   const sockets: string[] = [];
   let loads = 0;
+  let closes = 0;
   const note = (text: string) => {
     if (!text.includes("traces.changed")) return;
     notices.push(Date.now());
@@ -422,6 +424,7 @@ function observeRealtime(page: Page, readPath: RegExp) {
   page.on("load", () => { loads += 1; });
   page.on("websocket", socket => {
     sockets.push(socket.url());
+    socket.on("close", () => { closes += 1; });
     socket.on("framereceived", frame => note(String(frame.payload)));
   });
   page.on("response", response => {
@@ -432,7 +435,7 @@ function observeRealtime(page: Page, readPath: RegExp) {
   page.on("request", request => {
     if (request.method() === "GET" && readPath.test(new URL(request.url()).pathname)) reads.push(Date.now());
   });
-  return { notices, noticeProjects, reads, sockets, loads: () => loads };
+  return { notices, noticeProjects, reads, sockets, loads: () => loads, closes: () => closes };
 }
 type Observed = ReturnType<typeof observeRealtime>;
 
@@ -569,4 +572,114 @@ test("realtime: switching projects while a notice is pending never shows the old
   await idsEqual(page, ["b-2", "b-1"]);
   await expect(page.getByText(/^a-[12]$/)).toHaveCount(0);
   expect(seen.loads(), "the page was never reloaded").toBe(1);
+});
+
+
+test("realtime: changes made while the receiver is disconnected appear after the subscription recovers", async ({ page, request }) => {
+  const { projectId, key } = await realtimeProject(request, "RT reconnect");
+  await ingest(request, key, rtBody("rc-1", "2026-10-01T09:00:00.000Z"));
+
+  // Test-only network control: while `down`, the page can neither open nor keep a realtime connection.
+  let down = false;
+  const routes: WebSocketRoute[] = [];
+  await page.routeWebSocket(/\/socket\.io\//, ws => {
+    if (down) { void ws.close(); return; }
+    routes.push(ws, ws.connectToServer());
+  });
+  await page.route(/\/socket\.io\//, route => (down ? route.abort() : route.continue()));
+
+  const seen = observeRealtime(page, LIST_READ);
+  await open(page, projectId);
+  await idsEqual(page, ["rc-1"]);
+  await subscribed(seen);
+  await expect.poll(() => seen.sockets.length, { message: "the WebSocket transport is in use" }).toBeGreaterThan(0);
+
+  down = true;
+  await Promise.all(routes.splice(0).map(ws => ws.close()));
+  await expect.poll(() => seen.closes(), { message: "the WebSocket is really closed" }).toBeGreaterThan(0);
+  const readsWhileDown = seen.reads.length;
+  await ingest(request, key, rtBody("rc-2", "2026-10-01T10:00:00.000Z")); // missed by the disconnected page
+  expect(await visibleExternalIds(page)).toEqual(["rc-1"]);
+  expect(seen.reads.length, "no read while disconnected").toBe(readsWhileDown);
+
+  down = false; // the client reconnects on its own backoff, subscribes again and reads again
+  await expect.poll(() => visibleExternalIds(page), { timeout: 45_000 }).toEqual(["rc-2", "rc-1"]);
+  expect(seen.notices.length, "recovered by the subscription acknowledgement, not by a replayed notice").toBe(0);
+  expect(seen.loads(), "the page was never reloaded").toBe(1);
+});
+
+test("realtime: removing the receiving member clears the protected content and keeps the session", async ({ browser, baseURL, request }) => {
+  const { projectId, key } = await realtimeProject(request, "RT member removal");
+  await ingest(request, key, rtBody("rm-1", "2026-10-01T09:00:00.000Z"));
+  const member = await signUp(request, "explorer-removed");
+  await addMember(request, owner, organizationId, member, "MEMBER");
+  const context = await signedInContext(browser, baseURL, member);
+  try {
+    const page = await context.newPage();
+    const seen = observeRealtime(page, LIST_READ);
+    await page.goto(tracesPath(organizationId, projectId, goldenSearch()));
+    await idsEqual(page, ["rm-1"]);
+    await subscribed(seen);
+
+    // The user id is the subject of the (disposable) test user's token.
+    const userId = JSON.parse(atob(member.token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).sub as string;
+    const removed = await request.delete(`${API}/organizations/${organizationId}/members/${userId}`, {
+      headers: { Authorization: `Bearer ${owner.token}` },
+    });
+    expect(removed.status(), "remove member").toBeLessThan(300);
+
+    await expect(page.getByText("This project is not available.")).toBeVisible();
+    await expect(page.getByRole("link", { name: /^View trace / })).toHaveCount(0);
+    expect(await page.evaluate(() => Boolean(localStorage.getItem("tokenscope.accessToken")))).toBe(true);
+    expect((await apiGet(request, member, `${API}/organizations`)).status()).toBe(200);
+    expect(seen.loads(), "the page was never reloaded").toBe(1);
+  } finally {
+    await context.close();
+  }
+});
+
+test("realtime: archiving the organization clears the protected content and keeps the session", async ({ page, request }) => {
+  const auth = { Authorization: `Bearer ${owner.token}` };
+  const created = await request.post(`${API}/organizations`, { headers: auth, data: { name: `RT org archive ${Date.now()}` } });
+  expect(created.status(), "create organization").toBe(201);
+  const org = (await created.json()) as { id: string; slug: string };
+  const projectId = await createProject(request, owner, org.id, "RT org archive");
+  const key = await createApiKey(request, owner, org.id, projectId);
+  await ingest(request, key, rtBody("oa-1", "2026-10-01T09:00:00.000Z"));
+
+  const seen = observeRealtime(page, LIST_READ);
+  await signInPage(page, owner);
+  await page.goto(tracesPath(org.id, projectId, goldenSearch()));
+  await idsEqual(page, ["oa-1"]);
+  await subscribed(seen);
+
+  const archived = await request.delete(`${API}/organizations/${org.id}`, { headers: auth, data: { confirmSlug: org.slug } });
+  expect(archived.status(), "archive organization").toBe(204);
+
+  await expect(page.getByText("This project is not available.")).toBeVisible();
+  await expect(page.getByRole("link", { name: /^View trace / })).toHaveCount(0);
+  expect(await page.evaluate(() => Boolean(localStorage.getItem("tokenscope.accessToken")))).toBe(true);
+  expect((await apiGet(request, owner, `${API}/organizations`)).status()).toBe(200); // other organizations stay usable
+  expect(seen.loads(), "the page was never reloaded").toBe(1);
+});
+
+
+test("realtime: deleting the only row of the last page recovers to the last valid page and keeps the query", async ({ page, request }) => {
+  test.setTimeout(180_000); // 26 ingestions paced under the public API limit
+  const { projectId, key } = await realtimeProject(request, "RT last page");
+  const ingested = await ingestAll(request, key, fixtureBodies("traces-pagination.json").slice(0, 26));
+  const seen = observeRealtime(page, LIST_READ);
+  await open(page, projectId, goldenSearch("&page=2"));
+  await expect(summary(page)).toHaveText("26 traces · Page 2 of 2");
+  const onLastPage = await visibleExternalIds(page);
+  expect(onLastPage).toHaveLength(1);
+  await subscribed(seen);
+
+  const readsBefore = seen.reads.length;
+  await deletePublic(request, key, ingested.get(onLastPage[0])!);
+  await expect(summary(page)).toHaveText("25 traces · Page 1 of 1");
+  await expect(page).not.toHaveURL(/page=/); // back on the first page, recovered once
+  await expect(page).toHaveURL(new RegExp(`from=${GOLDEN_FROM.replace(/:/g, "(:|%3A)")}`)); // the applied period is kept
+  await expect(page.getByRole("link", { name: /^View trace / })).toHaveCount(25);
+  expectNoticeThenRead(seen, readsBefore);
 });
