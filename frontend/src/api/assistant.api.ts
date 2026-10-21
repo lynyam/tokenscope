@@ -48,9 +48,9 @@ export function normalizeFilters(filters: Record<string, unknown>): AssistantFil
   const result: AssistantFilters = {};
   const q = cleanText(filters.q);
   if (q !== undefined) result.q = q;
-  const provider = cleanText(filters.provider);
+    const provider = cleanText(filters.provider)?.toLowerCase();
   if (provider !== undefined) result.provider = provider;
-  const model = cleanText(filters.model);
+  const model = cleanText(filters.model)?.toLowerCase();
   if (model !== undefined) result.model = model;
   const workflow = cleanText(filters.workflow);
   if (workflow !== undefined) result.workflow = workflow;
