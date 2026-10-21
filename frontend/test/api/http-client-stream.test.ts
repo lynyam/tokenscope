@@ -1,18 +1,19 @@
 // frontend/test/api/http-client-stream.test.ts
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { apiPostStream, ApiError } from '../../src/api/http-client';
-import { getAuthSessionSnapshot, invalidateAuthSession } from '../../src/api/auth-session';
+import { getAuthSessionSnapshot, invalidateAuthSession, isAuthSessionCurrent } from '../../src/api/auth-session';
 
-// On remplace le module de session par un faux, pour contrôler la session courante.
+// Replace the session module with a fake, to control the current session.
 vi.mock('../../src/api/auth-session', () => ({
   getAuthSessionSnapshot: vi.fn(),
   invalidateAuthSession: vi.fn(),
+  isAuthSessionCurrent: vi.fn(),
 }));
 
 const session1 = { token: 'tok-1' };
 const session2 = { token: 'tok-2' };
 
-// Fabrique une réponse SSE valide (statut 200 + type text/event-stream).
+// Builds a valid SSE response (status 200 + text/event-stream).
 function sseResponse(init: { status?: number; contentType?: string } = {}) {
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -34,6 +35,10 @@ describe('apiPostStream', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', fetchMock);
     vi.mocked(getAuthSessionSnapshot).mockReturnValue(session1 as never);
+    // Same rule as the real function: a session is current while it is still the stored one.
+    vi.mocked(isAuthSessionCurrent).mockImplementation(
+      (snapshot) => (vi.mocked(getAuthSessionSnapshot)() as unknown) === snapshot,
+    );
   });
 
   afterEach(() => {
@@ -42,34 +47,34 @@ describe('apiPostStream', () => {
     fetchMock.mockReset();
   });
 
-  it('envoie le POST avec le token, le corps JSON et le signal', async () => {
+  it('sends the POST with the token, the JSON body and the signal', async () => {
     fetchMock.mockResolvedValue(sseResponse());
     const controller = new AbortController();
 
-    await apiPostStream('/x/assistant', { question: 'Salut' }, { signal: controller.signal });
+    await apiPostStream('/x/assistant', { question: 'Hello' }, { signal: controller.signal });
 
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe('/api/v1/x/assistant');
     expect(init.method).toBe('POST');
     expect(init.signal).toBe(controller.signal);
-    expect(init.body).toBe(JSON.stringify({ question: 'Salut' }));
+    expect(init.body).toBe(JSON.stringify({ question: 'Hello' }));
     const headers = init.headers as Headers;
     expect(headers.get('Authorization')).toBe('Bearer tok-1');
     expect(headers.get('Accept')).toBe('text/event-stream');
     expect(headers.get('Content-Type')).toBe('application/json');
   });
 
-  it('rend le flux sans le lire, avec le request id', async () => {
+  it('returns the stream unread, with the request id', async () => {
     fetchMock.mockResolvedValue(sseResponse());
     const result = await apiPostStream('/x', {});
     expect(result.requestId).toBe('req-1');
     expect(result.body).toBeInstanceOf(ReadableStream);
-    expect(result.body.locked).toBe(false); // personne ne l'a lu
+    expect(result.body.locked).toBe(false); // nobody read it
   });
 
-  it('transforme une erreur JSON initiale en ApiError', async () => {
+  it('turns an initial JSON error into an ApiError', async () => {
     fetchMock.mockResolvedValue(
-      new Response(JSON.stringify({ code: 'PROJECT_NOT_FOUND', message: 'Introuvable' }), {
+      new Response(JSON.stringify({ code: 'PROJECT_NOT_FOUND', message: 'Not found' }), {
         status: 404,
         headers: { 'Content-Type': 'application/json', 'X-Request-Id': 'req-2' },
       }),
@@ -81,9 +86,9 @@ describe('apiPostStream', () => {
     });
   });
 
-  it('expose Retry-After sur un 429', async () => {
+  it('exposes Retry-After on a 429', async () => {
     fetchMock.mockResolvedValue(
-      new Response(JSON.stringify({ code: 'RATE_LIMITED', message: 'Trop vite' }), {
+      new Response(JSON.stringify({ code: 'RATE_LIMITED', message: 'Too fast' }), {
         status: 429,
         headers: { 'Content-Type': 'application/json', 'Retry-After': '12' },
       }),
@@ -94,7 +99,7 @@ describe('apiPostStream', () => {
     });
   });
 
-  it('invalide la session capturée sur un 401, même non JSON', async () => {
+  it('invalidates the captured session on a 401, even with a non-JSON body', async () => {
     fetchMock.mockResolvedValue(
       new Response('<html>unauthorized</html>', {
         status: 401,
@@ -105,14 +110,14 @@ describe('apiPostStream', () => {
     expect(invalidateAuthSession).toHaveBeenCalledWith(session1);
   });
 
-  it("refuse une réponse 200 qui n'est pas un flux SSE", async () => {
+  it('rejects a 200 response that is not an SSE stream', async () => {
     fetchMock.mockResolvedValue(sseResponse({ contentType: 'application/json' }));
     await expect(apiPostStream('/x', {})).rejects.toMatchObject({
       code: 'INVALID_API_RESPONSE',
     });
   });
 
-  it('isSessionCurrent devient faux quand une autre session prend la place', async () => {
+  it('isSessionCurrent becomes false when another session takes over', async () => {
     fetchMock.mockResolvedValue(sseResponse());
     const result = await apiPostStream('/x', {});
     expect(result.isSessionCurrent()).toBe(true);
@@ -121,7 +126,7 @@ describe('apiPostStream', () => {
     expect(result.isSessionCurrent()).toBe(false);
   });
 
-  it("invalidateSession invalide la session d'origine, pas la nouvelle", async () => {
+  it('invalidateSession invalidates the original session, not the new one', async () => {
     fetchMock.mockResolvedValue(sseResponse());
     const result = await apiPostStream('/x', {});
 
@@ -132,7 +137,7 @@ describe('apiPostStream', () => {
     expect(invalidateAuthSession).not.toHaveBeenCalledWith(session2);
   });
 
-  it('laisse passer une annulation volontaire sans la transformer', async () => {
+  it('lets a deliberate abort through without wrapping it', async () => {
     fetchMock.mockRejectedValue(new DOMException('aborted', 'AbortError'));
     await expect(apiPostStream('/x', {})).rejects.toMatchObject({ name: 'AbortError' });
   });
