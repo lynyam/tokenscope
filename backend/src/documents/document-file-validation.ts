@@ -1,5 +1,5 @@
 import { HttpStatus } from "@nestjs/common";
-import { PDFParse } from "pdf-parse";
+import { Worker } from "node:worker_threads";
 import { ApiException } from "../common/errors/api.exception";
 import {
 	DOCUMENT_MEDIA_TYPES,
@@ -31,7 +31,7 @@ function invalidContent(message: string): ApiException {
 
 /** Validates the client file name and returns it unchanged. */
 export function validateDocumentName(name: unknown): string {
-	if (typeof name !== "string" || name.length === 0) {
+	if (typeof name !== "string" || name.trim().length === 0) {
 		throw validationError("The file name is required.");
 	}
 	if (LONE_SURROGATE.test(name)) {
@@ -84,6 +84,38 @@ export type ContentValidationOptions = {
 	openPdf?: (data: Uint8Array) => PdfInspector;
 };
 
+// PDF.js uses a same-thread fallback in Node. A dedicated worker makes the
+// existing deadline enforceable even while PDF parsing is CPU-bound.
+function openPdfInWorker(data: Uint8Array): PdfInspector {
+	const worker = new Worker(`
+		const { parentPort, workerData } = require("node:worker_threads");
+		(async () => {
+			try {
+				const { PDFParse } = require(workerData.modulePath);
+				const parser = new PDFParse({ data: workerData.data });
+				const info = await parser.getInfo();
+				parentPort.postMessage({ encrypted: info.permission != null });
+			} catch (error) {
+				parentPort.postMessage({ failure: error?.name === "PasswordException"
+					? "PasswordException" : "InvalidPDFException" });
+			}
+		})();
+	`, { eval: true, workerData: { modulePath: require.resolve("pdf-parse"), data },
+		stdout: true, stderr: true });
+	// Parser diagnostics may contain document content; never forward them.
+	worker.stdout.resume();
+	worker.stderr.resume();
+	const result = new Promise<{ permission?: unknown }>((resolve, reject) => {
+		worker.once("message", (message: { encrypted?: boolean; failure?: string }) => {
+			if (message.failure) reject(Object.assign(new Error("Invalid PDF"), { name: message.failure }));
+			else resolve({ permission: message.encrypted ? [] : null });
+		});
+		worker.once("error", () => reject(new Error("PDF worker failed")));
+		worker.once("exit", () => reject(new Error("PDF worker exited")));
+	});
+	return { getInfo: () => result, destroy: () => worker.terminate() };
+}
+
 async function assertPdf(
 	content: Buffer,
 	options: ContentValidationOptions,
@@ -96,7 +128,7 @@ async function assertPdf(
 	const data = new Uint8Array(content);
 	const parser: PdfInspector = options.openPdf
 		? options.openPdf(data)
-		: new PDFParse({ data });
+		: openPdfInWorker(data);
 
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	const deadline = new Promise<never>((_resolve, reject) => {

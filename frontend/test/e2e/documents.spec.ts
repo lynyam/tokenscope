@@ -164,7 +164,7 @@ test.describe("tenant isolation", () => {
 
     for (const url of [documentsApi(organizationId, projectId), `${documentsApi(organizationId, projectId)}/${stored.id}/content`]) {
       const status = (await apiGet(request, outsider, url)).status();
-      expect([403, 404]).toContain(status);
+      expect(status).toBe(404);
     }
     // Same organization, wrong project: the document id alone is not enough.
     const substituted = await apiGet(request, owner, `${documentsApi(organizationId, otherProjectId)}/${stored.id}/content`);
@@ -297,3 +297,45 @@ test.describe("navigation", () => {
     await expect(page.getByText("sample-brief.pdf")).toHaveCount(0);
   });
 });
+
+
+for (const loss of ["membership", "project", "organization"] as const) {
+  test(`an open private preview is cleared after ${loss} access loss`, async ({ browser, baseURL, request }) => {
+    const { owner, organizationId, projectId } = await workspace(request);
+    const member = await signUp(request, "revoked-member");
+    await addMember(request, owner, organizationId, member, "MEMBER");
+    const stored = await uploadViaApi(request, owner, organizationId, projectId,
+      "private.txt", Buffer.from("Private document for the access-loss test."));
+    const context = await signedInContext(browser, baseURL, member);
+    try {
+      const page = await context.newPage();
+      await page.goto(documentsPage(organizationId, projectId));
+      await rowAction(page, "Preview", "private.txt").click();
+      await expect(page.getByRole("dialog").getByText("Private document for the access-loss test.")).toBeVisible();
+      const headers = { Authorization: `Bearer ${owner.token}` };
+      if (loss === "membership") {
+        const me = await apiGet(request, member, "/api/v1/auth/me");
+        expect(me.status()).toBe(200);
+        const user = await me.json();
+        expect((await request.delete(`/api/v1/organizations/${organizationId}/members/${user.id}`, { headers })).status()).toBe(204);
+      } else if (loss === "project") {
+        expect((await request.delete(`/api/v1/organizations/${organizationId}/projects/${projectId}`, { headers })).status()).toBe(204);
+      } else {
+        const organization = await apiGet(request, owner, `/api/v1/organizations/${organizationId}`);
+        expect(organization.status()).toBe(200);
+        const { slug } = await organization.json();
+        expect((await request.delete(`/api/v1/organizations/${organizationId}`, { headers, data: { confirmSlug: slug } })).status()).toBe(204);
+      }
+      // No reload: the existing shared realtime client delivers the access change.
+      await expect(page.getByText("This project is no longer available.")).toBeVisible();
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await expect(page.getByText("private.txt", { exact: true })).toHaveCount(0);
+      expect(await page.evaluate(() => localStorage.getItem("tokenscope.accessToken"))).toBe(member.token);
+      expect((await apiGet(request, member,
+        `${documentsApi(organizationId, projectId)}/${stored.id}/content`)).status()).toBe(404);
+      expect((await apiGet(request, member, "/api/v1/auth/me")).status()).toBe(200);
+    } finally {
+      await context.close();
+    }
+  });
+}

@@ -1,3 +1,4 @@
+import { AccessChangesService } from "../../src/access-changes/access-changes.service";
 import "reflect-metadata";
 import { randomUUID } from "node:crypto";
 import type { ExecutionContext, INestApplication } from "@nestjs/common";
@@ -50,6 +51,7 @@ describe("Organization HTTP contract with a test-only actor", () => {
 		const context = await Test.createTestingModule({
 			controllers: [OrganizationsController],
 			providers: [
+                AccessChangesService,
 				OrganizationsService, OrganizationAccessService,
 				{ provide: APP_GUARD, useValue: actorFixture },
 				{ provide: PrismaService, useValue: prisma },

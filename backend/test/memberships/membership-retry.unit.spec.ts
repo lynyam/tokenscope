@@ -1,3 +1,4 @@
+import { AccessChangesService } from "../../src/access-changes/access-changes.service";
 import "reflect-metadata";
 import { ApiException } from "../../src/common/errors/api.exception";
 import type { PrismaService } from "../../src/database/prisma.service";
@@ -61,6 +62,7 @@ function setup() {
 			assertOrganizationRole: authorize,
 		} as unknown as OrganizationAccessService,
 		{} as UsersService,
+		new AccessChangesService(),
 	);
 
 	const demote = () =>

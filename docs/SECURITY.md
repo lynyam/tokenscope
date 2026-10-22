@@ -786,7 +786,25 @@ trace metadata and credentials. Database failures use the existing safe error en
 
 Verify JWT signature and expiry using the existing token service.
 
-Validate exact allowed browser Origins for polling and WebSocket transport.
+Validate every Engine.IO request, including polling and WebSocket upgrades, against
+`REALTIME_ALLOWED_ORIGINS` (comma-separated exact HTTP(S) origins, no trailing slash).
+An absent configuration denies realtime transport requests; HTTP authentication remains unchanged.
+A present Origin must match exactly; reject `null` and unapproved origins.
+WebSocket upgrades require an approved Origin. The only missing-Origin exception is a
+polling GET with `Sec-Fetch-Site: same-origin` and an allowlisted Referer origin, because
+real browsers may omit Origin on same-origin GETs. Proxies preserve these browser headers.
+Non-browser clients can forge these headers: they are not identity or authorization.
+JWT verification and current project access remain mandatory. Never place credentials in URLs.
+
+TokenService returns verified `{ sub, exp }`; exp is Unix seconds. Realtime converts it
+to milliseconds, schedules disconnection and rechecks it before join and notification delivery.
+The HTTP guard keeps `request.user` limited to `{ id }` and attaches the verified
+expiry separately as `request.accessTokenExpiresAt` (milliseconds) for assistant HTTP streams.
+
+Post-commit access events use AccessChangesModule, which has no dependency on realtime
+or the assistant. Its listener errors are logged safely and cannot reverse a committed mutation.
+The existing TraceChangesService remains the only trace mutation publisher.
+No raw token, API key, socket auth body or exception details are logged.
 
 Check access when subscribing and again before notifications. Protect asynchronous subscription changes with a generation check.
 
@@ -813,6 +831,72 @@ Recheck current access before provider dispatch and through fresh reads during s
 Cancellation, expiry, access loss, timeout and disconnect must release provider work, timers and concurrency slots. Do not promise that client cancellation guarantees the remote provider stops all computation.
 
 Keep provider credentials backend-only. Verify the actual account/model configuration and disclose applicable provider processing accurately. Do not promise zero retention or unlimited free use without evidence.
+
+#### TSE-80 implementation status
+
+Authorization:
+
+- The global JWT guard reuses the existing `TokenService.verifyAccessToken()`
+  result `{ sub, exp }`; the guard stores expiry as `request.accessTokenExpiresAt`
+  (milliseconds). The token is never decoded without verification, roles are not
+  added to it, and public auth responses are unchanged.
+- `ProjectAccessService.assertProjectAccess()` runs before any limit, inside the
+  analytics transaction (TSE-71), right before the provider call, and every
+  5 seconds while streaming. A lost membership or an archived organization/project
+  stops the stream with `PROJECT_NOT_FOUND`; a re-check that cannot complete stops
+  it with `INTERNAL_SERVER_ERROR`. Each access read has a five-second wait limit.
+  Re-checks never overlap (chained timers). A timed-out database operation may
+  still finish internally; its late result cannot resume output.
+- The stream also stops when the verified JWT expires (`ACCESS_TOKEN_EXPIRED`).
+
+Data sent to Gemini (`backend/src/assistant/assistant-prompt.ts`), built from an
+explicit allowlist:
+
+- the question;
+- project name and description;
+- window, applied filters, summary, time series, per-model breakdown and the
+  synthetic-pricing flag.
+
+Never sent: JWTs, API keys, user identities or emails, trace metadata, trace
+prompts, documents, snapshot/project/request IDs. Data is JSON-encoded inside
+`<analytics>` / `<question>` blocks with `<` and `>` escaped, and the fixed
+instructions say that this content is data, not instructions.
+
+Provider boundary: only `gemini-assistant.provider.ts` imports `@google/genai`.
+One attempt (`httpOptions.retryOptions.attempts: 1`, proven against the installed
+SDK by `test/assistant/gemini-sdk-retry.unit.spec.ts`), one candidate,
+600 output tokens, no tools, `automaticContinuation: false`. Provider errors are
+mapped to safe codes; raw SDK messages never reach clients or logs. A provider
+authentication failure is `503 LLM_UNAVAILABLE`, never a user `401`.
+
+Cancellation is client-side: on Stop, disconnect, deadline, expiry, access loss
+or shutdown, TokenScope aborts the SDK request, stops reading and writing, clears
+its timers and frees the user's slot. It cannot guarantee that Google stops
+computing an answer already in progress.
+
+Limits are in memory (`RateLimitService` plus a per-user active set). They are
+correct for the single backend instance of this MVP; several instances would
+each keep their own counters. Assistant quotas use a rolling 60-second window;
+user and project budgets are charged together only after both allow admission.
+Existing public/browser quotas retain their fixed-window behavior.
+
+Logging: one `assistant_answer` line per admitted answer with `requestId`,
+outcome code and duration only. Rejections before admission are logged by the
+existing `request_failed` filter line. Questions, descriptions, contexts,
+answers and raw provider errors are never logged.
+
+Gemini data handling depends on the account and region. Under the unpaid-service
+terms, submitted content and responses may be used for product improvement and
+human review. For the EEA, Switzerland and UK, the paid-service data-use terms
+also apply to unpaid quota. The terms separately restrict making API clients
+available in those regions to Paid Services. Confirm the actual account and
+intended audience; do not automatically enable billing.
+
+Reference: https://ai.google.dev/gemini-api/terms
+TokenScope discloses the question, project name/description and selected analytics
+sent to Gemini and makes no zero-retention claim.
+Record the verified model, account tier, region, quota, date and tested commit
+after the explicit live check. Until then, live-provider validation is pending.
 
 ### Private files
 
@@ -843,9 +927,9 @@ Logs and test artifacts must exclude credentials, file contents, questions, comp
 - Client file names are display data only. They never form a filesystem path. Storage keys are server-generated UUIDs and are checked against a strict pattern before any file access.
 - Downloads send the stored media type with `nosniff`, `no-store` and a safe `Content-Disposition`. There is no public storage URL.
 - Files are stored with mode `0600` in a private directory that must not be served by any web server.
-- Upload quota is 5 authorized uploads per user per minute. The limiter is an in-memory fixed window: a user can send up to 10 uploads across a window boundary, and counters reset when the process restarts. It is per process, so several backend instances multiply the limit.
-- PDFs are parsed in the backend process with pdf.js (through `pdf-parse`). Parsing untrusted PDFs is a known risk that is bounded here by the size limit and a 10-second deadline; it is not sandboxed, and a stuck parse may keep running in the background after the request is rejected.
+- Upload quota is five authorized attempts per rolling minute per user, using the existing shared `RateLimitService.consumeRolling`. Denials include `Retry-After`; failed authorized attempts consume capacity. Counters are in memory and reset on restart. This remains a single-backend deployment.
+- PDF structural validation runs in a dedicated Node worker thread using `pdf-parse`. The worker is terminated after validation or the ten-second deadline, so CPU-bound parsing does not block the HTTP event loop. A worker thread is resource isolation, not a security sandbox or malware scanner. Parser diagnostics are not forwarded to application logs.
 - Validation checks format and structure. It is not a guarantee that a file is free of malware, and no antivirus scan is performed.
 - Documents are only stored for users. They are not sent to the assistant, indexed, or used for retrieval.
-- Uploads are received on disk in a private `0700` directory, so reception does not buffer the body in memory. Validation then reads the file into memory: at most one 10 MiB file per upload, plus one extra copy while a PDF is parsed.
+- Uploads are received as `0600` temporary files in a private `0700` directory. Active temporary paths are protected from orphan cleanup. Validation reads up to 10 MiB per upload; PDF parsing also uses a worker copy and parser memory.
 - Caddy rejects request bodies above 11 MiB on `/api/*` before they reach the backend. Caddy answers `413` itself, so that response does not use the JSON error envelope.

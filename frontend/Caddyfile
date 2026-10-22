@@ -18,6 +18,15 @@ localhost {
 		}
 	}
 
+    @realtime path /socket.io /socket.io/*
+    handle @realtime {
+        reverse_proxy backend:{$BACKEND_PORT:3000} {
+            header_up X-Forwarded-For {http.request.remote.host}
+            header_up -Forwarded
+            header_up -X-Real-IP
+        }
+    }
+
 	# Only frontend routes receive compression and the SPA fallback.
 	# API ETags must remain unchanged for If-Match.
 	handle {

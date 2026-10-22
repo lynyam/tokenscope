@@ -224,6 +224,7 @@ describe("Private documents with PostgreSQL", () => {
 			expect(await fileCount()).toBe(1);
 
 			await remove(path).expect(204);
+			await cleanup.runOnce();
 			expect(await db.projectDocument.count()).toBe(0);
 			expect(await db.fileDeletionJob.count()).toBe(0);
 			expect(await fileCount()).toBe(0);
@@ -237,6 +238,7 @@ describe("Private documents with PostgreSQL", () => {
 			jest.spyOn(storage, "delete").mockRejectedValueOnce(Object.assign(new Error("io"), { code: "EIO" }));
 
 			await remove(`${base()}/${created.body.id}`).expect(204);
+			await cleanup.runOnce();
 			expect(await db.projectDocument.count()).toBe(0);
 			const [job] = await db.fileDeletionJob.findMany();
 			expect(job).toMatchObject({ attempts: 1, lastErrorCode: "EIO" });
@@ -254,6 +256,36 @@ describe("Private documents with PostgreSQL", () => {
 			expect(await fileCount()).toBe(0);
 		});
 
+		it("rolls back the deletion job and preserves bytes if metadata deletion fails", async () => {
+			const created = await upload("kept.txt", "hello").expect(201);
+			const original = db.$transaction.bind(db);
+			const transaction = jest.spyOn(db, "$transaction").mockImplementationOnce(
+				((operation: (tx: any) => Promise<unknown>, options: any) => original(async (tx) => {
+					const failing = new Proxy(tx, {
+						get(target, key) {
+							if (key !== "projectDocument") return Reflect.get(target, key);
+							return new Proxy(target.projectDocument, {
+								get(model, method) {
+									if (method === "delete") return async () => { throw new Error("forced rollback"); };
+									return Reflect.get(model, method);
+								},
+							});
+						},
+					});
+					return operation(failing);
+				}, options)) as never,
+			);
+			try {
+				await remove(`${base()}/${created.body.id}`).expect(500);
+			} finally {
+				transaction.mockRestore();
+			}
+			expect(await db.fileDeletionJob.count()).toBe(0);
+			expect(await db.projectDocument.count()).toBe(1);
+			expect(await fileCount()).toBe(1);
+			expect((await get(`${base()}/${created.body.id}/content`).expect(200)).text).toBe("hello");
+		});
+
 		it("lets exactly one of two concurrent deletes succeed", async () => {
 			const created = await upload("a.txt", "hello").expect(201);
 			const path = `${base()}/${created.body.id}`;
@@ -262,6 +294,7 @@ describe("Private documents with PostgreSQL", () => {
 				.map((r) => r.status)
 				.sort();
 			expect(statuses).toEqual([204, 404]);
+			await cleanup.runOnce();
 			expect(await db.fileDeletionJob.count()).toBe(0);
 			expect(await fileCount()).toBe(0);
 		});
@@ -474,6 +507,7 @@ describe("Private documents with PostgreSQL", () => {
 			const created = await upload("gone.txt", "bye").expect(201);
 			jest.spyOn(storage, "delete").mockRejectedValueOnce(Object.assign(new Error("io"), { code: "EIO" }));
 			await remove(`${base()}/${created.body.id}`).expect(204);
+			await cleanup.runOnce();
 			expect(await db.fileDeletionJob.count()).toBe(1);
 			expect(await fileCount()).toBe(1);
 

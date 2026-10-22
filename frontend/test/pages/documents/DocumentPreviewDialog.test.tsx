@@ -30,7 +30,7 @@ function deferred<T>() {
 
 function open(document: DocumentSummary | null, extra: Partial<Parameters<typeof DocumentPreviewDialog>[0]> = {}) {
   const props = {
-    organizationId: "o", projectId: "p", document, onClose: vi.fn(), onDownload: vi.fn(), isDownloading: false,
+    organizationId: "o", projectId: "p", document, isCurrent: () => true, onClose: vi.fn(), onDownload: vi.fn(), isDownloading: false,
     onFailure: vi.fn(), ...extra,
   };
   const view = render(<DocumentPreviewDialog {...props} />);
@@ -252,4 +252,25 @@ describe("PDF preview", () => {
     await act(async () => pending.resolve(pdfBlob()));
     expect(startPdf).not.toHaveBeenCalled();
   });
+});
+
+
+it("shows a download failure inside the open preview", async () => {
+  content.mockResolvedValue(new Blob(["hello"], { type: "text/plain" }));
+  open(textDoc, { downloadError: "Download failed. Request ID: req-download" });
+  expect(await screen.findByRole("alert")).toHaveTextContent("Request ID: req-download");
+  expect(screen.getByRole("button", { name: "Download" })).toBeEnabled();
+});
+
+it("ignores PDF completion for a replaced session and destroys its resources", async () => {
+  content.mockResolvedValue(new Blob(["%PDF"], { type: "application/pdf" }));
+  let current = true;
+  const { pageCount, destroy } = pdfDouble();
+  const { unmount } = open(pdfDoc, { isCurrent: () => current });
+  await waitFor(() => expect(startPdf).toHaveBeenCalledTimes(1));
+  current = false;
+  await act(async () => pageCount.resolve(3));
+  expect(screen.queryByText("Page 1 of 3")).not.toBeInTheDocument();
+  unmount();
+  expect(destroy).toHaveBeenCalledTimes(1);
 });

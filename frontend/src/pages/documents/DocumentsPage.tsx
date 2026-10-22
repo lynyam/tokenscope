@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ApiError, isAbortError } from "../../api/http-client";
-import { getAccessToken, getAuthSessionSnapshot, subscribeToAuthInvalidation } from "../../api/auth-session";
+import { getAccessToken, getAuthSessionSnapshot, isAuthSessionCurrent, subscribeToAuthInvalidation } from "../../api/auth-session";
 import { getOrganization } from "../../api/organizations.api";
 import { getOrganizationProject } from "../../api/projects.api";
 import { getDocumentContent, listDocuments } from "../../api/documents.api";
@@ -13,6 +13,10 @@ import { DeleteDocumentDialog } from "./DeleteDocumentDialog";
 import { DocumentPreviewDialog } from "./DocumentPreviewDialog";
 import { UploadDocumentForm } from "./UploadDocumentForm";
 import { SCOPE_STATEMENT, documentErrorMessage, formatBytes, formatDateTime, isApiError, mediaTypeLabel } from "./document-file";
+
+import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { useProjectArchived } from "../../hooks/useProjectArchived";
+import { useProjectRealtime } from "../../hooks/useProjectRealtime";
 
 const PAGE_SIZE = 25;
 const DOWNLOAD_CLEANUP_MS = 1_000;
@@ -26,15 +30,17 @@ type ListStatus = "loading" | "refreshing" | "idle" | "error";
 
 export function DocumentsPage() {
   const { organizationId, projectId } = useParams();
+  const { user, isLoading } = useCurrentUser();
+  const currentSession = getAuthSessionSnapshot();
   // A new epoch remounts the page and discards everything it held. Without a token there is nothing to
   // remount for: ProtectedRoute leaves this route, and a tokenless remount would only trigger more 401s.
   const [epoch, setEpoch] = useState(0);
   const [signedOut, setSignedOut] = useState(false);
   const sessionChanged = () => { if (getAccessToken()) setEpoch(value => value + 1); else setSignedOut(true); };
   useEffect(() => subscribeToAuthInvalidation(() => setSignedOut(true)), []);
-  if (signedOut) return null;
+  if (signedOut || isLoading || !user || !currentSession.token) return null;
   if (!organizationId || !projectId) return <p role="alert">Missing organization or project.</p>;
-  return <Documents key={`${organizationId}/${projectId}/${epoch}`}
+  return <Documents key={`${organizationId}/${projectId}/${currentSession.revision}/${epoch}`}
     organizationId={organizationId} projectId={projectId} onSessionChanged={sessionChanged} />;
 }
 
@@ -46,6 +52,8 @@ function Documents({ organizationId, projectId, onSessionChanged }:
   // Scope captured at mount: organization, project (props) and the authentication session.
   const session = useRef(getAuthSessionSnapshot());
   const active = useRef(false);
+  const unavailable = useRef(false);
+  const archived = useProjectArchived(organizationId, projectId);
   const listController = useRef<AbortController | null>(null);
   const listSeq = useRef(0);
   const accessController = useRef<AbortController | null>(null);
@@ -54,6 +62,7 @@ function Documents({ organizationId, projectId, onSessionChanged }:
   const objectUrlCleanups = useRef(new Set<() => void>());
   const dataRef = useRef<DocumentListResponse | null>(null);
   const pageRef = useRef(1);
+  const requestedPage = useRef(1);
 
   const [attempt, setAttempt] = useState(0);
   const [access, setAccess] = useState<Access>({ status: "loading" });
@@ -86,9 +95,8 @@ function Documents({ organizationId, projectId, onSessionChanged }:
 
   /** False once the component or the authentication session is no longer the one that started the work. */
   function isCurrent(): boolean {
-    if (!active.current) return false;
-    const now = getAuthSessionSnapshot();
-    if (now.revision !== session.current.revision || now.token !== session.current.token) {
+    if (!active.current || unavailable.current) return false;
+    if (!isAuthSessionCurrent(session.current)) {
       // Another login replaced the session: restart from a clean slate and ignore the late response.
       onSessionChanged();
       return false;
@@ -97,6 +105,11 @@ function Documents({ organizationId, projectId, onSessionChanged }:
   }
 
   function showUnavailable(message: string) {
+    unavailable.current = true;
+    accessController.current?.abort();
+    listSeq.current += 1;
+    setRole(null);
+    objectUrlCleanups.current.forEach(cleanup => cleanup());
     listController.current?.abort();
     roleController.current?.abort();
     downloads.current.forEach(controller => controller.abort());
@@ -111,20 +124,26 @@ function Documents({ organizationId, projectId, onSessionChanged }:
     setAccess({ status: "unavailable", message });
   }
 
-  async function refreshRole() {
+  async function refreshRole(hideManagement = true) {
+    if (!isCurrent()) return;
     roleController.current?.abort();
     const controller = new AbortController();
     roleController.current = controller;
     // Management controls stay hidden until the effective role is known again.
-    setRole(null);
+    if (hideManagement) {
+      setRole(null);
+      setDeleteTarget(null);
+    }
     setRoleError(null);
-    setDeleteTarget(null);
     try {
-      const organization = await getOrganization(organizationId, controller.signal);
+      const [organization] = await Promise.all([
+        getOrganization(organizationId, controller.signal),
+        getOrganizationProject(organizationId, projectId, controller.signal),
+      ]);
       if (controller.signal.aborted || !isCurrent()) return;
       setRole(organization.currentUserRole);
     } catch (error) {
-      if (controller.signal.aborted || !active.current || isAbortError(error)) return;
+      if (controller.signal.aborted || !isCurrent() || isAbortError(error)) return;
       if (error instanceof ApiError && error.statusCode === 404) showUnavailable("This project is no longer available.");
       else setRoleError("Your permissions could not be refreshed.");
     }
@@ -132,7 +151,7 @@ function Documents({ organizationId, projectId, onSessionChanged }:
 
   /** Central reaction to failures that change what the user may see or do. The session is never ended here. */
   function handleFailure(error: unknown, target?: DocumentSummary) {
-    if (!active.current || isAbortError(error)) return;
+    if (!isCurrent() || isAbortError(error)) return;
     if (isApiError(error, "PROJECT_NOT_FOUND", 404) || isApiError(error, "ORGANIZATION_NOT_FOUND", 404)) {
       showUnavailable("This project is no longer available.");
     } else if (isApiError(error, "INSUFFICIENT_ORGANIZATION_ROLE", 403)) {
@@ -140,12 +159,16 @@ function Documents({ organizationId, projectId, onSessionChanged }:
     } else if (target && isApiError(error, "DOCUMENT_NOT_FOUND", 404)) {
       setPreviewDocument(current => (current?.id === target.id ? null : current));
       setDeleteTarget(current => (current?.id === target.id ? null : current));
-      setNotice("That document is no longer available. The list has been refreshed.");
+      downloads.current.get(target.id)?.abort();
+      removeVisibleDocument(target);
+      setNotice("That document is no longer available.");
       void loadList(pageRef.current);
     }
   }
 
   async function loadList(targetPage: number, allowCorrection = true): Promise<void> {
+    if (!isCurrent()) return;
+    requestedPage.current = targetPage;
     listController.current?.abort();
     const controller = new AbortController();
     listController.current = controller;
@@ -158,7 +181,7 @@ function Documents({ organizationId, projectId, onSessionChanged }:
       if (seq !== listSeq.current || controller.signal.aborted || !isCurrent()) return;
       // The requested page no longer exists (for example after deleting its last row): fetch the last page once.
       const lastPage = Math.max(1, result.totalPages);
-      if (allowCorrection && result.items.length === 0 && result.total > 0 && targetPage !== lastPage) {
+      if (allowCorrection && targetPage > lastPage) {
         return loadList(lastPage, false);
       }
       dataRef.current = result;
@@ -166,7 +189,7 @@ function Documents({ organizationId, projectId, onSessionChanged }:
       setData(result);
       setListStatus("idle");
     } catch (error) {
-      if (seq !== listSeq.current || controller.signal.aborted || !active.current || isAbortError(error)) return;
+      if (seq !== listSeq.current || controller.signal.aborted || !isCurrent() || isAbortError(error)) return;
       handleFailure(error);
       setListError(documentErrorMessage(error, "list"));
       setListStatus("error");
@@ -194,7 +217,7 @@ function Documents({ organizationId, projectId, onSessionChanged }:
         void loadList(1);
       })
       .catch(error => {
-        if (controller.signal.aborted || !active.current || isAbortError(error)) return;
+        if (controller.signal.aborted || !isCurrent() || isAbortError(error)) return;
         // Do not reveal whether an inaccessible project exists.
         setAccess(error instanceof ApiError && error.statusCode === 404
           ? { status: "unavailable", message: "This project is no longer available." }
@@ -206,7 +229,7 @@ function Documents({ organizationId, projectId, onSessionChanged }:
   }, [organizationId, projectId, attempt]);
 
   async function download(target: DocumentSummary) {
-    if (downloads.current.has(target.id)) return; // One active download per document.
+    if (!isCurrent() || downloads.current.has(target.id)) return; // One active download per document.
     const controller = new AbortController();
     downloads.current.set(target.id, controller);
     setDownloading(ids => [...ids, target.id]);
@@ -216,12 +239,12 @@ function Documents({ organizationId, projectId, onSessionChanged }:
       if (controller.signal.aborted || !isCurrent()) return; // A stale response never starts a download.
       startBrowserDownload(blob, target.originalName);
     } catch (error) {
-      if (controller.signal.aborted || !active.current || isAbortError(error)) return;
+      if (controller.signal.aborted || !isCurrent() || isAbortError(error)) return;
       setDownloadError({ id: target.id, message: documentErrorMessage(error, "download") });
       handleFailure(error, target);
     } finally {
       if (downloads.current.get(target.id) === controller) downloads.current.delete(target.id);
-      if (active.current) setDownloading(ids => ids.filter(id => id !== target.id));
+      if (isCurrent()) setDownloading(ids => ids.filter(id => id !== target.id));
     }
   }
 
@@ -250,28 +273,48 @@ function Documents({ organizationId, projectId, onSessionChanged }:
   }
 
   function handleUploaded(uploaded: DocumentSummary) {
+    if (!isCurrent()) return;
     setNotice(`"${uploaded.originalName}" was uploaded.`);
     setDownloadError(null);
     pageRef.current = 1;
     void loadList(1);
   }
 
+  function removeVisibleDocument(removed: DocumentSummary) {
+    const current = dataRef.current;
+    if (!current || !current.items.some(item => item.id === removed.id)) return;
+    const total = Math.max(0, current.total - 1);
+    const next = {
+      ...current,
+      items: current.items.filter(item => item.id !== removed.id),
+      total,
+      totalPages: Math.ceil(total / current.pageSize),
+    };
+    dataRef.current = next;
+    setData(next);
+  }
+
   function handleDeleted(removed: DocumentSummary) {
+    if (!isCurrent()) return;
     setDeleteTarget(null);
     setPreviewDocument(current => (current?.id === removed.id ? null : current));
     setNotice(`"${removed.originalName}" was deleted.`);
-    // Remove the confirmed row immediately. A failing refresh later never brings it back.
-    setData(current => {
-      const next = current && {
-        ...current,
-        items: current.items.filter(item => item.id !== removed.id),
-        total: Math.max(0, current.total - 1),
-      };
-      dataRef.current = next;
-      return next;
-    });
+    // A failed refresh must not restore a confirmed missing document.
+    removeVisibleDocument(removed);
     void loadList(pageRef.current);
   }
+
+  useEffect(() => {
+    if (archived && isCurrent()) showUnavailable("This project is no longer available.");
+  }, [archived]);
+
+  useProjectRealtime(organizationId, projectId, {
+    // These events concern traces, not documents.
+    onChanged: () => {},
+    // Reconnection may follow an access change that happened while offline.
+    onSynced: () => { void refreshRole(false); },
+    onRevoked: () => { if (isCurrent()) showUnavailable("This project is no longer available."); },
+  }, access.status === "ready" && !archived);
 
   const canManage = access.status === "ready" && (role === "OWNER" || role === "ADMIN");
 
@@ -312,8 +355,9 @@ function Documents({ organizationId, projectId, onSessionChanged }:
       {canManage && (
         <UploadDocumentForm
           organizationId={organizationId} projectId={projectId}
+          isCurrent={isCurrent}
           onUploaded={handleUploaded}
-          onUncertain={() => { setNotice(null); void loadList(pageRef.current); }}
+          onUncertain={() => { if (isCurrent()) { setNotice(null); void loadList(pageRef.current); } }}
           onFailure={error => handleFailure(error)}
         />
       )}
@@ -332,7 +376,7 @@ function Documents({ organizationId, projectId, onSessionChanged }:
         {listError && (
           <div role="alert" className="text-sm text-destructive">
             {listError}{" "}
-            <Button size="xs" variant="outline" onClick={() => void loadList(pageRef.current)}>Retry</Button>
+            <Button size="xs" variant="outline" onClick={() => void loadList(requestedPage.current)}>Retry</Button>
           </div>
         )}
         {/* "No documents" only appears after a successful empty response. */}
@@ -399,6 +443,8 @@ function Documents({ organizationId, projectId, onSessionChanged }:
 
       <DocumentPreviewDialog
         organizationId={organizationId} projectId={projectId}
+        isCurrent={isCurrent}
+        downloadError={downloadError?.id === previewDocument?.id ? downloadError?.message : undefined}
         document={previewDocument} onClose={() => setPreviewDocument(null)}
         onDownload={target => void download(target)}
         isDownloading={previewDocument !== null && downloading.includes(previewDocument.id)}
@@ -408,6 +454,7 @@ function Documents({ organizationId, projectId, onSessionChanged }:
         <DeleteDocumentDialog
           key={deleteTarget?.id ?? "none"}
           organizationId={organizationId} projectId={projectId}
+          isCurrent={isCurrent}
           document={deleteTarget} onClose={() => setDeleteTarget(null)}
           onDeleted={handleDeleted} onFailure={handleFailure}
         />

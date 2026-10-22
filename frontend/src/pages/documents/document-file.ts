@@ -70,7 +70,7 @@ export async function readPreviewText(blob: Blob): Promise<PreviewText> {
 }
 
 /** Maps API failures to meaningful messages; never exposes raw server text beyond the safe envelope. */
-export function documentErrorMessage(error: unknown, action: "upload" | "list" | "preview" | "download" | "delete"): string {
+function errorMessage(error: unknown, action: "upload" | "list" | "preview" | "download" | "delete"): string {
   if (error instanceof ApiError) {
     switch (error.code) {
       case "VALIDATION_ERROR": {
@@ -101,4 +101,11 @@ export function documentErrorMessage(error: unknown, action: "upload" | "list" |
 
 export function isApiError(error: unknown, code: string, status?: number): boolean {
   return error instanceof ApiError && error.code === code && (status === undefined || error.statusCode === status);
+}
+
+export function documentErrorMessage(error: unknown, action: Parameters<typeof errorMessage>[1]): string {
+  const message = errorMessage(error, action);
+  return error instanceof ApiError && error.requestId
+    ? `${message} Request ID: ${error.requestId}`
+    : message;
 }

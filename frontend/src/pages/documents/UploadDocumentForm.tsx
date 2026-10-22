@@ -9,6 +9,7 @@ import { FILE_INPUT_ACCEPT, documentErrorMessage, formatBytes, validateDocumentF
 interface UploadFormProps {
   organizationId: string;
   projectId: string;
+  isCurrent: () => boolean;
   /** Called only after the backend returned 201. */
   onUploaded: (document: DocumentSummary) => void;
   /** Cancelled or connection lost: the file may or may not have been stored, so the page reconciles the list. */
@@ -24,7 +25,7 @@ export const CANCELLED_MESSAGE =
 const CONNECTION_LOST_MESSAGE =
   "The connection was lost during the upload. The file may or may not have been saved: check the list before trying again.";
 
-export function UploadDocumentForm({ organizationId, projectId, onUploaded, onUncertain, onFailure }: UploadFormProps) {
+export function UploadDocumentForm({ organizationId, projectId, isCurrent, onUploaded, onUncertain, onFailure }: UploadFormProps) {
   const inputId = useId();
   const messageId = useId();
   const lock = useRef(false);
@@ -36,6 +37,17 @@ export function UploadDocumentForm({ organizationId, projectId, onUploaded, onUn
   const [phase, setPhase] = useState<Phase>("idle");
   const [progress, setProgress] = useState<UploadProgress | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const retryDeadline = useRef(0);
+  const [retryAt, setRetryAt] = useState(0);
+  const [retrySeconds, setRetrySeconds] = useState(0);
+
+  useEffect(() => {
+    if (!retryAt) return;
+    const update = () => setRetrySeconds(Math.max(0, Math.ceil((retryAt - Date.now()) / 1000)));
+    update();
+    const timer = window.setInterval(update, 250);
+    return () => window.clearInterval(timer);
+  }, [retryAt]);
 
   useEffect(() => {
     active.current = true;
@@ -57,7 +69,7 @@ export function UploadDocumentForm({ organizationId, projectId, onUploaded, onUn
 
   async function submit() {
     // Ref lock first: React state updates are asynchronous, so rapid clicks could otherwise upload twice.
-    if (lock.current || !active.current || !file) return;
+    if (lock.current || !active.current || !isCurrent() || Date.now() < retryDeadline.current || !file) return;
     const problem = validateDocumentFile(file);
     if (problem) { setValidation(problem); return; }
     lock.current = true;
@@ -70,23 +82,29 @@ export function UploadDocumentForm({ organizationId, projectId, onUploaded, onUn
       const document = await uploadDocument(organizationId, projectId, file, {
         signal: request.signal,
         onProgress: next => {
-          if (!active.current || request.signal.aborted) return;
+          if (!active.current || !isCurrent() || request.signal.aborted) return;
           setProgress(next);
           // Bytes are sent; the backend is still validating and storing. Success waits for 201.
           if (next.total !== undefined && next.loaded >= next.total) setPhase("processing");
         },
       });
-      if (!active.current) return;
+      if (!active.current || !isCurrent()) return;
+      if (request.signal.aborted) throw new DOMException("Upload cancelled.", "AbortError");
       setFile(null);
       setValidation(null);
       setInputKey(key => key + 1);
       onUploaded(document);
     } catch (error) {
-      if (!active.current) return;
-      if (isAbortError(error)) {
+      if (!active.current || !isCurrent()) return;
+      if (error instanceof ApiError && error.statusCode === 429) {
+        retryDeadline.current = Math.max(retryDeadline.current, Date.now() + (error.retryAfterSeconds ?? 60) * 1000);
+        setRetryAt(retryDeadline.current);
+        setRetrySeconds(Math.max(0, Math.ceil((retryDeadline.current - Date.now()) / 1000)));
+      }
+      if (request.signal.aborted || isAbortError(error)) {
         setFeedback({ kind: "info", text: CANCELLED_MESSAGE });
         onUncertain();
-      } else if (error instanceof ApiError && error.code === "NETWORK_ERROR") {
+      } else if (error instanceof ApiError && (error.code === "NETWORK_ERROR" || error.code === "REQUEST_TIMEOUT")) {
         setFeedback({ kind: "error", text: CONNECTION_LOST_MESSAGE });
         onUncertain();
       } else {
@@ -96,7 +114,7 @@ export function UploadDocumentForm({ organizationId, projectId, onUploaded, onUn
     } finally {
       lock.current = false;
       controller.current = null;
-      if (active.current) { setPhase("idle"); setProgress(null); }
+      if (active.current && isCurrent()) { setPhase("idle"); setProgress(null); }
     }
   }
 
@@ -135,8 +153,10 @@ export function UploadDocumentForm({ organizationId, projectId, onUploaded, onUn
         </div>
       )}
 
+      {retrySeconds > 0 && <p role="status" className="text-sm">You can upload again in {retrySeconds} seconds.</p>}
+
       <div className="flex gap-2">
-        <Button type="submit" disabled={isBusy || !file || validation !== null}>Upload</Button>
+        <Button type="submit" disabled={isBusy || retrySeconds > 0 || !file || validation !== null}>Upload</Button>
         {isBusy && <Button type="button" variant="outline" onClick={() => controller.current?.abort()}>Cancel upload</Button>}
       </div>
     </form>

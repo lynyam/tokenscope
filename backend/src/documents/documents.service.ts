@@ -66,11 +66,9 @@ export class DocumentsService {
 		);
 
 		// 2. Only authorized uploads consume the quota.
-		const decision = this.limits.consume(
-			"document-upload",
-			userId,
-			UPLOADS_PER_MINUTE,
-		);
+		const decision = this.limits.consumeRolling([
+			{ namespace: "document-upload", identity: userId, limit: UPLOADS_PER_MINUTE },
+		]);
 		if (decision.allowed === false) {
 			response.setHeader("Retry-After", String(decision.retryAfterSeconds));
 			throw new ApiException(
@@ -81,16 +79,28 @@ export class DocumentsService {
 		}
 
 		// 3. Receive the file into a private temporary file (disk, not memory).
+		let directory: string;
+		try {
+			directory = await this.storage.incomingDirectory();
+		} catch {
+			throw this.storageUnavailable();
+		}
 		const received = await receiveSingleFile(
 			request,
-			await this.storage.incomingDirectory(),
+			directory,
+			(path) => this.storage.protectTemporary(path),
 		);
 
 		try {
 			// 4. Validate name, then actual content.
 			const originalName = validateDocumentName(received.originalName);
 			const mediaType = mediaTypeForName(originalName);
-			const content = await readFile(received.temporaryPath);
+			let content: Buffer;
+			try {
+				content = await readFile(received.temporaryPath);
+			} catch {
+				throw this.storageUnavailable();
+			}
 			await validateDocumentContent(content, mediaType);
 			const sha256 = createHash("sha256").update(content).digest("hex");
 
@@ -101,6 +111,8 @@ export class DocumentsService {
 				try {
 					await this.storage.adopt(received.temporaryPath, storageKey);
 				} catch {
+					// A rename may have succeeded before a subsequent fsync failed.
+					await this.storage.delete(storageKey).catch(() => undefined);
 					throw this.storageUnavailable();
 				}
 				return this.commitMetadata(
@@ -118,6 +130,7 @@ export class DocumentsService {
 		} finally {
 			// Nothing to remove when the file was moved.
 			await this.storage.removeTemporary(received.temporaryPath);
+			received.release();
 		}
 	}
 
@@ -237,18 +250,13 @@ export class DocumentsService {
 		});
 
 		try {
-			// Fails now (not mid-stream) when the bytes are missing.
-			await this.storage.size(document.storageKey);
+			// Open and verify the same file descriptor before committing headers.
+			const stream = await this.storage.read(document.storageKey, document.sizeBytes);
+			return { stream, originalName: document.originalName,
+				mediaType: document.mediaType, sizeBytes: document.sizeBytes };
 		} catch {
 			throw this.storageUnavailable();
 		}
-
-		return {
-			stream: this.storage.read(document.storageKey),
-			originalName: document.originalName,
-			mediaType: document.mediaType,
-			sizeBytes: document.sizeBytes,
-		};
 	}
 
 	async delete(
@@ -258,7 +266,7 @@ export class DocumentsService {
 		documentId: string,
 	): Promise<void> {
 		// One transaction: authorize, queue the byte deletion, delete the metadata.
-		const storageKey = await this.runSerializable(async (tx) => {
+		await this.runSerializable(async (tx) => {
 			await this.projectAccess.assertProjectAccess(
 				userId,
 				organizationId,
@@ -276,11 +284,10 @@ export class DocumentsService {
 				data: { storageKey: document.storageKey, nextAttemptAt: new Date() },
 			});
 			await tx.projectDocument.delete({ where: { id: documentId } });
-			return document.storageKey;
 		});
 
 		// After commit. A failure here is retried by the cleanup worker.
-		await this.cleanup.processKey(storageKey).catch(() => undefined);
+		void this.cleanup.runOnce();
 	}
 
 	private documentNotFound(): ApiException {

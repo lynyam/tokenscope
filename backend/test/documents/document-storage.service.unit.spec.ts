@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DocumentStorageService } from "../../src/documents/document-storage.service";
+import { DocumentStorageService, SWEEP_SCAN_BATCH_SIZE } from "../../src/documents/document-storage.service";
 
 // The real module object, so a spy sees the calls made by the service.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -15,11 +15,14 @@ describe("DocumentStorageService", () => {
 		root = await mkdtemp(join(tmpdir(), "tokenscope-docs-"));
 		storage = new DocumentStorageService(root);
 	});
-	afterEach(() => rm(root, { recursive: true, force: true }));
+	afterEach(async () => {
+		await storage.closeScans();
+		await rm(root, { recursive: true, force: true });
+	});
 
 	async function read(key: string) {
 		const chunks: Buffer[] = [];
-		for await (const chunk of storage.read(key)) chunks.push(chunk as Buffer);
+		for await (const chunk of await storage.read(key)) chunks.push(chunk as Buffer);
 		return Buffer.concat(chunks);
 	}
 
@@ -154,6 +157,60 @@ describe("DocumentStorageService", () => {
 				["33333333-3333-4333-8333-333333333333.tmp", "notes.txt"],
 			);
 		});
+	});
+
+	it("never follows a symlinked shard during orphan discovery", async () => {
+		const outside = await mkdtemp(join(tmpdir(), "tokenscope-docs-outside-"));
+		try {
+			const name = "11111111-1111-4111-8111-111111111111";
+			const target = join(outside, name);
+			await writeFile(target, "outside");
+			const old = new Date(Date.now() - 2 * 3_600_000);
+			await utimes(target, old, old);
+			await symlink(outside, join(root, "aa"));
+			expect(await storage.listKeysOlderThan(Date.now())).toEqual([]);
+			expect(await readFile(target, "utf8")).toBe("outside");
+		} finally {
+			await rm(outside, { recursive: true, force: true });
+		}
+	});
+
+	it("keeps an active temporary file even when its timestamp is old", async () => {
+		const directory = await storage.incomingDirectory();
+		const path = join(directory, "11111111-1111-4111-8111-111111111111.tmp");
+		await writeFile(path, "upload");
+		const old = new Date(Date.now() - 2 * 3_600_000);
+		await utimes(path, old, old);
+		const release = storage.protectTemporary(path);
+		expect(await storage.removeStaleTemporaryFiles(Date.now())).toBe(0);
+		release();
+		expect(await storage.removeStaleTemporaryFiles(Date.now())).toBe(1);
+	});
+
+	it("bounds scan batches and eventually visits files after the first batch", async () => {
+		await mkdir(join(root, "aa"));
+		const total = SWEEP_SCAN_BATCH_SIZE + 3;
+		for (let i = 0; i < total; i += 1) {
+			const name = `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`;
+			await writeFile(join(root, "aa", name), "x");
+		}
+		const seen = new Set<string>();
+		for (let i = 0; i < 3; i += 1) {
+			const batch = await storage.listKeysOlderThan(Date.now() + 1000);
+			expect(batch.length).toBeLessThanOrEqual(SWEEP_SCAN_BATCH_SIZE);
+			batch.forEach((key) => seen.add(key));
+		}
+		expect(seen.size).toBe(total);
+	});
+
+	it("rejects wrong size and symbolic-link downloads before returning a stream", async () => {
+		const key = storage.newKey();
+		await storage.write(key, Buffer.from("abc"));
+		await expect(storage.read(key, 4)).rejects.toThrow();
+		await rm(join(root, key));
+		await writeFile(join(root, "outside.txt"), "abc");
+		await symlink(join(root, "outside.txt"), join(root, key));
+		await expect(storage.read(key, 3)).rejects.toThrow();
 	});
 
 	describe("runExclusive", () => {

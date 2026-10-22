@@ -11,6 +11,8 @@ import {
 interface PreviewDialogProps {
   organizationId: string;
   projectId: string;
+  isCurrent: () => boolean;
+  downloadError?: string;
   /** The selected list row: there is no document-detail endpoint. */
   document: DocumentSummary | null;
   onClose: () => void;
@@ -39,22 +41,25 @@ export function DocumentPreviewDialog({ document, onClose, ...rest }: PreviewDia
   );
 }
 
-function PreviewBody({ organizationId, projectId, document, onDownload, isDownloading, onFailure }:
+function PreviewBody({ organizationId, projectId, document, isCurrent, onDownload, isDownloading, downloadError, onFailure }:
   Omit<PreviewDialogProps, "onClose" | "document"> & { document: DocumentSummary }) {
   const [view, setView] = useState<View>({ status: "loading" });
   const [pageCount, setPageCount] = useState<number | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const isCurrentRef = useRef(isCurrent);
+  isCurrentRef.current = isCurrent;
   const onFailureRef = useRef(onFailure);
   onFailureRef.current = onFailure;
 
   useEffect(() => {
     const controller = new AbortController();
     let current = true;
+    const canApply = () => current && isCurrentRef.current();
     (async () => {
       try {
         const blob = await getDocumentContent(organizationId, projectId, document.id, { signal: controller.signal });
-        if (!current) return;
+        if (!canApply()) return;
         if (!blobMatchesMediaType(blob, document.mediaType)) {
           setView({ status: "error", message: "The server returned an unexpected file type, so it was not displayed." });
           return;
@@ -65,24 +70,24 @@ function PreviewBody({ organizationId, projectId, document, onDownload, isDownlo
         }
         if (document.mediaType === "application/pdf") {
           const data = await blob.arrayBuffer();
-          if (current) setView({ status: "pdf", data });
+          if (canApply()) setView({ status: "pdf", data });
           return;
         }
         let preview;
         try {
           preview = await readPreviewText(blob);
         } catch (error) {
-          if (!current) return;
+          if (!canApply()) return;
           if (error instanceof TypeError) {
             setView({ status: "error", message: "This file is not valid UTF-8 text and cannot be previewed. Download it instead." });
             return;
           }
           throw error;
         }
-        if (current) setView({ status: "text", ...preview });
+        if (canApply()) setView({ status: "text", ...preview });
       } catch (error) {
         // Closing, switching document or leaving the page aborts silently.
-        if (!current || isAbortError(error)) return;
+        if (!canApply() || isAbortError(error)) return;
         setView({ status: "error", message: documentErrorMessage(error, "preview") });
         onFailureRef.current(error, document);
       }
@@ -95,24 +100,25 @@ function PreviewBody({ organizationId, projectId, document, onDownload, isDownlo
     const canvas = canvasRef.current;
     if (!pdfData || !canvas) return;
     let current = true;
+    const canApply = () => current && isCurrentRef.current();
     let preview: { destroy: () => Promise<void> } | null = null;
     setPageCount(null);
     setRenderError(null);
     import("./pdf-preview")
       .then(async module => {
-        if (!current) return;
+        if (!canApply()) return;
         const started = module.startPdfPreview(pdfData, canvas);
         preview = started;
         const count = await started.pageCount;
-        if (current) setPageCount(count);
+        if (canApply()) setPageCount(count);
       })
       .catch(error => {
-        if (!current || isAbortError(error)) return;
+        if (!canApply() || isAbortError(error)) return;
         setRenderError("This PDF could not be displayed. You can still download it.");
       });
     return () => {
       current = false;
-      void preview?.destroy();
+      void preview?.destroy().catch(() => undefined);
       canvas.width = 0;
       canvas.height = 0;
     };
@@ -150,6 +156,7 @@ function PreviewBody({ organizationId, projectId, document, onDownload, isDownlo
         )}
       </div>
 
+      {downloadError && <p role="alert" className="text-sm text-destructive">{downloadError}</p>}
       <DialogFooter>
         <Button variant="outline" disabled={isDownloading} onClick={() => onDownload(document)}>
           {isDownloading ? "Downloading…" : "Download"}

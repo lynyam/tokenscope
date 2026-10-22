@@ -6,6 +6,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/api/documents.api");
 vi.mock("@/api/organizations.api");
 vi.mock("@/api/projects.api");
+vi.mock("@/hooks/useCurrentUser", () => ({
+  useCurrentUser: () => ({ user: { id: "test-user" }, isLoading: false }),
+}));
+vi.mock("@/hooks/useProjectRealtime");
+
+import { useProjectRealtime } from "@/hooks/useProjectRealtime";
+import { notifyProjectsChanged } from "@/api/project-events";
 
 import { ApiError } from "@/api/http-client";
 import { clearAuthSession, saveAccessToken } from "@/api/auth-session";
@@ -38,6 +45,95 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 const apiError = (status: number, code: string) => new ApiError(status, code, "Server said no.");
+
+describe("review regressions", () => {
+  it("ignores an upload completed by an older login", async () => {
+    const pending = deferred<DocumentSummary>();
+    upload.mockReturnValue(pending.promise);
+    view();
+    await screen.findByText("first.pdf");
+    choose(pdf());
+    fireEvent.click(screen.getByRole("button", { name: "Upload" }));
+    saveAccessToken("bob-token");
+    list.mockResolvedValue(page([doc("b1", "bob.pdf")]));
+    await act(async () => pending.resolve(doc("old", "alice-private.pdf")));
+    expect(screen.queryByText('"alice-private.pdf" was uploaded.')).not.toBeInTheDocument();
+  });
+
+  it("ignores an old login's preview bytes", async () => {
+    const pending = deferred<Blob>();
+    content.mockReturnValue(pending.promise);
+    list.mockResolvedValue(page([doc("t1", "note.txt", { mediaType: "text/plain" })]));
+    view();
+    await screen.findByText("note.txt");
+    fireEvent.click(screen.getByRole("button", { name: /^Preview note/ }));
+    saveAccessToken("bob-token");
+    await act(async () => pending.resolve(new Blob(["ALICE PRIVATE CONTENT"], { type: "text/plain" })));
+    expect(screen.queryByText("ALICE PRIVATE CONTENT")).not.toBeInTheDocument();
+  });
+
+  it("does not report an old login's access failure in the new login", async () => {
+    const pending = deferred<DocumentListResponse>();
+    list.mockReturnValueOnce(pending.promise);
+    view();
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(1));
+    saveAccessToken("bob-token");
+    list.mockResolvedValue(page([doc("b1", "bob.pdf")]));
+    await act(async () => pending.reject(apiError(404, "PROJECT_NOT_FOUND")));
+    expect(screen.queryByText("This project is no longer available.")).not.toBeInTheDocument();
+    expect(await screen.findByText("bob.pdf")).toBeInTheDocument();
+  });
+
+  it("respects Retry-After when another file is selected", async () => {
+    upload.mockRejectedValue(new ApiError(429, "RATE_LIMITED", "Wait", undefined, "req-upload", 45));
+    view();
+    await screen.findByText("first.pdf");
+    choose(pdf());
+    fireEvent.click(screen.getByRole("button", { name: "Upload" }));
+    await screen.findByRole("alert");
+    expect(screen.getByRole("button", { name: "Upload" })).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent("Request ID: req-upload");
+    choose(pdf("other.pdf"));
+    fireEvent.submit(screen.getByRole("button", { name: "Upload" }).closest("form")!);
+    expect(upload).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries the requested page after pagination fails", async () => {
+    list.mockResolvedValueOnce(page([doc("d1", "first.pdf")], { total: 26, totalPages: 2 }));
+    view();
+    await screen.findByText("first.pdf");
+    list.mockRejectedValueOnce(new ApiError(undefined, "NETWORK_ERROR", "offline"));
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    await screen.findByRole("alert");
+    list.mockResolvedValueOnce(page([doc("d26", "page-two.pdf")], { page: 2, total: 26, totalPages: 2 }));
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await screen.findByText("page-two.pdf");
+    expect(list).toHaveBeenLastCalledWith(org, proj, { page: 2, pageSize: 25 }, expect.any(AbortSignal));
+  });
+
+  it("recovers to page one when the whole collection becomes empty", async () => {
+    list.mockResolvedValueOnce(page([doc("d1")], { total: 26, totalPages: 2 }));
+    view();
+    await screen.findByText("Page 1 of 2");
+    list.mockResolvedValueOnce(page([], { page: 2 }));
+    list.mockResolvedValueOnce(page([]));
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    await screen.findByText(/No documents yet/);
+    expect(list).toHaveBeenLastCalledWith(org, proj, { page: 1, pageSize: 25 }, expect.any(AbortSignal));
+  });
+
+  it("removes a missing document even if reconciling the list fails", async () => {
+    remove.mockRejectedValue(apiError(404, "DOCUMENT_NOT_FOUND"));
+    view();
+    await screen.findByText("first.pdf");
+    fireEvent.click(screen.getByRole("button", { name: /^Delete first/ }));
+    list.mockRejectedValueOnce(new ApiError(undefined, "NETWORK_ERROR", "offline"));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" }));
+    await screen.findByRole("button", { name: "Retry" });
+    expect(screen.queryByText("first.pdf")).not.toBeInTheDocument();
+    expect(screen.getByText("second.pdf")).toBeInTheDocument();
+  });
+});
 
 const list = vi.mocked(listDocuments);
 const upload = vi.mocked(uploadDocument);
@@ -433,7 +529,7 @@ describe("deletion", () => {
     const dialog = await openDelete();
     list.mockResolvedValueOnce(page([doc("d2", "second.pdf")]));
     await userEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
-    expect(await screen.findByText(/no longer available\. The list has been refreshed/)).toBeInTheDocument();
+    expect(await screen.findByText(/That document is no longer available\./)).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(await screen.findByText("second.pdf")).toBeInTheDocument();
     expect(screen.queryByText("first.pdf")).not.toBeInTheDocument();
@@ -587,8 +683,52 @@ describe("preview entry point", () => {
     await screen.findByText("note.txt");
     list.mockResolvedValueOnce(page([]));
     await userEvent.click(screen.getByRole("button", { name: /^Preview note\.txt/ }));
-    expect(await screen.findByText(/no longer available\. The list has been refreshed/)).toBeInTheDocument();
+    expect(await screen.findByText(/That document is no longer available\./)).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText("note.txt")).not.toBeInTheDocument());
+  });
+});
+
+
+describe("shared access notifications", () => {
+  it("clears rows and previews on access.revoked without signing out", async () => {
+    content.mockResolvedValue(new Blob(["PRIVATE CONTENT"], { type: "text/plain" }));
+    list.mockResolvedValue(page([doc("t1", "note.txt", { mediaType: "text/plain" })]));
+    view();
+    await screen.findByText("note.txt");
+    fireEvent.click(screen.getByRole("button", { name: /^Preview note/ }));
+    await screen.findByText("PRIVATE CONTENT");
+    const call = vi.mocked(useProjectRealtime).mock.calls.filter(call => call[3]).at(-1)!;
+    act(() => call[2].onRevoked());
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByText("note.txt")).not.toBeInTheDocument();
+    expect(screen.getByText("This project is no longer available.")).toBeInTheDocument();
+    expect(localStorage.getItem("tokenscope.accessToken")).toBe("alice-token");
+  });
+
+  it("uses the existing local archive event and rejects a late list", async () => {
+    view();
+    await screen.findByText("first.pdf");
+    const pending = deferred<DocumentListResponse>();
+    list.mockReturnValueOnce(pending.promise);
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    act(() => notifyProjectsChanged({ kind: "archive", organizationId: org, projectId: proj }));
+    await screen.findByText("This project is no longer available.");
+    await act(async () => pending.resolve(page([doc("late", "late.pdf")])));
+    expect(screen.queryByText("late.pdf")).not.toBeInTheDocument();
+  });
+
+  it("checks access after reconnecting but ignores trace-change notifications", async () => {
+    view();
+    await screen.findByText("first.pdf");
+    const handlers = vi.mocked(useProjectRealtime).mock.calls.filter(call => call[3]).at(-1)![2];
+    const reads = list.mock.calls.length;
+    act(() => handlers.onChanged());
+    expect(list).toHaveBeenCalledTimes(reads);
+    projectApi.mockRejectedValueOnce(apiError(404, "PROJECT_NOT_FOUND"));
+    act(() => handlers.onSynced());
+    expect(await screen.findByText("This project is no longer available.")).toBeInTheDocument();
+    expect(screen.queryByText("first.pdf")).not.toBeInTheDocument();
+    expect(localStorage.getItem("tokenscope.accessToken")).toBe("alice-token");
   });
 });

@@ -9,6 +9,7 @@ import { documentErrorMessage } from "./document-file";
 interface DeleteDialogProps {
   organizationId: string;
   projectId: string;
+  isCurrent: () => boolean;
   document: DocumentSummary | null;
   onClose: () => void;
   /** Called once on 204. The page removes the row and reconciles the list. */
@@ -17,7 +18,7 @@ interface DeleteDialogProps {
 }
 
 /** Render with key={document?.id ?? "none"} so that pending state, errors and the lock reset per document. */
-export function DeleteDocumentDialog({ organizationId, projectId, document, onClose, onDeleted, onFailure }: DeleteDialogProps) {
+export function DeleteDocumentDialog({ organizationId, projectId, isCurrent, document, onClose, onDeleted, onFailure }: DeleteDialogProps) {
   const lock = useRef(false);
   const active = useRef(false);
   const controller = useRef<AbortController | null>(null);
@@ -31,7 +32,7 @@ export function DeleteDocumentDialog({ organizationId, projectId, document, onCl
 
   async function confirm() {
     // A synchronous lock: a disabled button alone cannot stop two quick clicks.
-    if (lock.current || !active.current || !document) return;
+    if (lock.current || !active.current || !isCurrent() || !document) return;
     lock.current = true;
     const request = new AbortController();
     controller.current = request;
@@ -39,15 +40,15 @@ export function DeleteDocumentDialog({ organizationId, projectId, document, onCl
     setError(null);
     try {
       await deleteDocument(organizationId, projectId, document.id, request.signal);
-      if (active.current) onDeleted(document);
+      if (active.current && !request.signal.aborted && isCurrent()) onDeleted(document);
     } catch (failure) {
-      if (!active.current || isAbortError(failure)) return;
+      if (!active.current || !isCurrent() || request.signal.aborted || isAbortError(failure)) return;
       setError(documentErrorMessage(failure, "delete"));
       onFailure(failure, document);
     } finally {
       lock.current = false;
       controller.current = null;
-      if (active.current) setIsPending(false);
+      if (active.current && isCurrent()) setIsPending(false);
     }
   }
 

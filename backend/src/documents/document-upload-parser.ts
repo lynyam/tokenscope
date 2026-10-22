@@ -1,7 +1,7 @@
 import { HttpStatus } from "@nestjs/common";
 import type { Request } from "express";
 import { randomUUID } from "node:crypto";
-import { rm } from "node:fs/promises";
+import { open, rm } from "node:fs/promises";
 import { join } from "node:path";
 import multer = require("multer");
 import { ApiException } from "../common/errors/api.exception";
@@ -12,6 +12,7 @@ export type ReceivedUpload = {
 	/** Temporary file inside the private incoming directory. */
 	temporaryPath: string;
 	sizeBytes: number;
+	release: () => void;
 };
 
 function tooLarge(): ApiException {
@@ -31,15 +32,31 @@ function invalidUpload(message: string): ApiException {
 	);
 }
 
-type Tracker = { settled: Promise<unknown>[]; paths: string[] };
+type Tracker = { settled: Promise<unknown>[]; paths: string[]; releases: (() => void)[] };
 
-function createParser(directory: string, tracker: Tracker) {
+function storageUnavailable(): ApiException {
+	return new ApiException(503, "STORAGE_UNAVAILABLE",
+		"Document storage is temporarily unavailable.");
+}
+
+function isStorageError(error: unknown): boolean {
+	return typeof error === "object" && error !== null && "code" in error &&
+		/^(EACCES|EPERM|ENOSPC|EDQUOT|EIO|EROFS|ENOENT|ENOTDIR|EISDIR|EMFILE|ENFILE|ELOOP)$/.test(String(error.code));
+}
+
+function createParser(directory: string, tracker: Tracker, protect: (path: string) => () => void) {
 	const disk = multer.diskStorage({
-		destination: directory,
+		destination: (_request, _file, callback) => callback(null, directory),
 		filename: (_request, _file, callback) => {
 			const name = `${randomUUID()}.tmp`;
-			tracker.paths.push(join(directory, name));
-			callback(null, name);
+			const path = join(directory, name);
+			tracker.paths.push(path);
+			tracker.releases.push(protect(path));
+			// Create privately before Multer reopens the existing file for writing.
+			void open(path, "wx", 0o600).then((file) => file.close()).then(
+				() => callback(null, name),
+				() => callback(storageUnavailable(), name),
+			);
 		},
 	});
 	// Wraps diskStorage so that, on any error, we can wait until every started
@@ -68,20 +85,27 @@ function createParser(directory: string, tracker: Tracker) {
 		limits: {
 			files: 1,
 			fields: 0,
+			parts: 1,
 			headerPairs: 20,
 			fieldNameSize: 100,
-			// One byte of headroom: busboy flags a file that reaches the limit exactly.
-			fileSize: MAX_DOCUMENT_BYTES + 1,
+			// Multer 2.4 accounts for Busboy's inclusive limit internally.
+			fileSize: MAX_DOCUMENT_BYTES,
 		},
 	}).single("file");
 }
 
 async function discard(tracker: Tracker): Promise<void> {
-	await Promise.race([
-		Promise.allSettled(tracker.settled),
-		new Promise((resolve) => setTimeout(resolve, 5000).unref()),
-	]);
-	await Promise.all(tracker.paths.map((path) => rm(path, { force: true })));
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	try {
+		await Promise.race([
+			Promise.allSettled(tracker.settled),
+			new Promise((resolve) => { timer = setTimeout(resolve, 5000); timer.unref(); }),
+		]);
+		await Promise.all(tracker.paths.map((path) => rm(path, { force: true })));
+	} finally {
+		clearTimeout(timer);
+		tracker.releases.forEach((release) => release());
+	}
 }
 
 /**
@@ -91,9 +115,10 @@ async function discard(tracker: Tracker): Promise<void> {
 export function receiveSingleFile(
 	request: Request,
 	directory: string,
+	protect: (path: string) => () => void,
 ): Promise<ReceivedUpload> {
-	const tracker: Tracker = { settled: [], paths: [] };
-	const parser = createParser(directory, tracker);
+	const tracker: Tracker = { settled: [], paths: [], releases: [] };
+	const parser = createParser(directory, tracker, protect);
 
 	return new Promise((resolve, reject) => {
 		const fail = (exception: ApiException) => {
@@ -111,6 +136,8 @@ export function receiveSingleFile(
 					),
 				);
 			}
+			if (error instanceof ApiException) return fail(error);
+			if (isStorageError(error)) return fail(storageUnavailable());
 			if (error) {
 				return fail(invalidUpload("The multipart body is malformed."));
 			}
@@ -128,6 +155,7 @@ export function receiveSingleFile(
 				originalName: file.originalname,
 				temporaryPath: file.path,
 				sizeBytes: file.size,
+				release: () => tracker.releases.forEach((release) => release()),
 			});
 		});
 	});

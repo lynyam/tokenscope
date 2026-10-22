@@ -1,4 +1,5 @@
 import { isAbsolute } from "node:path";
+import { parseRealtimeOrigins } from "./realtime-origins";
 
 export interface EnvironmentVariables {
 	BACKEND_PORT: number;
@@ -9,6 +10,20 @@ export interface EnvironmentVariables {
 	JWT_ACCESS_TTL_SECONDS: number;
 	DOCUMENT_STORAGE_ROOT: string;
 	TRUSTED_PROXY_HOST?: string;
+	// Assistant (optional): the app starts without them, the assistant answers 503.
+	GEMINI_API_KEY?: string;
+	LLM_MODEL?: string;
+	REALTIME_ALLOWED_ORIGINS?: string[];
+}
+
+// Reads an optional setting. Empty or blank means "not set".
+function optionalString(env: Record<string, unknown>, key: string): string | undefined {
+	const value = env[key];
+
+	if (typeof value !== "string" || value.trim() === "") {
+		return undefined;
+	}
+	return value.trim();
 }
 
 function requiredString(env: Record<string, unknown>, key: string): string {
@@ -107,7 +122,12 @@ export function validateEnvironment(
 		);
 	}
 
+	const geminiApiKey = optionalString(env, "GEMINI_API_KEY");
+	const llmModel = optionalString(env, "LLM_MODEL");
+
+	const origins = parseRealtimeOrigins(env.REALTIME_ALLOWED_ORIGINS);
 	return {
+		...(origins.length ? { REALTIME_ALLOWED_ORIGINS: origins } : {}),
 		BACKEND_PORT: port,
 		DATABASE_URL: databaseUrl,
 		JWT_SECRET: secret,
@@ -118,5 +138,7 @@ export function validateEnvironment(
 		...(typeof proxyHost === "string" && proxyHost !== ""
 			? { TRUSTED_PROXY_HOST: proxyHost }
 			: {}),
+		...(geminiApiKey ? { GEMINI_API_KEY: geminiApiKey } : {}),
+		...(llmModel ? { LLM_MODEL: llmModel } : {}),
 	};
 }

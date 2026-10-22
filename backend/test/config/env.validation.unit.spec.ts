@@ -25,6 +25,13 @@ describe("Environment configuration", () => {
 		expect(() => validateEnvironment(env)).toThrow(key);
 	});
 
+	it.each(["relative/path", " /tmp/docs", "/tmp/docs ", "/tmp/\0docs"])(
+		"rejects invalid document storage root %j", (value) => {
+			expect(() => validateEnvironment({ ...VALID_ENV, DOCUMENT_STORAGE_ROOT: value }))
+				.toThrow("DOCUMENT_STORAGE_ROOT");
+		},
+	);
+
 	it.each(["0", "65536", "-1", "3000.5", "abc", "3e3", ""])(
 		"rejects invalid port %j", (port) => {
 			expect(() => validateEnvironment({ ...VALID_ENV, BACKEND_PORT: port }))
@@ -98,16 +105,32 @@ describe("Environment configuration", () => {
 		}).TRUSTED_PROXY_HOST).toBeUndefined();
 	});
 
-	it.each([
-		true,
-		"*",
-		"http://frontend",
-		" frontend ",
-		"frontend:5173",
-	])("rejects invalid trusted proxy configuration %j", value => {
-		expect(() => validateEnvironment({
-			...VALID_ENV,
-			TRUSTED_PROXY_HOST: value,
-		})).toThrow("TRUSTED_PROXY_HOST");
-	});
+  it("starts without Gemini settings (the assistant is then unavailable)", () => {
+    const result = validateEnvironment({ ...VALID_ENV, GEMINI_API_KEY: "", LLM_MODEL: "  " });
+    expect(result.GEMINI_API_KEY).toBeUndefined();
+    expect(result.LLM_MODEL).toBeUndefined();
+  });
+
+  it("returns the Gemini settings in the typed result", () => {
+    const result = validateEnvironment({
+      ...VALID_ENV,
+      GEMINI_API_KEY: "test-only-gemini-key",
+      LLM_MODEL: "gemini-3.5-flash-lite",
+    });
+    expect(result.GEMINI_API_KEY).toBe("test-only-gemini-key");
+    expect(result.LLM_MODEL).toBe("gemini-3.5-flash-lite");
+  });
+
+  it.each([
+    true,
+    "*",
+    "http://frontend",
+    " frontend ",
+    "frontend:5173",
+  ])("rejects invalid trusted proxy configuration %j", value => {
+    expect(() => validateEnvironment({
+      ...VALID_ENV,
+      TRUSTED_PROXY_HOST: value,
+    })).toThrow("TRUSTED_PROXY_HOST");
+  });
 });

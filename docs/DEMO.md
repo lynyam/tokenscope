@@ -623,6 +623,34 @@ Do not reuse older test totals as fresh evidence.
 | Browsers | Chrome, Firefox and Edge evidence |
 | Public pages | Accessible Privacy/Terms reflecting actual implementation |
 
+### API keys management UI — TSE-74
+
+Status: NOT RUN. These steps can be performed by hand. `frontend/test/e2e/api-keys.spec.ts` automates the same journey against a running stack (see [LOCAL_DEVELOPMENT.md](./LOCAL_DEVELOPMENT.md)); a skipped journey is not a pass.
+
+Use Alice (OWNER) and Bob (MEMBER) in two browser windows, as in section 3. Never record a real key: take screenshots before the key is displayed or with the key field hidden, and keep it out of notes, logs and shared recordings.
+
+| # | Steps | Expected |
+|---|---|---|
+| 1 | Alice opens `UI Demo Project` and selects **API keys** | The list loads; with no key it reads "No API keys yet." |
+| 2 | Alice creates a key named `Demo writer` | A dialog shows the full key once, with a Copy button and the scope wording |
+| 3 | Alice clicks **Copy** and pastes into a scratch editor | "Copied to clipboard." appears only after the clipboard accepted the key; the pasted value is complete |
+| 4 | Alice closes the dialog and reloads the page | The list shows the name, the prefix and `Active`; the full key appears nowhere |
+| 5 | Alice clicks **Revoke**, then **Cancel** | No request is sent (browser network tab) |
+| 6 | Alice clicks **Revoke**, then **Revoke key** | The row shows `Revoked` and a date after the list refresh |
+| 7 | Bob opens the same URL | A permission-denied message, no controls and no list request |
+| 8 | Alice archives the project and reopens the page | "Project not found." and no list request (the backend would answer 404 for an archived project) |
+| 9 | Before revocation, use the UI-created key to POST a canonical trace; after UI revocation, GET that trace with the same key | POST returns 201; the JWT project detail endpoint finds the trace in the intended project; after revocation the public GET returns 401 INVALID_API_KEY |
+| 10 | Alice creates a key, then presses Escape on the secret dialog | "Close without saving?" appears and the key stays visible; a second Escape goes back to the key |
+| 11 | With the secret dialog open, Alice clicks outside it, then **Close and discard** | The same confirmation appears; after **Close and discard** the key is gone and cannot be shown again |
+
+Public clients send the key in exactly one header. A JWT is not accepted there, and the key is not accepted on browser workspace routes (see [API.md](./API.md)). The public trace routes and interactive documentation at `/api/v1/public/docs` are available:
+
+```sh
+curl "$TOKENSCOPE_ORIGIN/api/v1/public/traces" -H "X-API-Key: <PROJECT_API_KEY>"
+```
+
+For each row record the commit SHA, the environment, PASS, FAIL, BLOCKED or NOT RUN, and safe evidence only.
+
 ### Canonical analytics fixture
 
 Use the full UTC day:
@@ -667,6 +695,26 @@ Keep the 51-row pagination dataset, cross-tenant data and mutation demonstration
 
 The 16-point figure remains a target until complete functionality and the subject’s requirements have been demonstrated.
 
+### Assistant demo — TSE-80
+
+Backend demo before TSE-81's UI (golden project loaded as in
+LOCAL_DEVELOPMENT.md, "Dashboard assistant — TSE-80"):
+
+1. Select the golden period: `2026-10-01T00:00:00.000Z` to `2026-10-02T00:00:00.000Z`, no filters.
+2. Ask: "Which model contributes most to the estimated cost?"
+3. Show `start`: its `context` has the scope, the generation time, 6 traces,
+   `"0.015350000000"` USD and `containsSyntheticPricing: true`.
+4. Show the `delta` lines arriving over time, then `done`.
+5. The answer should name `fixture-b/demo-large` (`"0.008200000000"`) and say the
+   prices are synthetic. Do not expect exact wording.
+6. Stop: run the same request and interrupt it. An immediate new question
+   is accepted (`200`, not `429`).
+7. Access loss: while an answer streams, remove the member or archive the
+   project; the stream ends with an `error` event `PROJECT_NOT_FOUND` within 5 seconds.
+
+`backend/test/manual/assistant-proxy-check.sh` runs steps 2–6 through the
+Vite proxy or the evaluation HTTPS proxy. It uses real Gemini quota.
+
 ### Canonical evaluation data
 
 Fixture inputs and expected responses are available under
@@ -696,7 +744,7 @@ P="$DEMO_API_BASE/organizations/$ORG_ID/projects/$PROJECT_ID/documents"
 H="Authorization: Bearer $TOKEN"
 
 printf 'hello' > /tmp/demo.txt
-curl -s -H "$H" -F "file=@/tmp/demo.txt" "$P"                # 201 summary, no storage key
+DOC_ID=$(curl --fail --silent -H "$H" -F "file=@/tmp/demo.txt" "$P" | jq -r '.id')   # upload: 201 summary, no storage key
 curl -s -H "$H" "$P"                                          # list, newest first
 curl -s -H "$H" "$P/$DOC_ID/content"                          # hello
 curl -s -D - -o /dev/null -H "$H" "$P/$DOC_ID/content?download=true"   # attachment, nosniff, no-store
@@ -720,9 +768,75 @@ curl -s -X DELETE -o /dev/null -w '%{http_code}\n' -H "$H" "$P/$DOC_ID"  # 404
 
 # Upload one more document, then archive the project: access is denied, files are kept.
 curl -s -o /dev/null -H "$H" -F "file=@/tmp/demo.txt" "$P"
-curl -s -X DELETE -H "Authorization: Bearer $TOKEN" "http://localhost:5173/api/v1/organizations/$ORG_ID/projects/$PROJECT_ID"
+curl --fail --silent -X DELETE -H "$H" "$DEMO_API_BASE/organizations/$ORG_ID/projects/$PROJECT_ID"
 curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" "$P"   # 404 PROJECT_NOT_FOUND
 docker compose exec backend ls -R /var/lib/tokenscope/documents                    # the bytes are still there
 ```
 
 Expected rejections: a `.docx` file gives `415`, a text file with invalid UTF-8 gives `422`, an 11 MiB file gives `413`, the sixth upload within a minute gives `429` with `Retry-After`, and a member token gives `403` on upload or delete.
+### Trace Explorer (read-only)
+
+Open a project, then **Traces**. The list shows UTC time, provider/model, workflow, tokens, estimated cost,
+latency and status for the last seven days (resolved to explicit dates in the URL). For the golden period use:
+
+```
+/organizations/<org>/projects/<project>/traces?from=2026-10-01T00:00:00.000Z&to=2026-10-02T00:00:00.000Z
+```
+
+Search, filters, sorting and paging all live in the URL, so a copied link reproduces the screen.
+Integration and shared-filter ownership:
+`docs/EVALUATION_ARCHITECTURE.md`, “Frontend Trace Explorer integration — TSE-75”.
+Realtime refresh remains pending shared frontend client integration.
+
+## Realtime handoff — TSE-73 / TSE-76
+
+1. Load the documented synthetic price catalogue and use a disposable organization/project.
+2. Open two authorized dashboard sessions when TSE-76 is integrated. Both must subscribe
+   successfully to the same project. Confirm another project does not receive its notifications.
+3. Select `[2026-10-01T00:00:00.000Z, 2026-10-02T00:00:00.000Z)` for the supplied
+   `fixtures/evaluation/realtime/live-trace-request.json`; its timestamp is historical.
+4. Send that body to `POST /api/v1/public/traces` with a valid project `X-API-Key`.
+   Use a fresh externalId for each demonstration; identical POST replay produces no notification.
+5. Confirm one minimal `traces.changed` reaches each authorized viewer, then the dashboard
+   fetches fresh analytics with its current applied dates/filters. Under normal local evaluation
+   conditions both dashboards should update within two seconds (TSE-76 integrated evidence).
+6. Correct the trace with PUT and the current If-Match, then soft-delete with DELETE and
+   the new If-Match. Both actual commits must invalidate; no-op PUT must not.
+7. Remove a member or archive a parent: affected sockets receive `access.revoked` and
+   stop receiving data. Demotion to MEMBER keeps read access. Expired JWT disconnects.
+8. Disconnect/reconnect a browser: it must re-subscribe and refetch; no missed-event replay is promised.
+
+Before the dashboard is available, run `frontend/test/e2e/realtime.spec.ts` in development
+and HTTPS evaluation modes using LOCAL_DEVELOPMENT.md. Record commit, mode, commands and
+actual results. Transport-only evidence must not be presented as a completed dashboard demo.
+
+For a disposable evaluation project, set `TOKENSCOPE_KEY` locally and send the fixture:
+
+```sh
+curl --fail-with-body --cacert .local/eval/caddy-root.crt \
+  -H "X-API-Key: $TOKENSCOPE_KEY" \
+  -H 'Content-Type: application/json' \
+  --data-binary @fixtures/evaluation/realtime/live-trace-request.json \
+  https://localhost:8443/api/v1/public/traces
+```
+
+Keep the returned trace id and ETag for PUT/DELETE. Do not commit the key.
+
+
+### Project Overview dashboard — TSE-76
+
+1. Load the canonical price catalogue explicitly and ingest the six golden traces into a disposable project.
+2. Open its Overview and apply `2026-10-01T00:00:00.000Z` to `2026-10-02T00:00:00.000Z`.
+3. Confirm 6 traces, 6,000 input tokens, 1,200 output tokens and estimated cost USD 0.015350000000.
+4. Open each chart's exact-value table and operate its legend with the keyboard.
+5. Open the project in two authorized browser contexts and wait for Live.
+6. Ingest `fixtures/evaluation/realtime/live-trace-request.json` with a new externalId.
+   Its fixed occurrence time is inside the selected golden period. Both dashboards must update within two seconds.
+7. Correct and delete that new trace with its current ETag; both dashboards must refetch authoritative totals.
+8. Disconnect one browser, write again, reconnect and verify recovery. Remove a member and confirm their
+   project content disappears while their login remains valid.
+9. For genuinely current traces, deliberately choose a custom UTC window covering their occurrence times.
+   Presets resolve once: Live does not silently advance their upper boundary.
+
+Record dev and trusted-HTTPS browser results separately. Dashboard realtime does not establish
+that Explorer realtime is integrated; verify that separately in TSE-87.

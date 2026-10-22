@@ -29,6 +29,7 @@ describe("validateDocumentName", () => {
 
 	it.each([
 		["empty", ""],
+		["blank", "   "],
 		["slash", "a/b.pdf"],
 		["backslash", "a\\b.pdf"],
 		["NUL", "a\0.pdf"],

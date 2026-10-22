@@ -15,7 +15,7 @@ export class DocumentClock {
 }
 
 export const JOB_INTERVAL_MS = 10_000;
-export const SWEEP_INTERVAL_MS = 60 * 60_000;
+export const SWEEP_INTERVAL_MS = 60_000;
 export const JOB_BATCH_SIZE = 25;
 // A file younger than this may belong to an upload that has not committed yet.
 export const ORPHAN_MIN_AGE_MS = 60 * 60_000;
@@ -33,6 +33,7 @@ export class DocumentCleanupService
 {
 	private readonly logger = new Logger(DocumentCleanupService.name);
 	private timers: ReturnType<typeof setInterval>[] = [];
+	private stopping = false;
 	private jobRun: Promise<void> | null = null;
 	private sweepRun: Promise<number> | null = null;
 
@@ -58,10 +59,12 @@ export class DocumentCleanupService
 	}
 
 	async onModuleDestroy(): Promise<void> {
+		this.stopping = true;
 		for (const timer of this.timers) clearInterval(timer);
 		this.timers = [];
 		// Let a run that is already in flight finish before shutdown continues.
 		await Promise.allSettled([this.jobRun, this.sweepRun]);
+		await this.storage.closeScans();
 	}
 
 	/**
@@ -77,7 +80,7 @@ export class DocumentCleanupService
 			this.logger.warn(
 				JSON.stringify({ event: "document_cleanup_skipped_referenced" }),
 			);
-			await this.prisma.fileDeletionJob.deleteMany({ where: { storageKey } });
+			await this.recordFailure(storageKey, { code: "STILL_REFERENCED" });
 			return;
 		}
 
@@ -92,6 +95,7 @@ export class DocumentCleanupService
 
 	/** Retries due deletion jobs. Overlapping calls share the run in progress. */
 	runOnce(): Promise<void> {
+		if (this.stopping) return Promise.resolve();
 		this.jobRun ??= this.processDueJobs().finally(() => {
 			this.jobRun = null;
 		});
@@ -105,6 +109,7 @@ export class DocumentCleanupService
 	 * consulted nothing is deleted.
 	 */
 	sweepOrphans(): Promise<number> {
+		if (this.stopping) return Promise.resolve(0);
 		this.sweepRun ??= this.sweep().finally(() => {
 			this.sweepRun = null;
 		});
@@ -124,7 +129,7 @@ export class DocumentCleanupService
 			}
 		} catch (error) {
 			this.logger.error(
-				JSON.stringify({ event: "document_cleanup_failed", error: String(error) }),
+				JSON.stringify({ event: "document_cleanup_failed", code: "CLEANUP_FAILED" }),
 			);
 		}
 	}
@@ -159,7 +164,7 @@ export class DocumentCleanupService
 			}
 		} catch (error) {
 			this.logger.error(
-				JSON.stringify({ event: "document_sweep_failed", error: String(error) }),
+				JSON.stringify({ event: "document_sweep_failed", code: "SWEEP_FAILED" }),
 			);
 		}
 		return removed;

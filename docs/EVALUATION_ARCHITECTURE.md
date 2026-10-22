@@ -306,6 +306,29 @@ TSE-71 adds analytics calculations. Dashboard UI, Trace Explorer UI,
 exports, assistant integration and WebSocket delivery remain separately
 owned features.
 
+### Frontend Trace Explorer integration — TSE-75
+
+The Trace Explorer is read-only. It uses the existing browser JWT trace endpoints through `frontend/src/api/traces.api.ts` and the shared HTTP client. HTTP contracts remain documented in API.md.
+
+Shared frontend filters are defined in `frontend/src/types/trace.types.ts` and handled by `frontend/src/api/trace-filters.ts`.
+
+TSE-76 and downstream frontend consumers must reuse this filter contract and its normalization/serialization utilities:
+
+- Shared selection: from, to, q, provider, model, workflow and status.
+- Dates are explicit resolved UTC instants.
+- Sorting and pagination belong only to the trace list.
+- `commonFilters(query)` extracts the shared selection from a list query.
+
+The applied list query is stored in the URL. List and detail views preserve recorded cost/rate strings and discard obsolete responses.
+Project access loss clears protected content without signing the user out.
+
+TSE-73 provides the backend realtime transport and notifications.
+TSE-76 provides the shared frontend project realtime client in `frontend/src/api/realtime-client.ts` and `useProjectRealtime`.
+
+TSE-87 owns connecting the existing Explorer list/detail to this client. Until that integration is verified, the Explorer supports manual Refresh and detects remote access loss on its next HTTP request.
+
+In TSE-87, connect active list/detail views to trace-change, reconnection and access-revocation handling. Reuse that client; do not create another socket implementation. Verify the combined browser behavior before claiming realtime acceptance complete.
+
 ### Analytics integration — TSE-71
 The implementation is registered through AnalyticsModule, which exports
 AnalyticsService.
@@ -336,7 +359,7 @@ These features have different responsibilities:
 | TSE-77 export | Capture and serialize the displayed snapshot |
 | TSE-80 assistant | Build a fresh fixed context for one submitted question |
 
-### Realtime
+### Realtime — C07
 
 A committed trace creation, actual correction or deletion can publish `traces.changed`.
 
@@ -347,6 +370,15 @@ Replay, no-op updates and rolled-back writes do not publish changes.
 Notifications are best effort. The dashboard repairs missed events after subscription/reconnection, on visible focus and through the agreed visible-page refresh interval.
 
 Socket authorization checks current membership and active parents. Joining a room once does not authorize every later notification.
+
+TSE-73 implements `/realtime` on `/socket.io`, using the existing HTTP server and
+single-process Socket.IO adapter. RealtimeModule consumes TraceChangesService and
+AccessChangesService; domain mutation modules import only AccessChangesModule.
+This prevents circular imports. No migration, Redis, persistent event queue or replay is added.
+The fixed 150 ms window bounds notification/authentication work during bursts.
+Origin handling, verified JWT expiry, limits and failure behavior are specified in API.md
+and SECURITY.md. TSE-76 owns the displayed dashboard and its recovery HTTP requests.
+
 
 ### Exports
 
@@ -399,6 +431,14 @@ Orphan cleanup must treat files referenced by archived parents as referenced. Ar
 
 PDF preview uses a local renderer. TXT and Markdown are displayed as inert text. Documents are not sent to Gemini.
 
+TSE-79 uses the existing authenticated JSON, multipart and Blob transports.
+Project/session changes clear the page and cancel upload, preview and download
+work; the same captured-session guard applies to successful and failed results.
+The existing project realtime client handles access revocation and checks access
+again after reconnecting. Trace-change notifications do not refresh documents;
+there is no document-specific socket or event protocol. Uploads respect the
+server's Retry-After deadline and are never retried automatically.
+
 ## Necessary shared helpers
 
 Create or extend a helper only when a concrete consumer needs it.
@@ -450,3 +490,19 @@ Keep feature verification proportional to changed behavior:
 Do not report mocked tests as database integration or browser tests as proof of live Gemini behavior.
 
 Before merging, record the tested commit, actual commands, results and remaining limitations. Update the relevant contract documents in the same PR.
+
+
+### Dashboard integration — TSE-76
+
+Project Overview embeds `ProjectDashboard` below existing project information and section navigation.
+The `/dashboard` URL redirects to Overview and preserves its query string.
+Dates and filters use `trace-filters.ts`; `serializeTraceFilters` is shared by Explorer and analytics.
+One applied selection is stored in the URL. Presets resolve once; background refreshes never slide it.
+`useProjectAnalytics` owns request generations, same-selection snapshot retention and the refresh scheduler.
+Its Retry-After deadline survives filter changes. Session snapshots guard all asynchronous results.
+`realtime-client.ts` shares connections within the captured session and project.
+The dashboard refetches authoritative HTTP snapshots; notifications never change totals locally.
+`renderExtras` supplies the stable applied selection, confirmed snapshot, status and export eligibility.
+TSE-77 adds exports using the already loaded project identity; TSE-81 adds assistant UI.
+Same-selection refreshes preserve an assistant answer; actual selection changes stop and clear it.
+TSE-88 retains ownership of the final whole-application responsive validation.

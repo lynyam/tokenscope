@@ -1,3 +1,4 @@
+import { RealtimeModule } from "./realtime/realtime.module";
 import { Module } from "@nestjs/common";
 import { ConfigurationModule } from "./config/configuration.module";
 import { HealthModule } from "./health/health.module";
@@ -10,6 +11,7 @@ import { TracesModule } from "./traces/traces.module";
 import { DocumentsModule } from "./documents/documents.module";
 import { PublicDocsModule } from "./public-docs/public-docs.module";
 import { AnalyticsModule } from "./analytics/analytics.module";
+import { AssistantModule } from "./assistant/assistant.module";
 
 @Module({
 	imports: [
@@ -24,6 +26,8 @@ import { AnalyticsModule } from "./analytics/analytics.module";
 		DocumentsModule,
 		PublicDocsModule,
 		AnalyticsModule,
+		AssistantModule,
+		RealtimeModule,
 	],
 })
 export class AppModule {}

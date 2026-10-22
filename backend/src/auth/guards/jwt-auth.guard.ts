@@ -66,6 +66,8 @@ export class JwtAuthGuard implements CanActivate {
       // "the JWT guard authenticates and attaches only the trusted user
       // identity". Anything else in the payload is untrusted input.
       request.user = { id: payload.sub };
+      // Verified expiry in milliseconds, kept apart from the identity.
+      request.accessTokenExpiresAt = payload.exp * 1000;
       return true;
     } catch (error) {
       // API.md case 2: expired. Distinguished from other failures
