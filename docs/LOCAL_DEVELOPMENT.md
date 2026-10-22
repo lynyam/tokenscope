@@ -1007,6 +1007,9 @@ Tested commit: `db40796` on `feature/tse-87-complete-trace-explorer-tse-75-realt
 | Evaluation HTTPS, Explorer | same variables, `E2E_ARGS="trace-explorer.spec.ts"` | 22 passed |
 | Evaluation HTTPS, full suite | same variables, no `E2E_ARGS` | 69 passed |
 
+The logout scenario was added after the runs above (23 Explorer scenarios in total, 3 consecutive passes in development); the final-commit
+run in evaluation HTTPS is recorded in the pull request.
+
 Environment: Linux workstation, Podman with podman-compose emulating Docker, Node 24, Playwright 1.64.0 with the Chromium
 headless shell (one worker, 60 s per test), development stack on `http://localhost:5173`, evaluation stack on
 `https://localhost:8443` with the certificate verified (no `ignoreHTTPSErrors`).
@@ -1014,7 +1017,8 @@ headless shell (one worker, 60 s per test), development stack on `http://localho
 Negative controls (the behaviour was removed, the scenario had to fail, then the code was restored): ignoring `traces.changed`
 makes the realtime scenarios fail; ignoring the refetch after the acknowledgement fails the reconnect scenario; ignoring
 `access.revoked` fails the organization-archive scenario, and the member-removal scenario also requires the `access.revoked`
-notice and no HTTP read after it.
+notice and no HTTP read after it. Disabling both the listener removal and the session-invalidation watch of the shared client fails the
+logout scenario.
 
 Limitations:
 
@@ -1023,7 +1027,9 @@ Limitations:
   cleanup on unmount and project change are covered by component tests (fake timers, mocked realtime hook). The browser scenarios
   cover ingestion, correction, deletion, filters and period, project switching, reconnection, member removal, organization
   archive and last-page recovery.
-- Logout has no dedicated scenario: it relies on the page unmounting and on the session revision being part of the connection key.
+- Logout is covered by one browser scenario (user menu, then the socket closes and no read follows). Two independent cleanups protect it: the
+  listener removal when the page unmounts, and the watch on session invalidation inside the shared client; the connection key also contains the
+  session revision. The scenario fails only when both cleanups are disabled, because each one is sufficient on its own.
 - The reconnect scenario waits 600 ms offline on purpose (the server coalesces for 150 ms and never replays events). The
   last-page deletion scenario ingests 26 traces under the 60 requests per minute limit and takes up to about 40 s.
 - Under Podman without a TTY, `make eval-up` needs `docker.io` as an unqualified search registry

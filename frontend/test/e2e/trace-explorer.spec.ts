@@ -704,3 +704,34 @@ test("realtime: deleting the only row of the last page recovers to the last vali
   await expect(page.getByRole("link", { name: /^View trace / })).toHaveCount(25);
   expectNoticeThenRead(seen, readsBefore);
 });
+
+test("realtime: logging out closes the realtime connection and later changes trigger no read", async ({ page, request }) => {
+  const { projectId, key } = await realtimeProject(request, "RT logout");
+  await ingest(request, key, rtBody("lo-1", "2026-10-01T09:00:00.000Z"));
+  const seen = observeRealtime(page, LIST_READ);
+  let upgraded = false; // engine.io: the client sends "5" once the WebSocket has replaced long-polling
+  page.on("websocket", socket => socket.on("framesent", frame => { if (String(frame.payload) === "5") upgraded = true; }));
+  await open(page, projectId);
+  await idsEqual(page, ["lo-1"]);
+  await subscribed(seen);
+  await expect.poll(() => upgraded, { message: "the connection upgraded from long-polling to WebSocket" }).toBe(true);
+  await readsSettled(seen);
+
+  const closesBefore = seen.closes();
+  const socketsBefore = seen.sockets.length;
+  // The user menu is the last button with this icon: the organization switcher comes first in the sidebar.
+  await page.locator("button:has(svg.lucide-chevrons-up-down)").last().click();
+  await page.getByRole("menuitem", { name: "Log out" }).click();
+  await expect(page).toHaveURL(/\/signin/);
+  expect(await page.evaluate(() => Boolean(localStorage.getItem("tokenscope.accessToken")))).toBe(false);
+  await expect.poll(() => seen.closes(), { message: "the WebSocket is closed by the logout" }).toBeGreaterThan(closesBefore);
+
+  const readsAfterLogout = seen.reads.length;
+  const noticesAfterLogout = seen.notices.length;
+  await ingest(request, key, rtBody("lo-2", "2026-10-01T10:00:00.000Z"));
+  await page.waitForTimeout(1000); // longer than the 150 ms server coalescing plus the 250 ms client coalescing
+  expect(seen.reads.length, "no read after logout").toBe(readsAfterLogout);
+  expect(seen.notices.length, "no notice after logout").toBe(noticesAfterLogout);
+  expect(seen.sockets.length, "no new WebSocket after logout").toBe(socketsBefore);
+  expect(seen.loads(), "the page was never reloaded").toBe(1);
+});
