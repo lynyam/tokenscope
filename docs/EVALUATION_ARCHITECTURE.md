@@ -431,6 +431,14 @@ Orphan cleanup must treat files referenced by archived parents as referenced. Ar
 
 PDF preview uses a local renderer. TXT and Markdown are displayed as inert text. Documents are not sent to Gemini.
 
+TSE-79 uses the existing authenticated JSON, multipart and Blob transports.
+Project/session changes clear the page and cancel upload, preview and download
+work; the same captured-session guard applies to successful and failed results.
+The existing project realtime client handles access revocation and checks access
+again after reconnecting. Trace-change notifications do not refresh documents;
+there is no document-specific socket or event protocol. Uploads respect the
+server's Retry-After deadline and are never retried automatically.
+
 ## Necessary shared helpers
 
 Create or extend a helper only when a concrete consumer needs it.

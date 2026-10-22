@@ -435,6 +435,42 @@ or credential-bearing artifacts to a PR.
 
 ---
 
+### Frontend PDF preview (PDF.js)
+
+The Documents page renders the first page of a PDF with `pdfjs-dist`. Nothing is
+loaded from a CDN: Vite bundles the matching worker locally
+(`pdfjs-dist/legacy/build/pdf.worker.min.mjs?url`, emitted as `dist/assets/pdf.worker.min-*.mjs`). The *legacy* build is used on purpose: the default build of pdfjs-dist 6 needs very recent JavaScript features and fails in browsers that lack them.
+After pulling a branch that adds or upgrades the dependency, run `npm ci` in
+`frontend/` (or restart the frontend container after `make up`). PDF.js is loaded
+lazily, so it is only fetched when a PDF preview is opened.
+
+The Vitest suite mocks PDF.js at its boundary (`src/pages/documents/pdf-preview.ts`).
+Real PDF rendering is covered by the Playwright suite below.
+
+### Documents browser tests (TSE-79)
+
+Use the existing Playwright setup and trusted evaluation CA described above.
+The document suite creates disposable accounts and projects, uploads the small
+files under `fixtures/evaluation/uploads/`, and does not need the price catalogue
+or golden traces. It writes to the running application's database and private
+storage; it does not truncate them or delete their volumes.
+
+From the repository root, after the selected mode is healthy:
+
+```bash
+# Development, after make up:
+E2E_BASE_URL=http://localhost:5173 E2E_ARGS=documents.spec.ts make frontende2e
+
+# Evaluation, after make eval-up and browser CA trust setup:
+NODE_EXTRA_CA_CERTS="$PWD/.local/eval/caddy-root.crt" \
+E2E_BASE_URL=https://localhost:8443 E2E_ARGS=documents.spec.ts make frontende2e
+```
+
+Node's extra CA setting applies to API requests; the Chromium browser must also
+trust the evaluation CA. Keep TLS verification enabled. Uploads are limited to
+five authorized attempts per rolling minute per user, so tests use disposable
+users and stay below that limit. Existing browser artifact settings remain in effect.
+
 ### Backend
 
 From `backend/`:
