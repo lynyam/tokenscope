@@ -1,51 +1,5 @@
-export type AnalyticsSnapshot = {
-  snapshotId: string;
-  generatedAt: string;
-  projectId: string;
-
-  window: {
-    from: string;
-    to: string;
-    timezone: "UTC";
-    bucket: "hour" | "day";
-  };
-
-  filters: {
-    q: string | null;
-    provider: string | null;
-    model: string | null;
-    workflow: string | null;
-    status: "SUCCESS" | "ERROR" | null;
-  };
-
-  summary: {
-    traceCount: number;
-    inputTokens: string;
-    outputTokens: string;
-    totalTokens: string;
-    estimatedCostUsd: string;
-    errorCount: number;
-    errorRatePct: number | null;
-    averageLatencyMs: number | null;
-  };
-
-  series: Array<{
-    bucketStart: string;
-    traceCount: number;
-    inputTokens: string;
-    outputTokens: string;
-    estimatedCostUsd: string;
-  }>;
-
-  byModel: Array<{
-    provider: string;
-    model: string;
-    traceCount: number;
-    inputTokens: string;
-    outputTokens: string;
-    estimatedCostUsd: string;
-  }>;
-};
+import type { AnalyticsSnapshot } from "../../types/analytics.types";
+export type { AnalyticsSnapshot } from "../../types/analytics.types";
 
 /**
  * Entrée capturée au clic (contrat : docs/API.md, « Dashboard exports — TSE-77 »).

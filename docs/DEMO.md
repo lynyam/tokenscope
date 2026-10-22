@@ -876,3 +876,32 @@ OWNER, ADMIN and MEMBER mounting, deterministic failures and scope handling are 
 covered by `assistant.spec.ts`; those assistant responses are intercepted. Keep that
 result separate from this live-provider proof. Record commit, mode, results and limits;
 redact JWTs, API keys and Gemini credentials from evidence.
+
+### Dashboard exports — TSE-77 manual check
+
+Use a project containing the six golden traces with the synthetic catalogue
+loaded. Open its Analytics section; apply the exact UTC period
+`2026-10-01T00:00:00.000Z` to `2026-10-02T00:00:00.000Z` (exclusive end).
+
+1. Confirm six traces, 6000 input tokens, 1200 output tokens and estimated cost
+   USD 0.01535. Export CSV and PDF; neither click should request analytics again.
+2. CSV has 24 columns and 27 data rows: one summary, 24 series buckets and two
+   models. Its summary cost is exactly `0.015350000000`. Selection metadata and
+   snapshot identity agree across every row.
+3. Open the actual PDF. Check project identity, generated time, UTC period,
+   filters, summary, all model/series rows, repeated table headers, page numbers
+   and the estimate/synthetic-pricing note. Check wrapping with a long name.
+4. Filter `provider=fixture-a`: three traces and cost `0.007150000000`. Both files
+   describe that filter. Then select an empty period: export stays available,
+   series contains zero buckets and PDF null averages/rates say `No observations`.
+5. While a new applied selection loads, exports are disabled. A same-selection
+   refresh can export the last displayed snapshot. Sign-out, access loss or
+   navigation must discard pending downloads; generation failure offers Retry.
+6. Verify a name such as `Équipe Ελληνικά Кириллица` visually. DejaVu Sans does
+   not cover all accepted Unicode characters (notably CJK and some emoji): do
+   not count that test as proof of unrestricted Unicode coverage. Broader font
+   coverage remains an acceptance gap until a font/fallback is supplied and tested.
+
+Run in development and HTTPS evaluation mode using the setup in
+`docs/LOCAL_DEVELOPMENT.md`, “Dashboard export checks — TSE-77”. Record the tested
+commit/mode and distinguish automated download checks from visual PDF inspection.

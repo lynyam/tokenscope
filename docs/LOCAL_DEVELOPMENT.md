@@ -1128,3 +1128,50 @@ E2E_BASE_URL=https://localhost:8443 npm run test:e2e -- project-dashboard.spec.t
 Retain the Vite and Caddy `/socket.io` proxies already provided by TSE-73.
 Record the tested commit, mode, exact commands and results. A unit test does not prove HTTPS
 or real socket/browser integration. Full responsive validation remains tracked by TSE-88.
+
+### Dashboard export checks — TSE-77
+
+The controls consume the existing dashboard handoff and authorized project.
+Exports do not fetch analytics or call an export endpoint. PDF code and its
+bundled font load only on the first PDF request. Unit tests read the shared
+`fixtures/evaluation/responses/` files; do not make frontend copies.
+
+In development, from the repository root:
+
+```bash
+make up
+curl --fail --silent --show-error --max-time 20 http://localhost:5173/api/v1/health/db
+make frontendcheck
+make frontendtest
+docker compose exec frontend npm run build
+make frontende2e-setup
+docker compose cp fixtures/evaluation/model-prices.json backend:/tmp/model-prices.json
+docker compose exec -T backend npm run pricing:load -- --file /tmp/model-prices.json
+E2E_BASE_URL=http://localhost:5173 E2E_ARGS=dashboard-export.spec.ts make frontende2e
+```
+
+Wait for HTTP 200 before continuing. If the development pricing script has not
+been built, run `docker compose exec backend npm run build` before `pricing:load`.
+The browser spec creates its own disposable account/project and ingests the six
+golden traces. Do not manually seed traces into that project.
+
+Repeat after rebuilding evaluation mode:
+
+```bash
+make eval-up
+curl --fail --silent --show-error --max-time 20 --cacert .local/eval/caddy-root.crt https://localhost:8443/api/v1/health/db
+docker compose cp fixtures/evaluation/model-prices.json backend:/tmp/model-prices.json
+docker compose exec -T backend npm run pricing:load -- --file /tmp/model-prices.json
+NODE_EXTRA_CA_CERTS="$PWD/.local/eval/caddy-root.crt" \
+E2E_BASE_URL=https://localhost:8443 E2E_ARGS=dashboard-export.spec.ts make frontende2e
+```
+
+Trust the current Caddy CA in the browser/OS before the HTTPS run; Node's
+`NODE_EXTRA_CA_CERTS` only configures Node. Keep TLS verification enabled.
+After `make fullclean`, reload the catalogue and trust the newly generated CA.
+
+The browser suite downloads and parses real CSV/PDF files for golden, filtered
+and empty selections. A separate case delays only the bundled font response,
+then ingests a real trace and checks that the pending PDF retains its captured
+snapshot while the displayed dashboard refreshes. Backend responses are not mocked.
+Inspect downloaded PDFs visually as described in `docs/DEMO.md` too.

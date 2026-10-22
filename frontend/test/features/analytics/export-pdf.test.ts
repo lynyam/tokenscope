@@ -19,8 +19,9 @@ import type {
   DashboardExportInput,
 } from "../../../src/features/analytics/export.types";
 import { DEJAVU_SANS_BASE64 } from "../../../src/features/analytics/fonts/dejavu-sans.font";
-import goldenJson from "./fixtures/analytics-golden.json";
-import emptyJson from "./fixtures/analytics-empty.json";
+import { readEvaluationFixture } from "../../api/helpers/evaluation-fixtures";
+const goldenJson = JSON.parse(readEvaluationFixture("responses/analytics-golden.json"));
+const emptyJson = JSON.parse(readEvaluationFixture("responses/analytics-empty.json"));
 
 // ---------------------------------------------------------------- helpers
 
@@ -107,13 +108,15 @@ function longInput(): DashboardExportInput {
 /** Renders the PDF, then re-reads its actual text, page by page, with pdf.js. */
 async function renderAndRead(input: DashboardExportInput) {
   const bytes = renderDashboardPdf(buildPdfModel(input), FONT).output("arraybuffer");
-  const pdf = await getDocument({ data: new Uint8Array(bytes), disableFontFace: true }).promise;
+  const task = getDocument({ data: new Uint8Array(bytes), disableFontFace: true });
+  const pdf = await task.promise;
   const pages: string[] = [];
   for (let n = 1; n <= pdf.numPages; n++) {
     const content = await (await pdf.getPage(n)).getTextContent();
     pages.push(content.items.map((item) => ("str" in item ? item.str : "")).join("\n"));
   }
   const all = pages.join("\n");
+  await task.destroy();
   return { pages, all, compact: all.replace(/\s+/g, "") };
 }
 

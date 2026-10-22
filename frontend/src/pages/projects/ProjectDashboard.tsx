@@ -4,6 +4,7 @@ import { getAuthSessionSnapshot, isAuthSessionCurrent } from "../../api/auth-ses
 import { parseTraceSearchParams, serializeTraceFilters, commonFilters } from "../../api/trace-filters";
 import { classifyTraceFailure } from "./trace-failure";
 import { isAbortError } from "../../api/http-client";
+import { analyticsSelectionKey } from "../../api/analytics.api";
 import { getModelChoices } from "../../api/traces.api";
 import {
   toAssistantSelectionState,
@@ -163,6 +164,7 @@ export function ProjectDashboard({ organizationId, projectId, renderExtras, onUn
       {/* TSE-77: exports the displayed snapshot only; disabled while a changed selection loads or fails. */}
       <DashboardExportControls
         project={project}
+        selectionKey={handoff ? analyticsSelectionKey(handoff.selection) : null}
         snapshot={handoff?.snapshot ?? null}
         canExport={handoff?.exportEnabled === true && project !== null}
         isStale={status === "stale"}
