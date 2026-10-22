@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { getAuthSessionSnapshot } from "../../api/auth-session";
 import { ProjectDashboard } from "./ProjectDashboard";
 import { EditProjectForm } from "./EditProjectForm";
+import { DashboardAssistant } from "./DashboardAssistant";
 
 export function ProjectDetailPage() {
   const { organizationId, projectId } = useParams();
@@ -258,6 +259,16 @@ function ProjectDetail({ organizationId, projectId }: { organizationId: string; 
         organizationId={organizationId}
         projectId={projectId}
         onUnavailable={clearProject}
+        renderExtras={({ selection, selectionState }) => (
+          <DashboardAssistant
+            organizationId={organizationId}
+            projectId={projectId}
+            projectName={project.name}
+            selection={{ from: selection.from, to: selection.to, filters: selection.filters }}
+            selectionState={selectionState}
+            onProjectUnavailable={clearProject}
+          />
+        )}
       />
     </section>
   );
