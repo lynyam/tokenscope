@@ -416,7 +416,9 @@ function observeRealtime(page: Page, readPath: RegExp) {
   const sockets: string[] = [];
   let loads = 0;
   let closes = 0;
+  const revoked: number[] = [];
   const note = (text: string) => {
+    if (text.includes("access.revoked")) revoked.push(Date.now());
     if (!text.includes("traces.changed")) return;
     notices.push(Date.now());
     for (const match of text.matchAll(/"projectId":"([0-9a-f-]{36})"/g)) noticeProjects.add(match[1]);
@@ -435,7 +437,7 @@ function observeRealtime(page: Page, readPath: RegExp) {
   page.on("request", request => {
     if (request.method() === "GET" && readPath.test(new URL(request.url()).pathname)) reads.push(Date.now());
   });
-  return { notices, noticeProjects, reads, sockets, loads: () => loads, closes: () => closes };
+  return { notices, noticeProjects, revoked, reads, sockets, loads: () => loads, closes: () => closes };
 }
 type Observed = ReturnType<typeof observeRealtime>;
 
@@ -631,6 +633,8 @@ test("realtime: removing the receiving member clears the protected content and k
     await expect(page.getByText("This project is not available.")).toBeVisible();
     await expect(page.getByRole("link", { name: /^View trace / })).toHaveCount(0);
     expect(await page.evaluate(() => Boolean(localStorage.getItem("tokenscope.accessToken")))).toBe(true);
+    expect(seen.revoked.length, "an access.revoked notice reached the page").toBeGreaterThan(0);
+    expect(seen.reads.filter(at => at > seen.revoked[0]), "no HTTP read after the revocation: the notice alone cleared the screen").toHaveLength(0);
     expect((await apiGet(request, member, `${API}/organizations`)).status()).toBe(200);
     expect(seen.loads(), "the page was never reloaded").toBe(1);
   } finally {
