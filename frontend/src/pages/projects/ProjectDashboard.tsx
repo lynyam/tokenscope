@@ -21,6 +21,7 @@ import { resolveCustomPeriod, resolvePreset, type DashboardPeriod, type PeriodPr
 import { buildAppliedSelection, EMPTY_FILTER_DRAFT, type FilterDraft } from "./dashboardSelection";
 import type { ChoicesState } from "./TraceFilterForm";
 import { TraceFailureNotice } from "./TraceFailureNotice";
+import { DashboardExportControls } from "../../features/analytics/DashboardExportControls";
 
 /**
  * What the rest of the page (assistant TSE-81, export TSE-77) may rely on.
@@ -42,6 +43,8 @@ interface Props {
   renderExtras?: (handoff: DashboardHandoff) => ReactNode;
   /** The project is no longer available: the page must clear its protected content. */
   onUnavailable?: () => void;
+  /** Authorized project loaded by the page (never taken from the URL), used by the export (TSE-77). */
+  project?: { id: string; name: string } | null;
 }
 
 const REALTIME_LABELS: Record<RealtimeState, string> = {
@@ -57,7 +60,7 @@ const DEFAULT_PRESET: PeriodPreset = "7d";
 type PeriodState = { period: DashboardPeriod; preset: PeriodPreset | "custom" };
 
 
-export function ProjectDashboard({ organizationId, projectId, renderExtras, onUnavailable }: Props) {
+export function ProjectDashboard({ organizationId, projectId, renderExtras, onUnavailable, project = null }: Props) {
   const [searchParams, setSearchParams] = useSearchParams();
   const search = searchParams.toString();
   const parsed = useMemo(() => parseTraceSearchParams(new URLSearchParams(search)), [search]);
@@ -156,6 +159,15 @@ export function ProjectDashboard({ organizationId, projectId, renderExtras, onUn
       <p className="text-sm text-muted-foreground">
         Live refreshes changes within the exact applied period. The period does not move automatically.
       </p>
+
+      {/* TSE-77: exports the displayed snapshot only; disabled while a changed selection loads or fails. */}
+      <DashboardExportControls
+        project={project}
+        snapshot={handoff?.snapshot ?? null}
+        canExport={handoff?.exportEnabled === true && project !== null}
+        isStale={status === "stale"}
+      />
+
       <DashboardControls
         key={controlsEpoch}
         period={periodState.period}
