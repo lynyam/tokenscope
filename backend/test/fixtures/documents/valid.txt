@@ -1,0 +1,2 @@
+Hello from a TokenScope text fixture.
+Second line with accents: éàü 日本
