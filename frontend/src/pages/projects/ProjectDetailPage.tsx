@@ -256,6 +256,7 @@ function ProjectDetail({ organizationId, projectId }: { organizationId: string; 
       <ProjectDashboard
         organizationId={organizationId}
         projectId={projectId}
+        project={{ id: project.id, name: project.name }}
         onUnavailable={clearProject}
       />
     </section>
