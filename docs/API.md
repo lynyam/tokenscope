@@ -1514,6 +1514,38 @@ type DocumentSummary = {
 
 Never expose storage keys, private paths or cleanup jobs.
 
+#### Routes (implemented by TSE-78)
+
+`P` is `/api/v1/organizations/:organizationId/projects/:projectId`. All routes require a user JWT and send `Cache-Control: no-store`.
+
+| Route | Roles | Success |
+|---|---|---|
+| `POST P/documents` | OWNER, ADMIN | `201 DocumentSummary` |
+| `GET P/documents?page&pageSize` | any member | `200 Page<DocumentSummary>` |
+| `GET P/documents/:documentId/content?download=true\|false` | any member | `200` file bytes |
+| `DELETE P/documents/:documentId` | OWNER, ADMIN | `204` |
+
+Upload body: `multipart/form-data` with exactly one part named `file` and no other part. Any other shape is `400 VALIDATION_ERROR`. The file name is read as UTF-8. Names containing `/`, `\`, control characters, or equal to `.` or `..` are rejected. The extension (`.pdf`, `.txt`, `.md`, case-insensitive) selects the media type.
+
+Content route headers: `Content-Type` (stored media type), `Content-Length`, `Cache-Control: no-store`, `X-Content-Type-Options: nosniff` and `Content-Disposition` (`inline` by default, `attachment` with `download=true`) with an ASCII `filename` and a UTF-8 `filename*`. Any other `download` value, or a repeated one, is `400`.
+
+Errors:
+
+| Status | Code | When |
+|---|---|---|
+| 400 | `VALIDATION_ERROR` | Bad multipart shape, empty file, bad file name, bad query |
+| 403 | `INSUFFICIENT_ORGANIZATION_ROLE` | A member without OWNER/ADMIN uploads or deletes |
+| 404 | `PROJECT_NOT_FOUND` | Unknown, archived or inaccessible project or organization |
+| 404 | `DOCUMENT_NOT_FOUND` | Unknown document, document of another project, or already deleted |
+| 409 | `CONCURRENT_MODIFICATION` | Transaction conflict persisted after retries |
+| 413 | `PAYLOAD_TOO_LARGE` | File larger than 10,485,760 bytes |
+| 415 | `UNSUPPORTED_MEDIA_TYPE` | Extension is not `.pdf`, `.txt` or `.md` |
+| 422 | `INVALID_DOCUMENT_CONTENT` | Text that is not UTF-8 or contains NUL; PDF that is damaged, password-protected, permission-encrypted or not inspectable within 10 seconds |
+| 429 | `RATE_LIMITED` | More than 5 authorized upload attempts per rolling minute per user; `Retry-After` is set |
+| 503 | `STORAGE_UNAVAILABLE` | Bytes cannot be written or are missing |
+
+Order of checks for an upload: authentication, project access and role (before the body is read), quota, multipart parsing and size, file name, media type, content, then storage and a final access re-check in the same transaction as the insert. Denied requests do not consume quota.
+
 ### Dashboard exports — TSE-77
 
 Exports are local browser operations using a captured input:

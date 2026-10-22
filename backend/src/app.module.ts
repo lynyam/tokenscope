@@ -8,6 +8,7 @@ import { MembershipsModule } from "./memberships/memberships.module";
 import { ProjectsModule } from "./projects/projects.module";
 import { ApiKeysModule } from "./api-keys/api-keys.module";
 import { TracesModule } from "./traces/traces.module";
+import { DocumentsModule } from "./documents/documents.module";
 import { PublicDocsModule } from "./public-docs/public-docs.module";
 import { AnalyticsModule } from "./analytics/analytics.module";
 import { AssistantModule } from "./assistant/assistant.module";
@@ -22,6 +23,7 @@ import { AssistantModule } from "./assistant/assistant.module";
 		ProjectsModule,
 		ApiKeysModule,
 		TracesModule,
+		DocumentsModule,
 		PublicDocsModule,
 		AnalyticsModule,
 		AssistantModule,

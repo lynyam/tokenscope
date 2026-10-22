@@ -7,6 +7,7 @@ const VALID_ENV = {
 	JWT_ISSUER: "tokenscope-test",
 	JWT_AUDIENCE: "tokenscope-test-web",
 	JWT_ACCESS_TTL_SECONDS: "3600",
+	DOCUMENT_STORAGE_ROOT: "/var/lib/tokenscope/documents",
 };
 
 describe("Environment configuration", () => {
@@ -23,6 +24,13 @@ describe("Environment configuration", () => {
 		delete env[key];
 		expect(() => validateEnvironment(env)).toThrow(key);
 	});
+
+	it.each(["relative/path", " /tmp/docs", "/tmp/docs ", "/tmp/\0docs"])(
+		"rejects invalid document storage root %j", (value) => {
+			expect(() => validateEnvironment({ ...VALID_ENV, DOCUMENT_STORAGE_ROOT: value }))
+				.toThrow("DOCUMENT_STORAGE_ROOT");
+		},
+	);
 
 	it.each(["0", "65536", "-1", "3000.5", "abc", "3e3", ""])(
 		"rejects invalid port %j", (port) => {
