@@ -19,6 +19,7 @@ import { ProjectDetailPage } from "../pages/projects/ProjectDetailPage";
 import { TracesPage } from "../pages/projects/TracesPage";
 import { ProjectDashboardPage } from "../pages/projects/ProjectDashboardPage";
 import { TraceDetailPage } from "../pages/projects/TraceDetailPage";
+import { DocumentsPage } from "../pages/documents/DocumentsPage";
 import { LandingPage } from "../pages/LandingPage";
 import { ApiKeysPage } from "../pages/projects/ApiKeysPage";
 
@@ -76,6 +77,11 @@ export function AppRouter()
                     <Route
                     path="/organizations/:organizationId/projects/:projectId"
                     element={<ProjectDetailPage />}
+                    />
+
+                    <Route
+                    path="/organizations/:organizationId/projects/:projectId/documents"
+                    element={<DocumentsPage />}
                     />
 
                     <Route

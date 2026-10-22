@@ -16,6 +16,12 @@ import {
 	| { allowed: true }
 	| { allowed: false; retryAfterSeconds: number };
 
+  export type RollingBudget = {
+    namespace: string;
+    identity: string;
+    limit: number;
+  };
+
   type Counter = {
 	count: number;
 	expiresAt: number;
@@ -27,6 +33,7 @@ import {
   @Injectable()
   export class RateLimitService implements OnModuleDestroy {
 	private readonly counters = new Map<string, Counter>();
+	private readonly rolling = new Map<string, number[]>();
 	private readonly maintenance: ReturnType<typeof setInterval>;
 
 	constructor(private readonly clock: RateLimitClock) {
@@ -85,9 +92,43 @@ import {
 	  return { allowed: true };
 	}
 
+	// The assistant requires a rolling minute. Keep consume() unchanged for
+	// existing HTTP quotas and admit all assistant budgets atomically.
+	consumeRolling(budgets: readonly RollingBudget[]): RateLimitDecision {
+	  const now = this.clock.now();
+	  const entries = budgets.map(budget => {
+		const key = `${budget.namespace}:${budget.identity}`;
+		const times = (this.rolling.get(key) ?? []).filter(time => time > now - WINDOW_MS);
+		return { ...budget, key, times };
+	  });
+	  let retryMs = 0;
+	  for (const entry of entries) {
+		if (entry.times.length >= entry.limit) {
+		  retryMs = Math.max(retryMs, entry.times[0] + WINDOW_MS - now);
+		}
+	  }
+	  if (retryMs > 0) return this.denied(retryMs);
+
+	  const missing = () => entries.filter(entry => !this.rolling.has(entry.key)).length;
+	  if (this.rolling.size + missing() > MAX_COUNTERS) this.removeExpired(now);
+	  if (this.rolling.size + missing() > MAX_COUNTERS) {
+		let earliestExpiry = Infinity;
+		for (const times of this.rolling.values()) {
+		  earliestExpiry = Math.min(earliestExpiry, times[times.length - 1] + WINDOW_MS);
+		}
+		return this.denied(earliestExpiry - now);
+	  }
+	  for (const entry of entries) {
+		entry.times.push(now);
+		this.rolling.set(entry.key, entry.times);
+	  }
+	  return { allowed: true };
+	}
+
 	onModuleDestroy(): void {
 	  clearInterval(this.maintenance);
 	  this.counters.clear();
+	  this.rolling.clear();
 	}
 
 	private denied(remainingMs: number): RateLimitDecision {
@@ -101,6 +142,11 @@ import {
 	}
 
 	private removeExpired(now: number): void {
+	  for (const [key, times] of this.rolling) {
+		const current = times.filter(time => time > now - WINDOW_MS);
+		if (current.length) this.rolling.set(key, current);
+		else this.rolling.delete(key);
+	  }
 	  for (const [key, counter] of this.counters) {
 		if (counter.expiresAt <= now) {
 		  this.counters.delete(key);

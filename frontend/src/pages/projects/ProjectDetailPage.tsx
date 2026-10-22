@@ -253,6 +253,7 @@ function ProjectDetail({ organizationId, projectId }: { organizationId: string; 
         >
           Traces
         </Link>
+        <Link className="underline" to={"/organizations/" + encodeURIComponent(organizationId) + "/projects/" + encodeURIComponent(projectId) + "/documents"}>Documents</Link>
       </nav>
             <ProjectDashboard
         organizationId={organizationId}

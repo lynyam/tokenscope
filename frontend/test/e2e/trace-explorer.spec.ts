@@ -391,4 +391,3 @@ test("deleting the last row of the last page recovers to the previous page", asy
   await expect(summary(page)).toHaveText("50 traces · Page 2 of 2");
   await expect(page.getByRole("link", { name: /^View trace / })).toHaveCount(25);
 });
-

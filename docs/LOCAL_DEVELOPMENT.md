@@ -435,6 +435,42 @@ or credential-bearing artifacts to a PR.
 
 ---
 
+### Frontend PDF preview (PDF.js)
+
+The Documents page renders the first page of a PDF with `pdfjs-dist`. Nothing is
+loaded from a CDN: Vite bundles the matching worker locally
+(`pdfjs-dist/legacy/build/pdf.worker.min.mjs?url`, emitted as `dist/assets/pdf.worker.min-*.mjs`). The *legacy* build is used on purpose: the default build of pdfjs-dist 6 needs very recent JavaScript features and fails in browsers that lack them.
+After pulling a branch that adds or upgrades the dependency, run `npm ci` in
+`frontend/` (or restart the frontend container after `make up`). PDF.js is loaded
+lazily, so it is only fetched when a PDF preview is opened.
+
+The Vitest suite mocks PDF.js at its boundary (`src/pages/documents/pdf-preview.ts`).
+Real PDF rendering is covered by the Playwright suite below.
+
+### Documents browser tests (TSE-79)
+
+Use the existing Playwright setup and trusted evaluation CA described above.
+The document suite creates disposable accounts and projects, uploads the small
+files under `fixtures/evaluation/uploads/`, and does not need the price catalogue
+or golden traces. It writes to the running application's database and private
+storage; it does not truncate them or delete their volumes.
+
+From the repository root, after the selected mode is healthy:
+
+```bash
+# Development, after make up:
+E2E_BASE_URL=http://localhost:5173 E2E_ARGS=documents.spec.ts make frontende2e
+
+# Evaluation, after make eval-up and browser CA trust setup:
+NODE_EXTRA_CA_CERTS="$PWD/.local/eval/caddy-root.crt" \
+E2E_BASE_URL=https://localhost:8443 E2E_ARGS=documents.spec.ts make frontende2e
+```
+
+Node's extra CA setting applies to API requests; the Chromium browser must also
+trust the evaluation CA. Keep TLS verification enabled. Uploads are limited to
+five authorized attempts per rolling minute per user, so tests use disposable
+users and stay below that limit. Existing browser artifact settings remain in effect.
+
 ### Backend
 
 From `backend/`:
@@ -578,6 +614,85 @@ These historical records are not guaranteed to be inside a moving
 last-seven-days window. The database tests load fixtures only into the
 guarded test database; they do not seed development data.
 
+### Dashboard assistant — TSE-80
+
+Configuration (backend only, in your untracked `.env`):
+
+```bash
+GEMINI_API_KEY=<your key>
+LLM_MODEL=gemini-3.5-flash-lite
+```
+
+Compose passes both to the backend. Without them the application starts
+normally and the assistant answers `503 LLM_UNAVAILABLE`. Never put the key in a
+`VITE_` variable, and never run `docker compose config` (it prints resolved
+secrets). After editing `.env`, recreate the backend and check the key length
+only:
+
+```bash
+docker compose up -d backend
+docker compose exec backend sh -c 'echo ${#GEMINI_API_KEY}'
+```
+
+No Gemini call happens at startup or in health checks.
+
+Automated tests never call Gemini (a fake provider is injected):
+
+```bash
+make test-backend
+```
+
+Assistant suites: `test/assistant/*.unit.spec.ts`, `test/assistant/assistant.e2e-spec.ts`
+and `test/database/assistant.integration.spec.ts`.
+
+Fixture data for a manual check (TSE-70's seed is not required):
+
+1. Load the synthetic price catalogue ([Explicit price catalogue loading](#explicit-price-catalogue-loading)).
+2. Sign in, create a disposable organization and project, and create a project API key.
+3. Load the six golden traces into that project (repeatable; the key is not printed):
+
+```bash
+read -rs API_KEY && export API_KEY
+BASE_URL=http://localhost:5173 backend/test/manual/load-assistant-fixture.sh
+```
+
+Opt-in live check (requires Bash, curl and jq; uses up to three provider attempts per run):
+
+```bash
+read -rs TOKEN && export TOKEN
+export ORG_ID=<organization id> PROJECT_ID=<project id>
+BASE_URL=http://localhost:5173 backend/test/manual/assistant-proxy-check.sh
+CURL_CA_BUNDLE="$PWD/.local/eval/caddy-root.crt" \
+BASE_URL=https://localhost:8443 backend/test/manual/assistant-proxy-check.sh
+```
+
+Run each mode separately, with a fresh rate-limit window (at least 60 seconds
+since the previous run) and the corresponding `make up` or `make eval-up` setup.
+For HTTPS fixture loading, also set `CURL_CA_BUNDLE` to the public evaluation CA.
+Never disable TLS verification. Use `bash <script-path>` if not executable.
+
+The script prints each complete SSE line with its arrival time (text must arrive
+progressively), stops a second request after 2 seconds, then shows that a
+new request gets `200` and a terminal `done` (the stopped request freed its slot).
+The check fails if the interrupted request had already finished or had not
+started. Adjust `STOP_AFTER_SECONDS` and rerun deliberately in that case.
+It does not automatically retry a provider request. Then:
+
+```bash
+docker compose logs backend | grep assistant_answer | tail -3
+```
+
+The stopped request must appear with `"outcome":"client_left"`.
+
+Proxies: the Vite proxy streams responses as they arrive. Caddy flushes
+`text/event-stream` immediately and only compresses frontend routes, so no proxy
+configuration change is proposed. Verify both behaviors through the real proxies
+before recording them as passed. Do not add `flush_interval -1`: it can keep the backend request
+running after the client disconnects.
+
+Record the live results (model, tier, quota, timestamps, commit) separately from
+the automated results.
+
 ## Development workflow
 
 Once the local environment works, follow:
@@ -627,6 +742,16 @@ See "Evaluation mode (HTTPS)" below for startup, certificate trust, readiness ch
 | Private files | TSE-78 | `DOCUMENT_STORAGE_ROOT` and persistent private volume |
 | Assistant | TSE-80 | `GEMINI_API_KEY`, `LLM_MODEL`, SSE proxy verification |
 | Evaluation seed | TSE-70 | Explicit opt-in, operator-supplied password and documented command |
+
+### Private document storage (TSE-78)
+
+`DOCUMENT_STORAGE_ROOT` is required and must be an absolute path. Compose sets it to `/var/lib/tokenscope/documents`, backed by the named volume `tokenscope_documents`, so uploads survive restarts. `make fullclean` removes that volume and therefore every uploaded file.
+
+Outside Compose, point it to a private directory that the backend user can write, for example `DOCUMENT_STORAGE_ROOT=$HOME/.tokenscope/documents`.
+
+Backend tests use a temporary directory and do not need the volume.
+
+Small fixtures for manual and automated checks live in `backend/test/fixtures/documents/` (`valid.pdf`, `valid.txt`, `valid.md`, and encrypted PDFs that must be rejected). Run the full backend suite, including the real PostgreSQL and filesystem tests, with `make test-backend`.
 
 Backend configuration uses:
 
