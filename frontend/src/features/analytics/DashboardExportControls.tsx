@@ -9,18 +9,21 @@ type Props = {
   snapshot: AnalyticsSnapshot | null;
   /** Éligibilité calculée par le dashboard (TSE-76). */
   canExport: boolean;
+  selectionKey: string | null;
   /** Données du même périmètre marquées obsolètes. */
   isStale?: boolean;
 };
 
-export function DashboardExportControls({ project, snapshot, canExport, isStale = false }: Props) {
+export function DashboardExportControls({ project, snapshot, canExport, selectionKey, isStale = false }: Props) {
   const { busy, failed, exportCsv, exportPdf, retry } = useDashboardExport({
     project,
     snapshot,
     canExport,
+    selectionKey,
   });
 
-  const disabled = !canExport || !project || !snapshot || busy !== null;
+  const disabled = !canExport || !selectionKey || !project || !snapshot ||
+    project.id !== snapshot.projectId || busy !== null;
 
   return (
     <div className="flex flex-col items-end gap-2">
@@ -42,7 +45,7 @@ export function DashboardExportControls({ project, snapshot, canExport, isStale 
       {failed && (
         <p role="alert" className="text-sm text-destructive">
           {EXPORT_ERROR_MESSAGE}{" "}
-          <Button variant="link" size="xs" onClick={retry}>
+          <Button variant="link" size="xs" disabled={disabled} onClick={retry}>
             Retry
           </Button>
         </p>

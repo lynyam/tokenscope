@@ -19,7 +19,7 @@ function Metric({ label, value, note }: { label: string; value: string; note?: s
 export function DashboardSummaryCards({ snapshot }: { snapshot: AnalyticsSnapshot }) {
   const { summary } = snapshot;
   return (
-    <section aria-label="Summary">
+    <section aria-label="Summary" data-snapshot-id={snapshot.snapshotId}>
       <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Metric label="Estimated cost" value={formatCostUsd(summary.estimatedCostUsd)} note="USD, estimated" />
         <Metric label="Traces" value={formatCount(String(summary.traceCount))} />

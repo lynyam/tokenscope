@@ -4,9 +4,11 @@ import { DashboardExportControls } from "@/features/analytics/DashboardExportCon
 import { downloadBlob } from "@/features/analytics/download";
 import { buildDashboardPdf } from "@/features/analytics/export-pdf";
 import type { AnalyticsSnapshot, DashboardExportInput } from "@/features/analytics/export.types";
+import { clearAuthSession, saveAccessToken } from "@/api/auth-session";
 import { loadPdfFont } from "@/features/analytics/pdf-font";
-import goldenJson from "./fixtures/analytics-golden.json";
-import emptyJson from "./fixtures/analytics-empty.json";
+import { readEvaluationFixture } from "../../api/helpers/evaluation-fixtures";
+const goldenJson = JSON.parse(readEvaluationFixture("responses/analytics-golden.json"));
+const emptyJson = JSON.parse(readEvaluationFixture("responses/analytics-empty.json"));
 
 // ---------------------------------------------------------------- doublures
 // Téléchargement : on enregistre l'appel au lieu de télécharger.
@@ -50,6 +52,7 @@ async function lastDownload() {
 }
 
 beforeEach(() => {
+  saveAccessToken("export-test-session");
   vi.mocked(downloadBlob).mockReset();
   vi.mocked(buildDashboardPdf).mockClear();
   vi.mocked(loadPdfFont).mockReset().mockResolvedValue("font-base64");
@@ -59,28 +62,28 @@ beforeEach(() => {
 
 describe("éligibilité", () => {
   it("désactive les boutons sans snapshot correspondant", () => {
-    render(<DashboardExportControls project={project} snapshot={null} canExport={false} />);
+    render(<DashboardExportControls selectionKey="golden" project={project} snapshot={null} canExport={false} />);
     expect(csvButton()).toBeDisabled();
     expect(pdfButton()).toBeDisabled();
   });
 
   it("n'exporte pas l'ancien périmètre après un échec de changement de filtre", () => {
     // Le dashboard garde l'ancien snapshot affiché, mais l'export n'est plus autorisé.
-    render(<DashboardExportControls project={project} snapshot={golden} canExport={false} />);
+    render(<DashboardExportControls selectionKey="golden" project={project} snapshot={golden} canExport={false} />);
     fireEvent.click(csvButton());
     fireEvent.click(pdfButton());
     expect(downloadBlob).not.toHaveBeenCalled();
   });
 
   it("autorise l'export d'un snapshot vide valide", async () => {
-    render(<DashboardExportControls project={otherProject} snapshot={empty} canExport />);
+    render(<DashboardExportControls selectionKey="golden" project={otherProject} snapshot={empty} canExport />);
     fireEvent.click(csvButton());
     await waitFor(() => expect(downloadBlob).toHaveBeenCalledTimes(1));
     expect((await lastDownload()).text).toContain("Empty Project");
   });
 
   it("signale les données obsolètes mais permet l'export du snapshot affiché", async () => {
-    render(<DashboardExportControls project={project} snapshot={golden} canExport isStale />);
+    render(<DashboardExportControls selectionKey="golden" project={project} snapshot={golden} canExport isStale />);
     expect(screen.getByText(/may be out of date/i)).toHaveTextContent(golden.generatedAt);
     fireEvent.click(csvButton());
     await waitFor(() => expect(downloadBlob).toHaveBeenCalledTimes(1));
@@ -91,7 +94,7 @@ describe("éligibilité", () => {
 
 describe("export", () => {
   it("télécharge un CSV avec les données affichées et le bon nom de fichier", async () => {
-    render(<DashboardExportControls project={project} snapshot={golden} canExport />);
+    render(<DashboardExportControls selectionKey="golden" project={project} snapshot={golden} canExport />);
     fireEvent.click(csvButton());
     await waitFor(() => expect(downloadBlob).toHaveBeenCalledTimes(1));
     const { text, filename } = await lastDownload();
@@ -103,7 +106,7 @@ describe("export", () => {
   it("affiche « Exporting… » pendant la génération du PDF puis télécharge", async () => {
     const font = deferred<string>();
     vi.mocked(loadPdfFont).mockReturnValue(font.promise);
-    render(<DashboardExportControls project={project} snapshot={golden} canExport />);
+    render(<DashboardExportControls selectionKey="golden" project={project} snapshot={golden} canExport />);
 
     fireEvent.click(pdfButton());
     expect(screen.getByRole("button", { name: /exporting/i })).toHaveAttribute("aria-busy", "true");
@@ -118,7 +121,7 @@ describe("export", () => {
   it("ne lance qu'un seul export malgré des clics répétés", async () => {
     const font = deferred<string>();
     vi.mocked(loadPdfFont).mockReturnValue(font.promise);
-    render(<DashboardExportControls project={project} snapshot={golden} canExport />);
+    render(<DashboardExportControls selectionKey="golden" project={project} snapshot={golden} canExport />);
 
     fireEvent.click(pdfButton());
     fireEvent.click(screen.getByRole("button", { name: /exporting/i }));
@@ -134,7 +137,7 @@ describe("export", () => {
     const font = deferred<string>();
     vi.mocked(loadPdfFont).mockReturnValue(font.promise);
     const { rerender } = render(
-      <DashboardExportControls project={project} snapshot={golden} canExport />,
+      <DashboardExportControls selectionKey="golden" project={project} snapshot={golden} canExport />,
     );
 
     fireEvent.click(pdfButton());
@@ -145,7 +148,7 @@ describe("export", () => {
       snapshotId: "80000000-0000-4000-8000-000000000099",
       summary: { ...golden.summary, traceCount: 7, estimatedCostUsd: "0.017450000000" },
     };
-    rerender(<DashboardExportControls project={project} snapshot={refreshed} canExport />);
+    rerender(<DashboardExportControls selectionKey="golden" project={project} snapshot={refreshed} canExport />);
 
     await act(async () => font.resolve("font-base64"));
     expect(downloadBlob).toHaveBeenCalledTimes(1);
@@ -162,7 +165,7 @@ describe("erreurs", () => {
     vi.mocked(buildDashboardPdf).mockImplementationOnce(() => {
       throw new Error("boom");
     });
-    render(<DashboardExportControls project={project} snapshot={golden} canExport />);
+    render(<DashboardExportControls selectionKey="golden" project={project} snapshot={golden} canExport />);
 
     fireEvent.click(pdfButton());
     const alert = await screen.findByRole("alert");
@@ -178,16 +181,19 @@ describe("erreurs", () => {
 
   it("affiche une erreur si la police ne se charge pas", async () => {
     vi.mocked(loadPdfFont).mockRejectedValueOnce(new Error("chunk load failed"));
-    render(<DashboardExportControls project={project} snapshot={golden} canExport />);
+    render(<DashboardExportControls selectionKey="golden" project={project} snapshot={golden} canExport />);
     fireEvent.click(pdfButton());
-    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent(/export failed/i);
+    expect(csvButton()).toBeEnabled();
+    expect(pdfButton()).toBeEnabled();
     expect(downloadBlob).not.toHaveBeenCalled();
   });
 
   it("ne télécharge jamais si le projet ne correspond pas au snapshot", async () => {
-    render(<DashboardExportControls project={otherProject} snapshot={golden} canExport />);
+    render(<DashboardExportControls selectionKey="golden" project={otherProject} snapshot={golden} canExport />);
     fireEvent.click(csvButton());
-    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(csvButton()).toBeDisabled();
+    expect(pdfButton()).toBeDisabled();
     expect(downloadBlob).not.toHaveBeenCalled();
   });
 });
@@ -198,7 +204,7 @@ describe("abandon d'un export en attente", () => {
   async function startPdfThen(change: (r: ReturnType<typeof render>) => void) {
     const font = deferred<string>();
     vi.mocked(loadPdfFont).mockReturnValue(font.promise);
-    const view = render(<DashboardExportControls project={project} snapshot={golden} canExport />);
+    const view = render(<DashboardExportControls selectionKey="golden" project={project} snapshot={golden} canExport />);
     fireEvent.click(pdfButton());
     change(view);
     await act(async () => font.resolve("font-base64"));
@@ -207,7 +213,7 @@ describe("abandon d'un export en attente", () => {
 
   it("après navigation vers un autre projet", async () => {
     await startPdfThen(({ rerender }) =>
-      rerender(<DashboardExportControls project={otherProject} snapshot={empty} canExport />),
+      rerender(<DashboardExportControls selectionKey="golden" project={otherProject} snapshot={empty} canExport />),
     );
     expect(downloadBlob).not.toHaveBeenCalled();
     // Les boutons du nouveau projet sont utilisables tout de suite.
@@ -216,7 +222,7 @@ describe("abandon d'un export en attente", () => {
 
   it("après déconnexion ou perte d'accès (export plus autorisé)", async () => {
     await startPdfThen(({ rerender }) =>
-      rerender(<DashboardExportControls project={project} snapshot={golden} canExport={false} />),
+      rerender(<DashboardExportControls selectionKey="golden" project={project} snapshot={golden} canExport={false} />),
     );
     expect(downloadBlob).not.toHaveBeenCalled();
     expect(pdfButton()).toBeDisabled();
@@ -226,4 +232,32 @@ describe("abandon d'un export en attente", () => {
     await startPdfThen(({ unmount }) => unmount());
     expect(downloadBlob).not.toHaveBeenCalled();
   });
+});
+
+// These cases use the shared session store, not a simulated canExport=false prop.
+it.each(["logout", "replacement login"])("discards a pending PDF after %s before a rerender", async action => {
+  const font = deferred<string>();
+  vi.mocked(loadPdfFont).mockReturnValue(font.promise);
+  render(<DashboardExportControls selectionKey="golden" project={project} snapshot={golden} canExport />);
+  fireEvent.click(pdfButton());
+  await act(async () => {
+    if (action === "logout") clearAuthSession();
+    else saveAccessToken("another-session");
+    font.resolve("font-base64");
+  });
+  expect(buildDashboardPdf).not.toHaveBeenCalled();
+  expect(downloadBlob).not.toHaveBeenCalled();
+});
+
+it("discards a pending PDF when the applied selection changes even if eligibility stays true", async () => {
+  const font = deferred<string>();
+  vi.mocked(loadPdfFont).mockReturnValue(font.promise);
+  const { rerender } = render(
+    <DashboardExportControls selectionKey="selection-a" project={project} snapshot={golden} canExport />,
+  );
+  fireEvent.click(pdfButton());
+  rerender(<DashboardExportControls selectionKey="selection-b" project={project} snapshot={golden} canExport />);
+  await act(async () => font.resolve("font-base64"));
+  expect(downloadBlob).not.toHaveBeenCalled();
+  expect(pdfButton()).toBeEnabled();
 });

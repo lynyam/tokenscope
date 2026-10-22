@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { buildDashboardCsv } from "./export-csv";
 import { exportFilename } from "./export-filename";
-import { buildDashboardPdf } from "./export-pdf";
 import type { AnalyticsSnapshot } from "./export.types";
 import { downloadBlob } from "./download";
 import { loadPdfFont } from "./pdf-font";
+import { getAuthSessionSnapshot, isAuthSessionCurrent, subscribeToAuthInvalidation } from "../../api/auth-session";
 
 export type ExportFormat = "csv" | "pdf";
 
@@ -15,6 +15,8 @@ type Options = {
   snapshot: AnalyticsSnapshot | null;
   /** Décidé par le dashboard (TSE-76) : sélection appliquée, accès valide, pas de chargement. */
   canExport: boolean;
+  /** Existing TSE-76 applied selection identity; excludes snapshot refreshes. */
+  selectionKey: string | null;
 };
 
 /**
@@ -25,7 +27,7 @@ type Options = {
  *   démonté) est jeté au lieu d'être téléchargé ;
  * - une erreur n'affecte que l'export : message + Retry.
  */
-export function useDashboardExport({ project, snapshot, canExport }: Options) {
+export function useDashboardExport({ project, snapshot, canExport, selectionKey }: Options) {
   const [busy, setBusy] = useState<ExportFormat | null>(null);
   const [failed, setFailed] = useState<ExportFormat | null>(null);
 
@@ -35,27 +37,31 @@ export function useDashboardExport({ project, snapshot, canExport }: Options) {
 
   const projectId = project?.id ?? null;
 
-  useEffect(() => {
-    // Au changement de projet, à la perte du droit d'exporter (déconnexion,
-    // perte d'accès, changement de sélection) ou au démontage :
-    // l'export en cours devient obsolète.
-    return () => {
+  useLayoutEffect(() => {
+    const invalidate = () => {
       generation.current += 1;
       pending.current = false;
       setBusy(null);
       setFailed(null);
     };
-  }, [projectId, canExport]);
+    const unsubscribe = subscribeToAuthInvalidation(invalidate);
+    return () => {
+      unsubscribe();
+      invalidate();
+    };
+  }, [projectId, selectionKey, canExport]);
 
   const run = useCallback(
     async (format: ExportFormat) => {
-      if (pending.current || !canExport || !project || !snapshot) return;
+      if (pending.current || !canExport || !selectionKey || !project || !snapshot || project.id !== snapshot.projectId) return;
+      const session = getAuthSessionSnapshot();
+      if (!session.token) return;
 
       pending.current = true;
       setBusy(format);
       setFailed(null);
       const myGeneration = generation.current;
-      const isCurrent = () => myGeneration === generation.current;
+      const isCurrent = () => myGeneration === generation.current && isAuthSessionCurrent(session);
 
       try {
         // 1. Capture : plus rien de ce qui change à l'écran n'est lu ensuite.
@@ -65,10 +71,17 @@ export function useDashboardExport({ project, snapshot, canExport }: Options) {
         });
 
         // 2. Génération à partir de la copie uniquement.
-        const blob =
-          format === "csv"
-            ? new Blob([buildDashboardCsv(input)], { type: "text/csv;charset=utf-8" })
-            : buildDashboardPdf(input, await loadPdfFont());
+        let blob: Blob;
+        if (format === "csv") {
+          blob = new Blob([buildDashboardCsv(input)], { type: "text/csv;charset=utf-8" });
+        } else {
+          // Load the PDF engine only when requested; reuse the captured input.
+          const [{ buildDashboardPdf }, font] = await Promise.all([
+            import("./export-pdf"), loadPdfFont(),
+          ]);
+          if (!isCurrent()) return;
+          blob = buildDashboardPdf(input, font);
+        }
 
         // 3. Projet changé, accès perdu ou page quittée entre-temps : on jette.
         if (!isCurrent()) return;
@@ -84,7 +97,7 @@ export function useDashboardExport({ project, snapshot, canExport }: Options) {
         }
       }
     },
-    [canExport, project, snapshot],
+    [canExport, project, snapshot, selectionKey],
   );
 
   const exportCsv = useCallback(() => void run("csv"), [run]);

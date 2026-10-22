@@ -54,7 +54,7 @@ const RECORD_SEPARATOR = "\r\n";
  * Commence par une tabulation / un retour chariot, ou par = + - @
  * éventuellement précédé d'espaces ou de caractères de contrôle.
  */
-const FORMULA_START = /^(?:[\t\r]|[\s\u0000-\u001f]*[=+\-@])/;
+const FORMULA_START = /^[\s\u0000-\u001f\u007f-\u009f]*[=+\-@\t\r]/;
 
 export function neutralizeFormula(text: string): string {
   return FORMULA_START.test(text) ? `'${text}` : text;

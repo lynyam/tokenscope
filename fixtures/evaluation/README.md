@@ -92,3 +92,12 @@ checksums and the dashboard assistant context.
 
 Passing these tests does not prove live ingestion, analytics,
 uploads, realtime or Gemini integration.
+
+## Dashboard CSV example (TSE-77 / C06)
+
+`responses/dashboard-golden.csv` exports `responses/analytics-golden.json`
+with the authorized fixture project name `Support Golden`. It contains the
+canonical 24-column header, one summary, 24 hourly buckets (including zeroes)
+and two model rows. UTF-8 and CRLF record separators are deliberate.
+The frontend tests compare this file byte for byte and independently check
+its parsed columns, rows, exact decimal strings and formula escaping.

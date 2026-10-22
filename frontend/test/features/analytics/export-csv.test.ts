@@ -1,3 +1,4 @@
+import { parseCsv, records } from "./csv-records";
 import { describe, expect, it } from "vitest";
 import {
   CSV_COLUMNS,
@@ -10,8 +11,9 @@ import type {
   AnalyticsSnapshot,
   DashboardExportInput,
 } from "../../../src/features/analytics/export.types";
-import goldenJson from "./fixtures/analytics-golden.json";
-import emptyJson from "./fixtures/analytics-empty.json";
+import { readEvaluationFixture } from "../../api/helpers/evaluation-fixtures";
+const goldenJson = JSON.parse(readEvaluationFixture("responses/analytics-golden.json"));
+const emptyJson = JSON.parse(readEvaluationFixture("responses/analytics-empty.json"));
 
 // ---------------------------------------------------------------- helpers
 
@@ -37,53 +39,6 @@ function deepFreeze<T>(obj: T): T {
     if (v && typeof v === "object") deepFreeze(v);
   });
   return Object.freeze(obj);
-}
-
-/** Minimal CSV parser (RFC 4180) used only to check the output. */
-function parseCsv(text: string): string[][] {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let cell = "";
-  let inQuotes = false;
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (inQuotes) {
-      if (c === '"' && text[i + 1] === '"') {
-        cell += '"';
-        i++;
-      } else if (c === '"') {
-        inQuotes = false;
-      } else {
-        cell += c;
-      }
-    } else if (c === '"') {
-      inQuotes = true;
-    } else if (c === ",") {
-      row.push(cell);
-      cell = "";
-    } else if (c === "\r" && text[i + 1] === "\n") {
-      row.push(cell);
-      rows.push(row);
-      row = [];
-      cell = "";
-      i++;
-    } else {
-      cell += c;
-    }
-  }
-  if (cell !== "" || row.length) {
-    row.push(cell);
-    rows.push(row);
-  }
-  return rows;
-}
-
-/** Returns the rows as { column: value } objects. */
-function records(csv: string): Record<string, string>[] {
-  const [header, ...data] = parseCsv(csv);
-  return data.map((cells) =>
-    Object.fromEntries(header.map((h, i) => [h, cells[i]])),
-  );
 }
 
 // ---------------------------------------------------------------- tests
@@ -294,4 +249,14 @@ describe("csvFilename", () => {
       "tokenscope-dashboard-20261015T170509Z.csv",
     );
   });
+});
+// Spreadsheet control-prefix handling must also work after whitespace/control characters.
+it.each(["  \ttext", " \rtext", "\u0000\ttext", "\u007f=1+1", "\u0085@SUM(1)"])(
+  "neutralizes the user-controlled prefix in %j", value => {
+    expect(neutralizeFormula(value)).toBe("'" + value);
+  },
+);
+
+it("matches the shared golden CSV example byte for byte", () => {
+  expect(buildDashboardCsv(goldenInput)).toBe(readEvaluationFixture("responses/dashboard-golden.csv"));
 });
