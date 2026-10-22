@@ -1,3 +1,5 @@
+import { parseRealtimeOrigins } from "./realtime-origins";
+
 export interface EnvironmentVariables {
 	BACKEND_PORT: number;
 	DATABASE_URL: string;
@@ -9,6 +11,7 @@ export interface EnvironmentVariables {
 	// Assistant (optional): the app starts without them, the assistant answers 503.
 	GEMINI_API_KEY?: string;
 	LLM_MODEL?: string;
+	REALTIME_ALLOWED_ORIGINS?: string[];
 }
 
 // Reads an optional setting. Empty or blank means "not set".
@@ -108,7 +111,9 @@ export function validateEnvironment(
 	const geminiApiKey = optionalString(env, "GEMINI_API_KEY");
 	const llmModel = optionalString(env, "LLM_MODEL");
 
+	const origins = parseRealtimeOrigins(env.REALTIME_ALLOWED_ORIGINS);
 	return {
+		...(origins.length ? { REALTIME_ALLOWED_ORIGINS: origins } : {}),
 		BACKEND_PORT: port,
 		DATABASE_URL: databaseUrl,
 		JWT_SECRET: secret,

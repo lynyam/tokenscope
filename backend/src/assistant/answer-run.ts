@@ -30,9 +30,12 @@ export class AnswerRun {
 	}
 
 	// Runs `action` after `ms` milliseconds, unless the run is finished.
+	//fix: to prevents a late authorization result from scheduling new work after cancellation.
 	later(ms: number, action: () => void): void {
-		if (this.finished) return;
-		this.timers.push(setTimeout(action, ms));
+		if (this.finished || this.signal.aborted) return;
+		this.timers.push(setTimeout(() => {
+			if (!this.finished && !this.signal.aborted) action();
+		}, ms));
 	}
 
 	// Waits for `promise`, or returns "stopped" as soon as the answer stops.

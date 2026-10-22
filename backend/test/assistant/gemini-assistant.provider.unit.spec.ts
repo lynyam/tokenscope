@@ -165,4 +165,24 @@ describe("GeminiAssistantProvider", () => {
 			{ type: "failure", kind: "provider_error" },
 		]);
 	});
+	it("does not forward text from a refused chunk or consume later chunks", async () => {
+		mockGenerate.mockResolvedValue(chunks(chunk("blocked text", "SAFETY"), chunk("later", "STOP")));
+		expect(await collect(makeProvider())).toEqual([{ type: "open" }, { type: "failure", kind: "refused" }]);
+	});
+
+	it("rejects malformed text rather than silently completing with partial content", async () => {
+		mockGenerate.mockResolvedValue(chunks(
+			chunk("first"),
+			{ candidates: [{ content: { parts: [{ text: 42 }] }, finishReason: "STOP" }] },
+		));
+		expect((await collect(makeProvider())).at(-1)).toEqual({ type: "failure", kind: "provider_error" });
+	});
+
+	it.each([-1, 1.5, NaN, Infinity])("does not expose invalid usage %s", async value => {
+		mockGenerate.mockResolvedValue(chunks(chunk("ok", "STOP", {
+			usageMetadata: { promptTokenCount: 10, candidatesTokenCount: value },
+		})));
+		expect((await collect(makeProvider())).at(-1)).toMatchObject({ type: "done", usage: null });
+	});
+
 });

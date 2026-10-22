@@ -164,6 +164,7 @@ project-specific member table or ACL.
 | Create organization | yes | yes | yes | no |
 | View organization | yes | yes | yes | no |
 | Rename organization | yes | no | no | no |
+| Archive (delete) organization | yes | no | no | no |
 | View members | yes | yes | yes | no |
 | Add member | yes | no | no | no |
 | Remove member | yes | no | no | no |
@@ -385,6 +386,10 @@ Use:
 This prevents an outsider from using status codes to enumerate organizations or
 projects while still giving legitimate members a useful permission error.
 
+An archived organization is treated as absent: it returns the same concealed
+`404 ORGANIZATION_NOT_FOUND` as an unknown organization, and its projects return
+`404` through the active-organization check.
+
 ## Ownership invariants
 
 ### Initial owner
@@ -426,6 +431,29 @@ PostgreSQL integration tests deliberately overlap two owner transactions and
 cover removal/removal, demotion/demotion, and mixed removal/demotion. They prove
 that one operation succeeds, the other returns `LAST_OWNER_REQUIRED` after
 retry, and one owner remains.
+
+## Organization archive
+
+`DELETE /organizations/:organizationId` is restricted to `OWNER`. Order of checks:
+
+1. authenticate the caller (JWT);
+2. require an active organization and an `OWNER` membership
+   (`404` for outsiders or archived organizations, `403` for ADMIN/MEMBER);
+3. only then compare `confirmSlug` exactly with the slug (`409
+   ORGANIZATION_CONFIRMATION_MISMATCH`).
+
+Comparing the slug after authorization prevents outsiders and non-owners from
+using the endpoint to confirm slugs. The operation runs in a `Serializable`
+transaction. Each attempt repeats authorization and the archive write. Only
+recognized serialization/write conflicts are retried, at most three attempts;
+exhaustion returns `409 CONCURRENT_MODIFICATION`. Final queries also filter on
+`archivedAt: null`, so a concurrent archive cannot be bypassed.
+
+Organization archive updates only the organization row: `archivedAt` is set
+and `updatedAt` is maintained automatically. Child rows and their existing
+lifecycle fields remain unchanged. Backend access checks require an active
+organization, including checks for project API keys, traces and analytics.
+There is no restore operation.
 
 ## Project lifecycle
 
@@ -549,6 +577,9 @@ The following are M1 completion requirements:
 | Archive behavior | Archived project disappears from normal list/detail/update |
 | Slug constraints | Conflicting organization/project slugs return `409` |
 | Mass assignment | Unknown/protected request properties return `400` |
+| Organization archive roles | ADMIN and MEMBER get `403`; outsiders get `404`; slug is never compared first |
+| Organization archive behavior | Archived organization, its members, and its projects become concealed `404`; a second deletion returns `404` |
+| Archive confirmation | Wrong, empty, whitespace-only, or differently-cased slug is rejected; unknown properties return `400` |
 
 At least the tenant-isolation, role, last-owner, and safe-output cases must be
 integration or end-to-end tests against PostgreSQL—not only mocked unit tests.
@@ -755,7 +786,25 @@ trace metadata and credentials. Database failures use the existing safe error en
 
 Verify JWT signature and expiry using the existing token service.
 
-Validate exact allowed browser Origins for polling and WebSocket transport.
+Validate every Engine.IO request, including polling and WebSocket upgrades, against
+`REALTIME_ALLOWED_ORIGINS` (comma-separated exact HTTP(S) origins, no trailing slash).
+An absent configuration denies realtime transport requests; HTTP authentication remains unchanged.
+A present Origin must match exactly; reject `null` and unapproved origins.
+WebSocket upgrades require an approved Origin. The only missing-Origin exception is a
+polling GET with `Sec-Fetch-Site: same-origin` and an allowlisted Referer origin, because
+real browsers may omit Origin on same-origin GETs. Proxies preserve these browser headers.
+Non-browser clients can forge these headers: they are not identity or authorization.
+JWT verification and current project access remain mandatory. Never place credentials in URLs.
+
+TokenService returns verified `{ sub, exp }`; exp is Unix seconds. Realtime converts it
+to milliseconds, schedules disconnection and rechecks it before join and notification delivery.
+The HTTP guard keeps `request.user` limited to `{ id }` and attaches the verified
+expiry separately as `request.accessTokenExpiresAt` (milliseconds) for assistant HTTP streams.
+
+Post-commit access events use AccessChangesModule, which has no dependency on realtime
+or the assistant. Its listener errors are logged safely and cannot reverse a committed mutation.
+The existing TraceChangesService remains the only trace mutation publisher.
+No raw token, API key, socket auth body or exception details are logged.
 
 Check access when subscribing and again before notifications. Protect asynchronous subscription changes with a generation check.
 
@@ -787,15 +836,17 @@ Keep provider credentials backend-only. Verify the actual account/model configur
 
 Authorization:
 
-- The global JWT guard verifies the token. `TokenService.verifyAccessToken()` now
-  returns the verified `exp`; the guard stores it as `request.accessTokenExpiresAt`
+- The global JWT guard reuses the existing `TokenService.verifyAccessToken()`
+  result `{ sub, exp }`; the guard stores expiry as `request.accessTokenExpiresAt`
   (milliseconds). The token is never decoded without verification, roles are not
   added to it, and public auth responses are unchanged.
 - `ProjectAccessService.assertProjectAccess()` runs before any limit, inside the
   analytics transaction (TSE-71), right before the provider call, and every
   5 seconds while streaming. A lost membership or an archived organization/project
   stops the stream with `PROJECT_NOT_FOUND`; a re-check that cannot complete stops
-  it with `INTERNAL_SERVER_ERROR`. Re-checks never overlap (chained timers).
+  it with `INTERNAL_SERVER_ERROR`. Each access read has a five-second wait limit.
+  Re-checks never overlap (chained timers). A timed-out database operation may
+  still finish internally; its late result cannot resume output.
 - The stream also stops when the verified JWT expires (`ACCESS_TOKEN_EXPIRED`).
 
 Data sent to Gemini (`backend/src/assistant/assistant-prompt.ts`), built from an
@@ -825,21 +876,27 @@ computing an answer already in progress.
 
 Limits are in memory (`RateLimitService` plus a per-user active set). They are
 correct for the single backend instance of this MVP; several instances would
-each keep their own counters. The per-minute windows are fixed 60-second windows
-started by the first accepted attempt.
+each keep their own counters. Assistant quotas use a rolling 60-second window;
+user and project budgets are charged together only after both allow admission.
+Existing public/browser quotas retain their fixed-window behavior.
 
 Logging: one `assistant_answer` line per admitted answer with `requestId`,
 outcome code and duration only. Rejections before admission are logged by the
 existing `request_failed` filter line. Questions, descriptions, contexts,
 answers and raw provider errors are never logged.
 
-Gemini data handling (to confirm for the evaluation account): the key is used
-with the Gemini Developer API. On the unpaid (free) tier, Google's Gemini API
-Additional Terms allow Google to use submitted content and responses to improve
-its products, possibly with human review; the paid tier does not. TokenScope
-therefore tells users that the question, project name/description and selected
-analytics are sent to Gemini, and makes no zero-retention claim.
-Recorded model, tier and quota: _fill in after the live check (TSE-80 PR)._
+Gemini data handling depends on the account and region. Under the unpaid-service
+terms, submitted content and responses may be used for product improvement and
+human review. For the EEA, Switzerland and UK, the paid-service data-use terms
+also apply to unpaid quota. The terms separately restrict making API clients
+available in those regions to Paid Services. Confirm the actual account and
+intended audience; do not automatically enable billing.
+
+Reference: https://ai.google.dev/gemini-api/terms
+TokenScope discloses the question, project name/description and selected analytics
+sent to Gemini and makes no zero-retention claim.
+Record the verified model, account tier, region, quota, date and tested commit
+after the explicit live check. Until then, live-provider validation is pending.
 
 ### Private files
 

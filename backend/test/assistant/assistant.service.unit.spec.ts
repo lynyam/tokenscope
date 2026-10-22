@@ -474,4 +474,90 @@ describe("AssistantService", () => {
 		expect(lines).not.toContain("Hello");
 		expect(lines).not.toContain("Support Golden");
 	});
+	it.each(["start", "delta", "done"])("releases the slot when %s is backpressured at timeout", async blocked => {
+		provider.script = [delta("x".repeat(9000)), done()];
+		const res = new RecordingResponse();
+		const write = res.write.bind(res);
+		jest.spyOn(res, "write").mockImplementation(frame => {
+			if (frame.startsWith(`event: ${blocked}\n`)) res.hasRoom = false;
+			return write(frame);
+		});
+		let finished = false;
+		const pending = service.ask(command(), res.asResponse()).finally(() => { finished = true; });
+		await settle();
+		await jest.advanceTimersByTimeAsync(60_000);
+		await settle();
+		const completedAtDeadline = finished;
+		res.hasRoom = true;
+		res.emit("drain");
+		await pending;
+		expect(completedAtDeadline).toBe(true);
+		expect(res.listenerCount("drain")).toBe(0);
+		const events = res.events();
+		const terminal = events.findIndex(e => e.event === "done" || e.event === "error");
+		expect(terminal).toBe(events.length - 1);
+		expect(events.filter(e => e.event === "done" || e.event === "error")).toHaveLength(1);
+	});
+
+	it("never calls Gemini if expiry occurs during the final access read", async () => {
+		const pause = gate();
+		projects.assertProjectAccess.mockResolvedValueOnce({}).mockImplementationOnce(() => pause.wait);
+		const first = start({ tokenExpiresAt: Date.now() + 1000 });
+		await settle();
+		await jest.advanceTimersByTimeAsync(2000);
+		pause.open();
+		await first.promise.catch(() => undefined);
+		expect(provider.calls).toBe(0);
+	});
+
+	it("detects a disconnect during the initial access read", async () => {
+		const pause = gate();
+		projects.assertProjectAccess.mockImplementationOnce(() => pause.wait);
+		const first = start();
+		await settle();
+		first.res.disconnect();
+		pause.open();
+		await first.promise;
+		expect(provider.calls).toBe(0);
+		expect(analytics.readSnapshotInTransaction).not.toHaveBeenCalled();
+	});
+
+	it("fails closed when a periodic access read never settles", async () => {
+		provider.script = [delta("working"), gate()];
+		const first = start();
+		await settle();
+		projects.assertProjectAccess.mockImplementation(() => new Promise(() => undefined));
+		await jest.advanceTimersByTimeAsync(10_000);
+		await settle();
+		const abortedAtBound = provider.lastSignal?.aborted;
+		first.res.disconnect();
+		await first.promise;
+		expect(abortedAtBound).toBe(true);
+		expect(first.res.events().at(-1)?.data.code).toBe("INTERNAL_SERVER_ERROR");
+	});
+
+	it("enforces a rolling minute across the first-request window boundary", async () => {
+		await ask();
+		clock += 59_000;
+		for (let i = 0; i < 4; i += 1) await ask();
+		clock += 1_001;
+		expect((await ask()).error).toBeUndefined();
+		expect((await ask()).error?.code).toBe("RATE_LIMITED");
+	});
+
+	it("destroys a terminal response that cannot flush, without retaining the active slot", async () => {
+		const res = new RecordingResponse();
+		jest.spyOn(res, "end").mockImplementation(chunk => {
+			if (chunk !== undefined) res.write(chunk);
+			res.writableEnded = true;
+			return res; // no finish/close: the client is not draining
+		});
+		await service.ask(command(), res.asResponse());
+		expect(res.destroyed).toBe(false);
+		expect((await ask()).error).toBeUndefined();
+		await jest.advanceTimersByTimeAsync(5000);
+		expect(res.destroyed).toBe(true);
+		expect(res.listenerCount("close")).toBe(0);
+	});
+
 });

@@ -2,7 +2,7 @@ import "reflect-metadata";
 
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import type { Server } from "node:http";
+import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { resolve } from "node:path";
 import { HttpStatus, type INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
@@ -381,22 +381,55 @@ describe("Assistant HTTP contract", () => {
 		expect(next.events.map(e => e.event)).toEqual(["start", "delta", "done"]);
 	});
 
-	it("stops reading the provider while the client does not read (backpressure)", async () => {
-		const big = "x".repeat(4000);
-		provider.script = [...Array.from({ length: 2000 }, () => delta(big)), done()];
+	it("stops reading the provider until a backpressured HTTP response drains", async () => {
+		provider.script = [delta("one"), delta("two"), done()];
+		let releaseDrain: (() => void) | undefined;
+		let restoreWrite: (() => void) | undefined;
 
-		const sse = await open();
-		sse.pause();
-		await new Promise(resolveTick => setTimeout(resolveTick, 300));
-		const pulledWhilePaused = provider.pulled;
-		expect(pulledWhilePaused).toBeLessThan(2001);
+		// Inject one full-buffer result on this response only. Pausing the
+		// HTTP client cannot reliably fill every platform's TCP buffers.
+		const blockFirstDelta = (req: IncomingMessage, res: ServerResponse) => {
+			if (req.method !== "POST" || req.url !== path) return;
+			const write = res.write.bind(res);
+			const spy = jest.spyOn(res, "write");
+			restoreWrite = () => spy.mockRestore();
+			spy.mockImplementation((...args: Parameters<typeof res.write>) => {
+				if (!releaseDrain && typeof args[0] === "string" && args[0].startsWith("event: delta\n")) {
+					// Retain exactly one frame, as a full write buffer would.
+					releaseDrain = () => {
+						spy.mockRestore();
+						// If the actual write is also full, Node emits drain later.
+						if (write(...args)) res.emit("drain");
+					};
+					return false;
+				}
+				return write(...args);
+			});
+		};
 
-		await new Promise(resolveTick => setTimeout(resolveTick, 200));
-		expect(provider.pulled).toBe(pulledWhilePaused); // nothing more was read
+		server.prependListener("request", blockFirstDelta);
+		const sse = SseConnection.start(server, path, token(), VALID);
+		try {
+			await sse.ready;
+			await waitUntil(() => releaseDrain !== undefined);
+			expect(provider.pulled).toBe(1);
 
-		sse.resume();
-		await sse.waitForEnd(20_000);
-		expect(sse.events.at(-1)?.event).toBe("done");
-		expect(sse.events.filter(e => e.event === "delta")).toHaveLength(2000);
-	}, 30_000);
+			// Let pending work run: the second provider event must stay unread.
+			await new Promise<void>(resolveTick => setImmediate(resolveTick));
+			expect(provider.pulled).toBe(1);
+			expect(sse.ended).toBe(false);
+
+			releaseDrain!();
+			await sse.waitForEnd();
+			expect(sse.status).toBe(200);
+			expect(provider.pulled).toBe(3);
+			expect(sse.events.map(event => event.event)).toEqual(["start", "delta", "delta", "done"]);
+			expect(sse.events.filter(event => event.event === "delta").map(event => event.data.text))
+				.toEqual(["one", "two"]);
+		} finally {
+			server.off("request", blockFirstDelta);
+			restoreWrite?.();
+			sse.disconnect();
+		}
+	});
 });

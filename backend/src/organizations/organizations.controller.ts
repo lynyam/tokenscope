@@ -1,10 +1,11 @@
-import { Body, Controller, Get, Patch, Post, } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, Patch, Post, } from "@nestjs/common";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import type { AuthenticatedUser } from "../common/types/authenticated-user";
 import { CreateOrganizationDto } from "./dto/create-organization.dto";
 import { RenameOrganizationDto } from "./dto/rename-organization.dto";
 import { UuidParam } from "../common/decorators/uuid-param.decorators";
 import { OrganizationsService } from "./organizations.service";
+import { ArchiveOrganizationDto } from "./dto/archive-organization.dto";
 
 @Controller("organizations")
 export class OrganizationsController {
@@ -34,5 +35,14 @@ export class OrganizationsController {
 		@Body() dto: RenameOrganizationDto,
 	) {
 		return this.organizationsService.rename(user.id, organizationId, dto);
+	}
+	@Delete(":organizationId")
+	@HttpCode(204)
+	async archive(
+		@CurrentUser() user: AuthenticatedUser,
+		@UuidParam("organizationId") organizationId: string,
+		@Body() dto: ArchiveOrganizationDto,
+	): Promise<void> {
+		await this.organizationsService.archive(user.id, organizationId, dto);
 	}
 }

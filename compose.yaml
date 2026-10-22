@@ -8,6 +8,10 @@ services:
       - type: bind
         source: ./frontend
         target: /app
+      - type: bind
+        source: ./fixtures/evaluation
+        target: /fixtures/evaluation
+        read_only: true
       - type: volume
         source: tokenscope_frontend_node_modules
         target: /app/node_modules
@@ -47,6 +51,7 @@ services:
       TRUSTED_PROXY_HOST: "frontend"
       GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
       LLM_MODEL: "${LLM_MODEL:-}"
+      REALTIME_ALLOWED_ORIGINS: "${REALTIME_ALLOWED_ORIGINS:-http://localhost:5173,https://localhost:8443}"
     depends_on:
      postgres:
       condition: service_healthy

@@ -13,6 +13,9 @@
 # Repeatable: the same externalIds are replayed safely (no duplicates).
 # The key is never printed.
 set -euo pipefail
+umask 077
+cd "$(dirname "$0")/../../.."
+for cmd in curl jq; do command -v "$cmd" >/dev/null || exit 1; done
 
 BASE_URL="${BASE_URL:-http://localhost:5173}"
 FIXTURE="${FIXTURE:-fixtures/evaluation/traces-golden.json}"
@@ -34,9 +37,12 @@ echo "Loading $COUNT golden traces into the project of this key (key length: ${#
 for index in $(seq 0 $((COUNT - 1))); do
   BODY=$(jq -c ".[$index].body" "$FIXTURE")
   EXTERNAL_ID=$(jq -r ".[$index].body.externalId" "$FIXTURE")
-  STATUS=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/v1/public/traces" \
+  STATUS=$(curl --connect-timeout 5 --max-time 20 -sS -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/v1/public/traces" \
     -H @"$HEADERS" --data "$BODY")
-  echo "  $EXTERNAL_ID -> HTTP $STATUS"
+  case "$STATUS" in
+    200|201) echo "  $EXTERNAL_ID -> HTTP $STATUS" ;;
+    *) echo "Fixture rejected: $EXTERNAL_ID (HTTP $STATUS)" >&2; exit 1 ;;
+  esac
 done
 
 echo "Done. Ask the assistant with from=2026-10-01T00:00:00.000Z and to=2026-10-02T00:00:00.000Z."

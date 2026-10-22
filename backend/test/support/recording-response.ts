@@ -33,13 +33,16 @@ export class RecordingResponse extends EventEmitter {
 		return this.hasRoom;
 	}
 
-	end(): this {
+	end(chunk?: string): this {
+		if (chunk !== undefined) this.write(chunk);
 		this.writableEnded = true;
 		this.writableFinished = true;
 		this.emit("finish");
 		this.emit("close");
 		return this;
 	}
+
+	destroy(): this { this.disconnect(); return this; }
 
 	// Simulates the browser closing the connection.
 	disconnect(): void {

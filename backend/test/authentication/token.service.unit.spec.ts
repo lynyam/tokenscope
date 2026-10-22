@@ -44,14 +44,11 @@ describe("TokenService", () => {
     expect(service.verifyAccessToken(accessToken).sub).toBe(TEST_USER_ID);
   });
 
-  it("returns the verified exp claim with the identity", () => {
+  it("returns the verified expiry for long-lived transports", () => {
     const { accessToken } = service.signAccessToken(TEST_USER_ID);
-    const decoded = jwtService.decode(accessToken) as { exp: number };
-
-    expect(service.verifyAccessToken(accessToken)).toEqual({
-      sub: TEST_USER_ID,
-      exp: decoded.exp,
-    });
+    const verified = service.verifyAccessToken(accessToken);
+    expect(verified).toEqual({ sub: TEST_USER_ID, exp: jwtService.verify(accessToken).exp });
+    expect(verified.exp).toBeGreaterThan(Date.now() / 1000);
   });
 
   it("reports the configured TTL as expiresIn", () => {

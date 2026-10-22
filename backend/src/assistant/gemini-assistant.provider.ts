@@ -72,7 +72,19 @@ export class GeminiAssistantProvider implements AssistantProvider {
 					return;
 				}
 
+				if (chunk.candidates !== undefined && (!Array.isArray(chunk.candidates) || chunk.candidates.length > 1)) {
+					throw new Error("Malformed candidates");
+				}
 				const candidate = chunk.candidates?.[0];
+				const reason = candidate?.finishReason;
+				if (reason && REFUSAL_REASONS.includes(reason)) {
+					yield { type: "failure", kind: "refused" };
+					return;
+				}
+				if (reason && reason !== "STOP" && reason !== "MAX_TOKENS") {
+					yield { type: "failure", kind: "provider_error" };
+					return;
+				}
 				const text = visibleText(candidate);
 				if (text !== "") {
 					yield { type: "delta", text };
@@ -107,7 +119,14 @@ export class GeminiAssistantProvider implements AssistantProvider {
 // Joins the text parts the user may see. Skips "thought" (reasoning) parts.
 function visibleText(candidate: Candidate | undefined): string {
 	let text = "";
-	for (const part of candidate?.content?.parts ?? []) {
+	const parts = candidate?.content?.parts ?? [];
+	if (!Array.isArray(parts)) throw new Error("Malformed parts");
+	for (const part of parts) {
+		if (!part || typeof part !== "object" ||
+			(part.text !== undefined && typeof part.text !== "string") ||
+			(part.thought !== undefined && typeof part.thought !== "boolean")) {
+			throw new Error("Malformed text part");
+		}
 		if (!part.thought && typeof part.text === "string") {
 			text += part.text;
 		}
@@ -120,7 +139,8 @@ function toUsage(metadata: NonNullable<GenerateContentResponse["usageMetadata"]>
 	const input = metadata.promptTokenCount;
 	const output = metadata.candidatesTokenCount;
 
-	if (typeof input !== "number" || typeof output !== "number") {
+	if (typeof input !== "number" || !Number.isSafeInteger(input) || input < 0 ||
+		typeof output !== "number" || !Number.isSafeInteger(output) || output < 0) {
 		return null;
 	}
 	return { inputTokens: input, outputTokens: output };

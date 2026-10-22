@@ -16,7 +16,7 @@ import {
 } from "./assistant-errors";
 import { ASSISTANT_PROVIDER, type AssistantProvider } from "./assistant.provider";
 import type { AskAssistantCommand, AssistantContext, ProviderEvent } from "./assistant.types";
-import { openStream, sendDelta, sendEvent } from "./sse-writer";
+import { openStream, sendDelta, sendEvent, sendFinalEvent, } from "./sse-writer";
 
 // TokenScope limits (ticket §8.C). Tests may lower the times.
 export const ASSISTANT_LIMITS = {
@@ -26,6 +26,7 @@ export const ASSISTANT_LIMITS = {
 	totalMs: 60_000,
 	recheckEveryMs: 5_000,
 	maxContextBytes: 32 * 1024,
+	accessCheckMs: 5_000,
 };
 
 const READ_ROLES = [MembershipRole.OWNER, MembershipRole.ADMIN, MembershipRole.MEMBER];
@@ -63,51 +64,79 @@ export class AssistantService implements OnModuleDestroy {
 	// Answers one question. Errors before the stream are thrown (JSON);
 	// errors after the stream started become one SSE "error" event.
 	async ask(command: AskAssistantCommand, res: Response): Promise<void> {
-		// 1. Access first: a rejected request never uses a rate-limit slot.
-		await this.checkAccess(command);
-
-		// 2. Is Gemini configured?
-		if (!this.provider.isConfigured()) {
-			throw toApiException(ASSISTANT_ERRORS.unavailable);
-		}
-
-		// 3. Limits: one answer at a time per user, then the per-minute limits.
-		this.reserveSlot(command, res);
-
+		// Observe disconnection before the first asynchronous access check.
 		const run = new AnswerRun();
 		this.runs.add(run);
-		const onClose = () => {
-			if (!res.writableFinished) run.stop("client_left");
-		};
-		res.on("close", onClose);
 
+		const onClose = () => {
+		  if (!res.writableFinished) run.stop("client_left");
+		};
+
+		res.on("close", onClose);
+		if (res.destroyed || res.writableEnded) run.stop("client_left");
+
+		let reserved = false;
 		let outcome = "unknown";
 		try {
+			if (
+			  run.signal.aborted ||
+			  await run.waitOrStop(
+				this.checkAccess(command, run.signal),
+			  ) === "stopped"
+			) {
+			  outcome = await this.fail(this.stopError(run), res, command);
+			  return;
+			}
+
+			if (!this.provider.isConfigured()) {
+			  throw toApiException(ASSISTANT_ERRORS.unavailable);
+			}
+
+			this.reserveSlot(command, res);
+			reserved = true;
+
 			outcome = await this.answer(command, run, res);
 		} catch (error) {
 			outcome = error instanceof ApiException ? error.code : "INTERNAL_SERVER_ERROR";
+			if (res.destroyed) return;
 			if (!res.headersSent) throw error; // the global filter writes the JSON error
-			await sendEvent(res, "error", this.errorEvent(ASSISTANT_ERRORS.internal, command));
+			sendFinalEvent(res, "error", this.errorEvent(ASSISTANT_ERRORS.internal, command));
 		} finally {
 			// The ONLY cleanup path, for every exit.
 			run.finish();
 			this.runs.delete(run);
-			this.activeUsers.delete(command.userId);
+			if (reserved) this.activeUsers.delete(command.userId);
 			res.off("close", onClose);
 			if (res.headersSent && !res.writableEnded) res.end();
-			this.logAnswer(command, run, outcome);
+			if (reserved) this.logAnswer(command, run, outcome);
 		}
 	}
 
 	// Builds the facts, re-checks access, then relays the provider answer.
 	private async answer(command: AskAssistantCommand, run: AnswerRun, res: Response): Promise<string> {
 		// 4. Fixed context, read in one short transaction (closed before Gemini).
-		const context = await this.buildContext(command);
+		const context = await run.waitOrStop(this.buildContext(command));
 
 		// 5. Last checks before spending provider quota.
+		if (context == "stopped") return this.fail(this.stopError(run), res, command);
 		if (run.stopReason) return this.fail(this.stopError(run), res, command);
 		if (command.tokenExpiresAt <= Date.now()) throw toApiException(ASSISTANT_ERRORS.tokenExpired);
-		await this.checkAccess(command);
+		if (
+			await run.waitOrStop(
+			  this.checkAccess(command, run.signal),
+			) === "stopped"
+		) {
+			return this.fail(this.stopError(run), res, command);
+		}
+
+		// Access checking is asynchronous: expiry/disconnect can happen during it.
+		if (run.signal.aborted) {
+		return this.fail(this.stopError(run), res, command);
+		}
+
+		if (command.tokenExpiresAt <= Date.now()) {
+			throw toApiException(ASSISTANT_ERRORS.tokenExpired);
+		}
 
 		// 6. Start the clocks and ask the provider (one single request).
 		this.startTimers(command, run);
@@ -130,6 +159,7 @@ export class AssistantService implements OnModuleDestroy {
 		events: ProviderEvents,
 	): Promise<string> {
 		// 7. The first event decides: a JSON error (the request failed), or a stream.
+		if (run.signal.aborted) return this.fail(this.stopError(run), res, command);
 		const first = await run.waitOrStop(nextEvent(events));
 		if (first === "stopped") return this.fail(this.stopError(run), res, command);
 		if (first.done) return this.fail(ASSISTANT_ERRORS.providerError, res, command);
@@ -142,18 +172,20 @@ export class AssistantService implements OnModuleDestroy {
 			provider: this.provider.name,
 			model: this.provider.model,
 			context,
-		});
+		}, run.signal);
+		if (run.signal.aborted) return this.fail(this.stopError(run), res, command);
 
 		// 9. Relay the rest until done / failure / stop.
 		let event: ProviderEvent = first.value;
 		while (true) {
+			if (run.signal.aborted) return this.fail(this.stopError(run), res, command);
 			if (event.type === "delta") {
-				run.sawText = true;
-				const sent = await run.waitOrStop(sendDelta(res, event.text));
+				if (event.text.length > 0) run.sawText = true;
+				const sent = await run.waitOrStop(sendDelta(res, event.text, run.signal));
 				if (sent === "stopped") return this.fail(this.stopError(run), res, command);
 			} else if (event.type === "done") {
 				if (!run.sawText) return this.fail(ASSISTANT_ERRORS.providerError, res, command); // empty answer
-				await sendEvent(res, "done", {
+				sendFinalEvent(res, "done", {
 					requestId: command.requestId,
 					finishReason: event.finishReason,
 					usage: event.usage,
@@ -164,6 +196,7 @@ export class AssistantService implements OnModuleDestroy {
 			}
 			// ("open" needs nothing more: the stream is already open.)
 
+			if (run.signal.aborted) return this.fail(this.stopError(run), res, command);
 			const next = await run.waitOrStop(nextEvent(events));
 			if (next === "stopped") return this.fail(this.stopError(run), res, command);
 			if (next.done) return this.fail(ASSISTANT_ERRORS.providerError, res, command); // ended without "done"
@@ -183,13 +216,36 @@ export class AssistantService implements OnModuleDestroy {
 	// ══════════════════════════════════════════════════════════════
 
 	// Throws 404 PROJECT_NOT_FOUND unless the user can still read the project.
-	private async checkAccess(command: AskAssistantCommand): Promise<void> {
-		await this.projects.assertProjectAccess(
-			command.userId,
-			command.organizationId,
-			command.projectId,
-			READ_ROLES,
-		);
+	private async checkAccess(command: AskAssistantCommand, signal: AbortSignal,): Promise<void> {
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		let onAbort = () => { };
+
+		try {
+			await Promise.race([
+				this.projects.assertProjectAccess(
+					command.userId,
+					command.organizationId,
+					command.projectId,
+					READ_ROLES,
+				),
+				new Promise<never>((_, reject) => {
+					onAbort = () => reject(
+						toApiException(ASSISTANT_ERRORS.internal),
+					);
+
+					timer = setTimeout(
+						onAbort,
+						ASSISTANT_LIMITS.accessCheckMs,
+					);
+
+					signal.addEventListener("abort", onAbort, { once: true });
+					if (signal.aborted) onAbort();
+				}),
+			]);
+		} finally {
+			clearTimeout(timer);
+			signal.removeEventListener("abort", onAbort);
+		}
 	}
 
 	// Reserves the user's single slot after checking the per-minute limits.
@@ -198,11 +254,11 @@ export class AssistantService implements OnModuleDestroy {
 			throw toApiException(ASSISTANT_ERRORS.alreadyRunning);
 		}
 
-		let decision = this.rateLimit.consume("assistant-user", command.userId, ASSISTANT_LIMITS.userRequestsPerMinute);
-		if (decision.allowed) {
-			decision = this.rateLimit.consume("assistant-project", command.projectId, ASSISTANT_LIMITS.projectRequestsPerMinute);
-		}
-		if (!decision.allowed) {
+		const decision = this.rateLimit.consumeRolling([
+			{ namespace: "assistant-user", identity: command.userId, limit: ASSISTANT_LIMITS.userRequestsPerMinute },
+			{ namespace: "assistant-project", identity: command.projectId, limit: ASSISTANT_LIMITS.projectRequestsPerMinute },
+		]);
+		if (decision.allowed === false) {
 			res.setHeader("Retry-After", String(decision.retryAfterSeconds));
 			throw toApiException(ASSISTANT_ERRORS.rateLimited);
 		}
@@ -271,7 +327,7 @@ export class AssistantService implements OnModuleDestroy {
 	// Re-checks access every few seconds. The next check starts only after this one ends.
 	private scheduleRecheck(command: AskAssistantCommand, run: AnswerRun): void {
 		run.later(ASSISTANT_LIMITS.recheckEveryMs, () => {
-			this.checkAccess(command).then(
+			this.checkAccess(command, run.signal).then(
 				() => this.scheduleRecheck(command, run),
 				error => {
 					const lost = error instanceof ApiException && error.getStatus() === 404;
@@ -289,7 +345,7 @@ export class AssistantService implements OnModuleDestroy {
 		if (!res.headersSent) {
 			throw toApiException(error);
 		}
-		await sendEvent(res, "error", this.errorEvent(error, command));
+		sendFinalEvent(res, "error", this.errorEvent(error, command));
 		return error.code;
 	}
 
