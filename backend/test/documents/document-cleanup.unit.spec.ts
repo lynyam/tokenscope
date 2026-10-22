@@ -42,6 +42,7 @@ function setup() {
 	};
 
 	const storage = {
+		closeScans: jest.fn(async () => undefined),
 		delete: jest.fn(async (key: string) => { state.files.delete(key); }),
 		runExclusive: jest.fn(async <T>(operation: () => Promise<T>) => operation()),
 		removeStaleTemporaryFiles: jest.fn(async () => 0),
@@ -144,7 +145,8 @@ describe("DocumentCleanupService jobs", () => {
 		await service.runOnce();
 
 		expect(storage.delete).not.toHaveBeenCalled();
-		expect(state.jobs).toHaveLength(0);
+		expect(state.jobs).toHaveLength(1);
+		expect(state.jobs[0].nextAttemptAt.getTime()).toBeGreaterThan(state.now);
 	});
 
 	it("does not start a second run while one is in progress", async () => {

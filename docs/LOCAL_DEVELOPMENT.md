@@ -404,13 +404,13 @@ Node 24, matching the development containers.
 
 The shared authentication, organization, membership and project integrations are present in the Sprint 1 baseline. Run the complete frontend suite when changing their shared transport or session behavior.
 
-New unit/component tests remain under `frontend/test/`. Real browser journeys belong under `frontend/test/e2e/` once browser-test infrastructure is introduced.
+New unit/component tests remain under `frontend/test/`.
 
-Browser tests use Playwright; see "Browser end-to-end tests" below.
+Browser tests use Playwright; see "Browser end-to-end tests" below. The API-key journeys display one-time plaintext secrets, so never enable traces, videos or screenshots for them.
 
 TSE-72 extends transport for multipart uploads, private binary responses and assistant streams while preserving current JSON callers.
 
-For TSE-74, document that the returned key must remain only in transient UI memory.
+API keys (TSE-74): the plaintext key returned at creation exists only in the page's transient disclosure state. It is never written to browser storage, URLs, logs or test artifacts. Unit tests use obviously fake placeholder keys.
 
 See `EVALUATION_ARCHITECTURE.md` for current integration boundaries and `SPRINT_1_ARCHITECTURE.md` for the existing client/session design.
 
@@ -577,6 +577,85 @@ The golden selection is explicitly:
 These historical records are not guaranteed to be inside a moving
 last-seven-days window. The database tests load fixtures only into the
 guarded test database; they do not seed development data.
+
+### Dashboard assistant — TSE-80
+
+Configuration (backend only, in your untracked `.env`):
+
+```bash
+GEMINI_API_KEY=<your key>
+LLM_MODEL=gemini-3.5-flash-lite
+```
+
+Compose passes both to the backend. Without them the application starts
+normally and the assistant answers `503 LLM_UNAVAILABLE`. Never put the key in a
+`VITE_` variable, and never run `docker compose config` (it prints resolved
+secrets). After editing `.env`, recreate the backend and check the key length
+only:
+
+```bash
+docker compose up -d backend
+docker compose exec backend sh -c 'echo ${#GEMINI_API_KEY}'
+```
+
+No Gemini call happens at startup or in health checks.
+
+Automated tests never call Gemini (a fake provider is injected):
+
+```bash
+make test-backend
+```
+
+Assistant suites: `test/assistant/*.unit.spec.ts`, `test/assistant/assistant.e2e-spec.ts`
+and `test/database/assistant.integration.spec.ts`.
+
+Fixture data for a manual check (TSE-70's seed is not required):
+
+1. Load the synthetic price catalogue ([Explicit price catalogue loading](#explicit-price-catalogue-loading)).
+2. Sign in, create a disposable organization and project, and create a project API key.
+3. Load the six golden traces into that project (repeatable; the key is not printed):
+
+```bash
+read -rs API_KEY && export API_KEY
+BASE_URL=http://localhost:5173 backend/test/manual/load-assistant-fixture.sh
+```
+
+Opt-in live check (requires Bash, curl and jq; uses up to three provider attempts per run):
+
+```bash
+read -rs TOKEN && export TOKEN
+export ORG_ID=<organization id> PROJECT_ID=<project id>
+BASE_URL=http://localhost:5173 backend/test/manual/assistant-proxy-check.sh
+CURL_CA_BUNDLE="$PWD/.local/eval/caddy-root.crt" \
+BASE_URL=https://localhost:8443 backend/test/manual/assistant-proxy-check.sh
+```
+
+Run each mode separately, with a fresh rate-limit window (at least 60 seconds
+since the previous run) and the corresponding `make up` or `make eval-up` setup.
+For HTTPS fixture loading, also set `CURL_CA_BUNDLE` to the public evaluation CA.
+Never disable TLS verification. Use `bash <script-path>` if not executable.
+
+The script prints each complete SSE line with its arrival time (text must arrive
+progressively), stops a second request after 2 seconds, then shows that a
+new request gets `200` and a terminal `done` (the stopped request freed its slot).
+The check fails if the interrupted request had already finished or had not
+started. Adjust `STOP_AFTER_SECONDS` and rerun deliberately in that case.
+It does not automatically retry a provider request. Then:
+
+```bash
+docker compose logs backend | grep assistant_answer | tail -3
+```
+
+The stopped request must appear with `"outcome":"client_left"`.
+
+Proxies: the Vite proxy streams responses as they arrive. Caddy flushes
+`text/event-stream` immediately and only compresses frontend routes, so no proxy
+configuration change is proposed. Verify both behaviors through the real proxies
+before recording them as passed. Do not add `flush_interval -1`: it can keep the backend request
+running after the client disconnects.
+
+Record the live results (model, tier, quota, timestamps, commit) separately from
+the automated results.
 
 ## Development workflow
 
@@ -835,3 +914,132 @@ Price catalogue loading never runs during normal application startup. The evalua
 Use a separate checkout and a unique Compose project name for fresh-database
 and deliberate migration-failure tests. Never reset the working database
 to demonstrate evaluation startup.
+
+## Trace Explorer checks
+
+```sh
+make frontendcheck
+make frontendtest
+docker compose exec frontend npm run build
+```
+
+The screen is read-only and uses existing backend endpoints documented in
+`docs/API.md`. Shared filters and integration limitations are documented in
+`docs/EVALUATION_ARCHITECTURE.md`, “Frontend Trace Explorer integration — TSE-75”.
+
+### Trace Explorer browser tests
+
+Playwright runs on the host against a stack that is already up (`make up`, then `make frontende2e-setup` once):
+
+```bash
+make frontende2e E2E_ARGS="trace-explorer"
+E2E_BASE_URL=https://localhost:8443 make frontende2e E2E_ARGS="trace-explorer"   # evaluation mode
+```
+
+The suite creates its own users, organization and three projects, ingests `fixtures/evaluation/traces-golden.json`
+and `traces-pagination.json` through the real public API (one API key per project) and then drives the browser.
+Ingestion is limited to 60 requests per minute per client address, so a full run takes about two minutes.
+
+The browser never loads prices: the fixture price catalogue must already be in the database. Once per database:
+
+```bash
+docker compose exec -T backend sh -c 'cat > /tmp/model-prices.json' < fixtures/evaluation/model-prices.json
+docker compose exec backend sh -c 'npm run build >/dev/null && npm run pricing:load -- --file /tmp/model-prices.json'
+```
+
+The loader is idempotent. When the catalogue is missing, the suite stops at its first step with this pointer.
+
+## Realtime development and HTTPS verification — TSE-73
+
+Set this in the root `.env` (adapt exact origins when changing ports):
+
+```dotenv
+REALTIME_ALLOWED_ORIGINS=http://localhost:5173,https://localhost:8443
+```
+
+Recreate the backend after changing environment variables. `make up` uses the Vite
+proxy; `make eval-up` rebuilds the existing Caddy deployment. Both forward `/socket.io`
+for polling and WebSocket upgrades without exposing another backend port.
+Caddy compression stays in the frontend-only handler so API ETags remain unchanged.
+
+Backend verification: `make test-backend` runs unit, real-transport and guarded PostgreSQL tests.
+The 100-write burst test uses real ingestion transactions directly because 100 HTTP
+requests from one IP would exceed the separate public API quota of 60/minute.
+
+Browser proxy verification uses the test-only Socket.IO bundle installed under backend/node_modules.
+Run `npm ci` in backend and frontend on the host, then `npx playwright install chromium`
+in frontend. No production frontend dependency is added by TSE-73.
+
+Load the synthetic catalogue explicitly before running browser QA:
+
+```sh
+docker compose cp fixtures/evaluation/model-prices.json backend:/tmp/model-prices.json
+docker compose exec -T backend npm run pricing:load -- --file /tmp/model-prices.json
+```
+
+With the database health endpoint returning 200, run from frontend:
+
+```sh
+E2E_BASE_URL=http://localhost:5173 npm run test:e2e -- realtime.spec.ts
+```
+
+After `make eval-up`, trust the evaluation CA as described above. Then run from frontend:
+
+```sh
+NODE_EXTRA_CA_CERTS="$PWD/../.local/eval/caddy-root.crt" \
+E2E_BASE_URL=https://localhost:8443 npm run test:e2e -- realtime.spec.ts
+```
+
+Do not disable certificate verification. The three cases cover polling-only, WebSocket-only
+and polling upgrade with actual browser-generated headers and two real accounts.
+The test archives its disposable organizations; it does not reset the development database.
+Test JWTs/API keys are not logged or recorded in Playwright artifacts.
+This verifies transport and notifications, not the dashboard chart refresh owned by TSE-76.
+
+### API-key browser tests — TSE-74
+
+Use the existing browser setup and trusted HTTPS instructions above. Import the
+canonical price catalogue using the same operator command documented for the
+Trace Explorer tests before running `api-keys.spec.ts`. Its setup checks that
+catalogue, and the main journey uses a canonical fixture with a unique external ID.
+
+Run `E2E_ARGS=api-keys.spec.ts make frontende2e` with the chosen `E2E_BASE_URL`.
+The key created in the UI must create a real trace, remain absent after closing
+and reloading the disclosure, and fail with `401 INVALID_API_KEY` after UI
+revocation. The suite also checks cross-project reads and archived parents.
+Keep plaintext out of shared test evidence, including error reports on failures.
+
+
+### Dashboard tests — TSE-76
+
+The frontend Compose service mounts `fixtures/evaluation` read-only at `/fixtures/evaluation`
+so the same golden JSON files work for Vitest on the host and inside `/app`.
+Do not copy fixture values into another frontend-owned catalogue.
+
+After starting development mode, run from the repository root:
+
+```sh
+make frontendcheck
+make frontendtest
+docker compose exec -T frontend npm run build
+```
+
+Browser tests use the host runner and the existing explicit price-catalogue loading instructions.
+Load prices once into the running application database, then run:
+
+```sh
+cd frontend
+E2E_BASE_URL=http://localhost:5173 npm run test:e2e -- project-dashboard.spec.ts
+```
+
+For evaluation mode, rebuild with `make eval-up`, keep certificate validation enabled,
+and use the exported/trusted evaluation CA. From `frontend/`:
+
+```sh
+NODE_EXTRA_CA_CERTS="$PWD/../.local/eval/caddy-root.crt" \
+E2E_BASE_URL=https://localhost:8443 npm run test:e2e -- project-dashboard.spec.ts
+```
+
+Retain the Vite and Caddy `/socket.io` proxies already provided by TSE-73.
+Record the tested commit, mode, exact commands and results. A unit test does not prove HTTPS
+or real socket/browser integration. Full responsive validation remains tracked by TSE-88.

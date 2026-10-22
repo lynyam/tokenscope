@@ -1,7 +1,7 @@
 import "reflect-metadata";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -256,6 +256,26 @@ describe("Private documents HTTP contract", () => {
 			expect(await files()).toHaveLength(5);
 		});
 
+		it("enforces a rolling minute across the old fixed-window boundary", async () => {
+			const start = now;
+			await upload("a.txt", "x").expect(201);
+			now = start + 59_000;
+			for (let i = 0; i < 4; i += 1) await upload("a.txt", "x").expect(201);
+			now = start + 60_001;
+			await upload("a.txt", "x").expect(201);
+			const denied = await upload("a.txt", "x").expect(429);
+			expect(denied.headers["retry-after"]).toBe("59");
+		});
+
+		it("maps incoming-directory failures to safe storage errors", async () => {
+			jest.spyOn(storage, "incomingDirectory").mockRejectedValueOnce(
+				Object.assign(new Error("EACCES /private/path"), { code: "EACCES" }),
+			);
+			const response = await upload("a.txt", "x").expect(503);
+			expect(response.body.code).toBe("STORAGE_UNAVAILABLE");
+			expect(JSON.stringify(response.body)).not.toContain("/private/path");
+		});
+
 		it("deletes the bytes when access is lost during the final transaction", async () => {
 			access.assertProjectAccess
 				.mockResolvedValueOnce({})
@@ -272,6 +292,39 @@ describe("Private documents HTTP contract", () => {
 			await upload("a.txt", "x").expect(500);
 			// The sweep decides later, using the database as the source of truth.
 			expect(await files()).toHaveLength(1);
+		});
+
+		it("cleans a finalized file if a later finalization step fails", async () => {
+			const original = storage.adopt.bind(storage);
+			jest.spyOn(storage, "adopt").mockImplementationOnce(async (path, key) => {
+				await original(path, key);
+				throw new Error("directory fsync failed");
+			});
+			await upload("a.txt", "x").expect(503);
+			expect(await files()).toHaveLength(0);
+			expect(rows).toHaveLength(0);
+		});
+
+		it("creates temporary upload bytes with mode 0600", async () => {
+			const original = storage.adopt.bind(storage);
+			jest.spyOn(storage, "adopt").mockImplementationOnce(async (path, key) => {
+				expect((await stat(path)).mode & 0o777).toBe(0o600);
+				await original(path, key);
+			});
+			await upload("a.txt", "x").expect(201);
+		});
+
+		it("maps temporary file creation failures to 503", async () => {
+			const fs: typeof import("node:fs/promises") = require("node:fs/promises");
+			const spy = jest.spyOn(fs, "open").mockRejectedValueOnce(
+				Object.assign(new Error("ENOSPC /private/path"), { code: "ENOSPC" }),
+			);
+			try {
+				const response = await upload("a.txt", "x").expect(503);
+				expect(response.body.code).toBe("STORAGE_UNAVAILABLE");
+				expect(JSON.stringify(response.body)).not.toContain("/private/path");
+			} finally { spy.mockRestore(); }
+			expect(await files()).toHaveLength(0);
 		});
 
 		it("answers 503 STORAGE_UNAVAILABLE when the disk write fails", async () => {
@@ -382,8 +435,16 @@ describe("Private documents HTTP contract", () => {
 			expect(response.body.code).toBe("STORAGE_UNAVAILABLE");
 		});
 
+		it("rejects stored length mismatches before sending file headers", async () => {
+			await writeFile(join(root, rows[0].storageKey), "short");
+			const response = await get().expect(503);
+			expect(response.body.code).toBe("STORAGE_UNAVAILABLE");
+			expect(response.headers["content-disposition"]).toBeUndefined();
+			expect(response.body.requestId).toBe(response.headers["x-request-id"]);
+		});
+
 		it("sends the 503 as JSON without file headers when the stream fails to open", async () => {
-			jest.spyOn(storage, "read").mockReturnValueOnce(
+			jest.spyOn(storage, "read").mockResolvedValueOnce(
 				new Readable({
 					read() {
 						this.destroy(new Error("EIO"));
@@ -405,6 +466,7 @@ describe("Private documents HTTP contract", () => {
 			const id = (await upload("a.txt", "x").expect(201)).body.id;
 
 			await remove(id).expect(204).expect("Cache-Control", "no-store");
+			await cleanup.runOnce();
 			expect(rows).toHaveLength(0);
 			expect(jobs).toHaveLength(0);
 			expect(await files()).toHaveLength(0);
@@ -421,11 +483,32 @@ describe("Private documents HTTP contract", () => {
 			);
 		});
 
+		it("returns 204 after commit without waiting for slow physical deletion", async () => {
+			const id = (await upload("a.txt", "x").expect(201)).body.id;
+			let finish!: () => void;
+			const held = new Promise<void>((resolve) => { finish = resolve; });
+			const original = storage.delete.bind(storage);
+			jest.spyOn(storage, "delete").mockImplementationOnce(async (key) => {
+				await held;
+				await original(key);
+			});
+			try {
+				await remove(id).timeout(2000).expect(204);
+				expect(rows).toHaveLength(0);
+				expect(jobs).toHaveLength(1);
+			} finally {
+				finish();
+				await cleanup.runOnce();
+			}
+			expect(await files()).toHaveLength(0);
+		});
+
 		it("still answers 204 when byte deletion fails, and the worker finishes the job", async () => {
 			const id = (await upload("a.txt", "x").expect(201)).body.id;
 			jest.spyOn(storage, "delete").mockRejectedValueOnce(Object.assign(new Error("io"), { code: "EIO" }));
 
 			await remove(id).expect(204);
+			await cleanup.runOnce();
 			expect(rows).toHaveLength(0);
 			expect(jobs).toHaveLength(1);
 			expect(jobs[0]).toMatchObject({ attempts: 1, lastErrorCode: "EIO" });

@@ -1,0 +1,9 @@
+{
+  "question": "Why do errors appear in this selection?",
+  "from": "2026-10-01T00:00:00.000Z",
+  "to": "2026-10-02T00:00:00.000Z",
+  "filters": {
+    "provider": "fixture-a",
+    "status": "ERROR"
+  }
+}

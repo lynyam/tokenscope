@@ -6,12 +6,14 @@ import { ApiError, getApiErrorMessage, isAbortError } from "../../api/http-clien
 import type { MembershipRole, Project, UpdateProjectInput } from "../../types/workspace.types";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { getAuthSessionSnapshot } from "../../api/auth-session";
+import { ProjectDashboard } from "./ProjectDashboard";
 import { EditProjectForm } from "./EditProjectForm";
 
 export function ProjectDetailPage() {
   const { organizationId, projectId } = useParams();
   if (!organizationId || !projectId) return <p role="alert">Missing organization or project.</p>;
-  return <ProjectDetail key={organizationId + "/" + projectId}
+  return <ProjectDetail key={organizationId + "/" + projectId + "/" + getAuthSessionSnapshot().revision}
     organizationId={organizationId} projectId={projectId} />;
 }
 
@@ -77,6 +79,13 @@ function ProjectDetail({ organizationId, projectId }: { organizationId: string; 
   // The project (or its organization) is gone: clear the detail instead of
   // leaving stale data and controls on screen.
   function clearProject() {
+    // Prevent a pending rename from restoring protected content after realtime access loss.
+    requests.current?.abort();
+    setRole(null);
+    setNameDraft("");
+    setDescriptionDraft("");
+    setIsSaving(false);
+    setIsArchiving(false);
     setIsEditing(false);
     setSaveError(null);
     setArchiveError(null);
@@ -181,7 +190,7 @@ function ProjectDetail({ organizationId, projectId }: { organizationId: string; 
   );
 
   return (
-    <section className="mx-auto max-w-md space-y-6 p-6">
+    <section className="mx-auto max-w-6xl space-y-6 p-6">
       <Link to={listPath}>← Back to projects</Link>
       <h1 className="text-2xl font-semibold">{project.name}</h1>
       <p className="text-sm text-muted-foreground">{project.slug}</p>
@@ -216,10 +225,39 @@ function ProjectDetail({ organizationId, projectId }: { organizationId: string; 
           {archiveError && <p role="alert" className="text-sm text-destructive">{archiveError}</p>}
         </>
       )}
-      <div className="rounded-lg border p-4">
-        <h2 className="font-semibold">Coming soon</h2>
-        <p className="text-sm text-muted-foreground">API keys, traces, and cost analytics.</p>
-      </div>
+      <nav
+        aria-label="Project sections"
+        className="flex flex-wrap gap-4 rounded-lg border p-4"
+      >
+        {canManage && (
+          <Link
+            className="underline"
+            to={
+              "/organizations/" + encodeURIComponent(organizationId)
+              + "/projects/" + encodeURIComponent(projectId)
+              + "/api-keys"
+            }
+          >
+            API keys
+          </Link>
+        )}
+
+        <Link
+          className="underline"
+          to={
+            "/organizations/" + encodeURIComponent(organizationId)
+            + "/projects/" + encodeURIComponent(projectId)
+            + "/traces"
+          }
+        >
+          Traces
+        </Link>
+      </nav>
+      <ProjectDashboard
+        organizationId={organizationId}
+        projectId={projectId}
+        onUnavailable={clearProject}
+      />
     </section>
   );
 }

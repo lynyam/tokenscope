@@ -1,14 +1,13 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
-import { createReadStream, type ReadStream } from "node:fs";
+import { constants, type ReadStream } from "node:fs";
 import {
 	chmod,
 	lstat,
 	mkdir,
 	open,
-	readdir,
+	opendir,
 	rename,
-	stat,
 	unlink,
 } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
@@ -17,8 +16,9 @@ export const DOCUMENT_STORAGE_ROOT = Symbol("DOCUMENT_STORAGE_ROOT");
 
 const KEY_PATTERN =
 	/^[0-9a-f]{2}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+export const SWEEP_SCAN_BATCH_SIZE = 256;
 const INCOMING_DIRECTORY = ".incoming";
-const TEMP_PATTERN = /^[0-9a-f-]{36}\.tmp$/;
+const TEMP_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/;
 
 /**
  * Stores opaque blobs under a private root. Keys are generated here only.
@@ -30,6 +30,9 @@ const TEMP_PATTERN = /^[0-9a-f-]{36}\.tmp$/;
 export class DocumentStorageService {
 	private readonly root: string;
 	private exclusive: Promise<unknown> = Promise.resolve();
+	private readonly activeTemporary = new Set<string>();
+	private finalScan: AsyncGenerator<string> | null = null;
+	private temporaryScan: AsyncGenerator<string> | null = null;
 
 	constructor(@Inject(DOCUMENT_STORAGE_ROOT) root: string) {
 		this.root = resolve(root);
@@ -55,8 +58,16 @@ export class DocumentStorageService {
 	/** Private directory (0700) where uploads are received before validation. */
 	async incomingDirectory(): Promise<string> {
 		const directory = join(this.root, INCOMING_DIRECTORY);
-		await mkdir(directory, { recursive: true, mode: 0o700 });
+		await this.ensurePrivateDirectory(this.root);
+		await this.ensurePrivateDirectory(directory);
 		return directory;
+	}
+
+	/** Keep active reception/validation out of the age-based orphan sweep. */
+	protectTemporary(path: string): () => void {
+		const absolute = resolve(path);
+		this.activeTemporary.add(absolute);
+		return () => { this.activeTemporary.delete(absolute); };
 	}
 
 	/** Moves a validated temporary upload to its final private location. */
@@ -69,7 +80,10 @@ export class DocumentStorageService {
 
 		const target = this.pathFor(key);
 		const targetDirectory = dirname(target);
-		await mkdir(targetDirectory, { recursive: true, mode: 0o700 });
+		await this.ensurePrivateDirectory(this.root);
+		await this.ensurePrivateDirectory(targetDirectory);
+		await this.assertDirectory(dirname(source));
+		if (!(await lstat(source)).isFile()) throw new Error("Invalid temporary file.");
 		await chmod(source, 0o600);
 
 		// multer does not flush: make the bytes durable before the row is committed.
@@ -113,7 +127,8 @@ export class DocumentStorageService {
 		const target = this.pathFor(key);
 		const temp = `${target}.${randomUUID()}.tmp`;
 
-		await mkdir(dirname(target), { recursive: true, mode: 0o700 });
+		await this.ensurePrivateDirectory(this.root);
+		await this.ensurePrivateDirectory(dirname(target));
 		const handle = await open(temp, "wx", 0o600);
 
 		try {
@@ -137,7 +152,10 @@ export class DocumentStorageService {
 	/** Missing file is success: deletion must be idempotent. */
 	async delete(key: string): Promise<void> {
 		try {
-			await unlink(this.pathFor(key));
+			const path = this.pathFor(key);
+			await this.assertDirectory(this.root);
+			await this.assertDirectory(dirname(path));
+			await unlink(path);
 		} catch (error) {
 			if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
 		}
@@ -150,61 +168,107 @@ export class DocumentStorageService {
 		await unlink(target).catch(() => undefined);
 	}
 
-	/** Throws when the bytes are missing or unreadable. Returns the size. */
-	async size(key: string): Promise<number> {
-		return (await stat(this.pathFor(key))).size;
+	/** Open the exact descriptor that will be streamed, before sending headers. */
+	async read(key: string, expectedSize?: number): Promise<ReadStream> {
+		const path = this.pathFor(key);
+		await this.assertDirectory(this.root);
+		await this.assertDirectory(dirname(path));
+		const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+		try {
+			const info = await handle.stat();
+			if (!info.isFile() || (expectedSize !== undefined && info.size !== expectedSize)) {
+				throw new Error("Stored document is unavailable.");
+			}
+			return handle.createReadStream({ autoClose: true });
+		} catch (error) {
+			await handle.close().catch(() => undefined);
+			throw error;
+		}
 	}
 
-	read(key: string): ReadStream {
-		return createReadStream(this.pathFor(key));
-	}
-
-	/**
-	 * Managed final files last modified before the cutoff. Anything that does not
-	 * match the server naming pattern, and every symbolic link, is ignored.
-	 */
+	/** A bounded, resumable scan; referenced files cannot starve later orphans. */
 	async listKeysOlderThan(cutoffMs: number): Promise<string[]> {
+		this.finalScan ??= this.finalEntries();
 		const keys: string[] = [];
-
-		for (const shard of await this.listDirectory(this.root)) {
-			if (!/^[0-9a-f]{2}$/.test(shard)) continue;
-
-			for (const name of await this.listDirectory(join(this.root, shard))) {
-				const key = `${shard}/${name}`;
+		try {
+			for (let i = 0; i < SWEEP_SCAN_BATCH_SIZE; i += 1) {
+				const entry = await this.finalScan.next();
+				if (entry.done) { this.finalScan = null; break; }
+				const key = entry.value;
 				if (!KEY_PATTERN.test(key)) continue;
-
 				const info = await lstat(join(this.root, key)).catch(() => null);
 				if (info?.isFile() && info.mtimeMs < cutoffMs) keys.push(key);
 			}
+		} catch (error) {
+			await this.finalScan?.return(undefined);
+			this.finalScan = null;
+			throw error;
 		}
 		return keys;
 	}
 
-	/** Removes abandoned uploads (crash during reception) older than the cutoff. */
 	async removeStaleTemporaryFiles(cutoffMs: number): Promise<number> {
 		const directory = join(this.root, INCOMING_DIRECTORY);
+		this.temporaryScan ??= this.listDirectory(directory);
 		let removed = 0;
-
-		for (const name of await this.listDirectory(directory)) {
-			if (!TEMP_PATTERN.test(name)) continue;
-
-			const path = join(directory, name);
-			const info = await lstat(path).catch(() => null);
-			if (info?.isFile() && info.mtimeMs < cutoffMs) {
-				await unlink(path).catch(() => undefined);
-				removed += 1;
+		try {
+			for (let i = 0; i < SWEEP_SCAN_BATCH_SIZE; i += 1) {
+				const entry = await this.temporaryScan.next();
+				if (entry.done) { this.temporaryScan = null; break; }
+				if (!TEMP_PATTERN.test(entry.value)) continue;
+				const path = join(directory, entry.value);
+				if (this.activeTemporary.has(path)) continue;
+				const info = await lstat(path).catch(() => null);
+				if (info?.isFile() && info.mtimeMs < cutoffMs) {
+					await unlink(path);
+					removed += 1;
+				}
 			}
+		} catch (error) {
+			await this.temporaryScan?.return(undefined);
+			this.temporaryScan = null;
+			throw error;
 		}
 		return removed;
 	}
 
-	private async listDirectory(directory: string): Promise<string[]> {
-		try {
-			return await readdir(directory);
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
-			throw error;
+	async closeScans(): Promise<void> {
+		await Promise.allSettled([
+			this.finalScan?.return(undefined), this.temporaryScan?.return(undefined),
+		]);
+		this.finalScan = null;
+		this.temporaryScan = null;
+	}
+
+	private async *finalEntries(): AsyncGenerator<string> {
+		for await (const shard of this.listDirectory(this.root)) {
+			// Count unknown entries too, so each scan is bounded.
+			yield "";
+			if (!/^[0-9a-f]{2}$/.test(shard)) continue;
+			for await (const name of this.listDirectory(join(this.root, shard))) {
+				yield `${shard}/${name}`;
+			}
 		}
+	}
+
+	private async *listDirectory(directory: string): AsyncGenerator<string> {
+		const info = await lstat(directory).catch((error: NodeJS.ErrnoException) => {
+			if (error.code === "ENOENT") return null;
+			throw error;
+		});
+		if (!info?.isDirectory()) return; // includes symlinks
+		const handle = await opendir(directory);
+		for await (const entry of handle) yield entry.name;
+	}
+
+	private async assertDirectory(directory: string): Promise<void> {
+		if (!(await lstat(directory)).isDirectory()) throw new Error("Invalid storage directory.");
+	}
+
+	private async ensurePrivateDirectory(directory: string): Promise<void> {
+		await mkdir(directory, { recursive: true, mode: 0o700 });
+		await this.assertDirectory(directory);
+		await chmod(directory, 0o700);
 	}
 
 	private pathFor(key: string): string {

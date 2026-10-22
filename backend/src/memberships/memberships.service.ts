@@ -1,3 +1,4 @@
+import { AccessChangesService } from "../access-changes/access-changes.service";
 import { HttpStatus, Injectable } from "@nestjs/common";
 import { MembershipRole, Prisma } from "../generated/prisma/client";
 import { ApiException } from "../common/errors/api.exception";
@@ -21,6 +22,7 @@ export class MembershipsService {
 		private readonly prisma: PrismaService,
 		private readonly organizationAccess: OrganizationAccessService,
 		private readonly users: UsersService,
+        private readonly accessChanges: AccessChangesService,
 	) { }
 
 	async list(
@@ -165,6 +167,7 @@ export class MembershipsService {
 				},
 			});
 		});
+		await this.accessChanges.publish({ kind: "membership.removed", organizationId, userId: targetUserId });
 	}
 
 	private async findMembership(

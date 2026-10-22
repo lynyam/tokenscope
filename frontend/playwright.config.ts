@@ -8,21 +8,31 @@ if (!baseURL) {
   );
 }
 
+// Optional: use an installed Chromium instead of Playwright's download.
+const executablePath = process.env.E2E_CHROMIUM_PATH;
+
 export default defineConfig({
   testDir: "./test/e2e",
   // Browser specs end in .spec.ts; Vitest only discovers .test.ts/.test.tsx.
   testMatch: "**/*.spec.ts",
+  timeout: 60_000,
+  expect: { timeout: 10_000 },
+  // Uploads are rate limited per user: stay sequential.
   fullyParallel: false,
   workers: 1,
   retries: 0,
   reporter: [["list"], ["html", { open: "never" }]],
   use: {
     baseURL,
+    // The evaluation Caddy uses a local CA that browsers do not trust by default.
+    //ignoreHTTPSErrors: true,
+    acceptDownloads: true,
     // Login and authenticated requests contain credentials.
     // Do not record them in automatic test artifacts.
     trace: "off",
     screenshot: "off",
     video: "off",
+    launchOptions: executablePath ? { executablePath, args: ["--no-sandbox"] } : {},
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
 });

@@ -5,6 +5,7 @@ import {
 	Header,
 	HttpCode,
 	HttpStatus,
+	Logger,
 	Post,
 	Query,
 	Req,
@@ -22,6 +23,8 @@ import { DocumentsService } from "./documents.service";
 
 @Controller("organizations/:organizationId/projects/:projectId/documents")
 export class DocumentsController {
+	private readonly logger = new Logger(DocumentsController.name);
+
 	constructor(private readonly documents: DocumentsService) {}
 
 	@Post()
@@ -70,6 +73,11 @@ export class DocumentsController {
 			documentId,
 		);
 
+		const onClose = () => content.stream.destroy();
+		response.once("close", onClose);
+		content.stream.once("close", () => response.off("close", onClose));
+		if (response.destroyed) content.stream.destroy();
+
 		response.setHeader("Cache-Control", "no-store");
 		response.setHeader("X-Content-Type-Options", "nosniff");
 
@@ -106,6 +114,11 @@ export class DocumentsController {
 				message: "Document storage is temporarily unavailable.",
 				requestId: typeof requestId === "string" ? requestId : undefined,
 			});
+		});
+		file.setErrorLogger(() => {
+			this.logger.error(JSON.stringify({ event: "document_content_failed",
+				requestId: response.getHeader("X-Request-Id"), documentId,
+				code: "STORAGE_UNAVAILABLE" }));
 		});
 		return file;
 	}
