@@ -243,7 +243,7 @@ function TraceExplorer({ organizationId, projectId }: { organizationId: string; 
     <section className="mx-auto max-w-6xl space-y-4 p-6">
       <Link to={base}>← Back to project</Link>
       <h1 className="text-2xl font-semibold">Traces</h1>
-      <p className="text-sm text-muted-foreground">Read-only. Times are UTC. Realtime updates: pending integration.</p>
+      <p className="text-sm text-muted-foreground">Read-only. Times are UTC.</p>
 
       {!parsed.ok && (
         <div role="alert" className="space-y-2 rounded-lg border border-destructive/40 p-4 text-sm">

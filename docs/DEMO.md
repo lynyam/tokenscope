@@ -839,4 +839,6 @@ Keep the returned trace id and ETag for PUT/DELETE. Do not commit the key.
    Presets resolve once: Live does not silently advance their upper boundary.
 
 Record dev and trusted-HTTPS browser results separately. Dashboard realtime does not establish
-that Explorer realtime is integrated; verify that separately in TSE-87.
+Explorer realtime: the Explorer list and detail have their own browser scenarios (`trace-explorer.spec.ts`, TSE-87).
+With a receiving browser left open on the Explorer, ingest, correct and delete a trace through the public API and
+confirm that the list, count, order and open detail update without clicking Refresh or reloading.

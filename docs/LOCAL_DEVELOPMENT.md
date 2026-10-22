@@ -969,12 +969,18 @@ Playwright runs on the host against a stack that is already up (`make up`, then 
 
 ```bash
 make frontende2e E2E_ARGS="trace-explorer"
-E2E_BASE_URL=https://localhost:8443 make frontende2e E2E_ARGS="trace-explorer"   # evaluation mode
+NODE_EXTRA_CA_CERTS="$PWD/.local/eval/caddy-root.crt" E2E_BASE_URL=https://localhost:8443 \
+  make frontende2e E2E_ARGS="trace-explorer"   # evaluation mode, certificate verified
 ```
 
 The suite creates its own users, organization and three projects, ingests `fixtures/evaluation/traces-golden.json`
 and `traces-pagination.json` through the real public API (one API key per project) and then drives the browser.
 Ingestion is limited to 60 requests per minute per client address, so a full run takes about two minutes.
+
+The `realtime:` scenarios keep a receiving browser open on the real list or detail while a separate client (the public API, or
+the member and organization endpoints) changes data. None of them reloads the page or clicks Refresh. They need WebSocket traffic
+through the proxy (`REALTIME_ALLOWED_ORIGINS` must contain the origin, see TSE-73 below), and `realtime.spec.ts` reads the
+Socket.IO test bundle from `backend/node_modules` on the host (`npm ci` in `backend`).
 
 The browser never loads prices: the fixture price catalogue must already be in the database. Once per database:
 
@@ -984,6 +990,47 @@ docker compose exec backend sh -c 'npm run build >/dev/null && npm run pricing:l
 ```
 
 The loader is idempotent. When the catalogue is missing, the suite stops at its first step with this pointer.
+
+#### Recorded evidence — TSE-87 (Trace Explorer realtime)
+
+Tested commit: `db40796` on `feature/tse-87-complete-trace-explorer-tse-75-realtime-integration-with-the`, which already contains
+`origin/develop` at `de37cc5`. The final commit differs from it only by documentation and by removing the sentence
+“Realtime updates: pending integration.” from the Traces page (`git diff db40796 --stat`).
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Component tests | `make frontendtest` | 623 passed, 32 files |
+| Types, lint, build | `make frontendcheck`; `docker compose exec -T frontend npm run build` | no errors |
+| Development, Explorer | `E2E_BASE_URL=http://localhost:5173 make frontende2e E2E_ARGS="trace-explorer.spec.ts"` | 22 passed (12 existing, 10 realtime) |
+| Development, full suite | `E2E_BASE_URL=http://localhost:5173 make frontende2e` | 69 passed |
+| Evaluation HTTPS, TSE-76 | `NODE_EXTRA_CA_CERTS="$PWD/.local/eval/caddy-root.crt" E2E_BASE_URL=https://localhost:8443 make frontende2e E2E_ARGS="realtime.spec.ts"` | 3 passed |
+| Evaluation HTTPS, Explorer | same variables, `E2E_ARGS="trace-explorer.spec.ts"` | 22 passed |
+| Evaluation HTTPS, full suite | same variables, no `E2E_ARGS` | 69 passed |
+
+Environment: Linux workstation, Podman with podman-compose emulating Docker, Node 24, Playwright 1.64.0 with the Chromium
+headless shell (one worker, 60 s per test), development stack on `http://localhost:5173`, evaluation stack on
+`https://localhost:8443` with the certificate verified (no `ignoreHTTPSErrors`).
+
+Negative controls (the behaviour was removed, the scenario had to fail, then the code was restored): ignoring `traces.changed`
+makes the realtime scenarios fail; ignoring the refetch after the acknowledgement fails the reconnect scenario; ignoring
+`access.revoked` fails the organization-archive scenario, and the member-removal scenario also requires the `access.revoked`
+notice and no HTTP read after it.
+
+Limitations:
+
+- Chromium only; Firefox and WebKit are not automated.
+- Hidden-tab behaviour, the `Retry-After` deadline, the stale state with Retry, coalescing with at most one queued follow-up, and
+  cleanup on unmount and project change are covered by component tests (fake timers, mocked realtime hook). The browser scenarios
+  cover ingestion, correction, deletion, filters and period, project switching, reconnection, member removal, organization
+  archive and last-page recovery.
+- Logout has no dedicated scenario: it relies on the page unmounting and on the session revision being part of the connection key.
+- The reconnect scenario waits 600 ms offline on purpose (the server coalesces for 150 ms and never replays events). The
+  last-page deletion scenario ingests 26 traces under the 60 requests per minute limit and takes up to about 40 s.
+- Under Podman without a TTY, `make eval-up` needs `docker.io` as an unqualified search registry
+  (`~/.config/containers/registries.conf`), and `podman-compose` has no `cp`, so the certificate export stage fails. The evaluation
+  run used a temporary wrapper outside the repository that maps `docker compose cp` to `podman cp`. Chromium also needs the Caddy
+  root certificate in the user NSS database (`certutil -d sql:$HOME/.pki/nssdb -A -t "C,," -n tokenscope-caddy-root -i .local/eval/caddy-root.crt`);
+  `NODE_EXTRA_CA_CERTS` only covers the Node side of Playwright.
 
 ## Realtime development and HTTPS verification — TSE-73
 

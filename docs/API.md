@@ -1047,8 +1047,8 @@ A rejected request returns `429 RATE_LIMITED` with `Retry-After` in seconds.
 This response does not invalidate the user's authentication session.
 
 Analytics (`GET P/analytics`) shares this same user/project budget.
-Switching between trace list, trace detail and analytics does not reset the allowance. Trace Explorer UI and WebSocket delivery remain separate
-implementation scopes.
+Switching between trace list, trace detail and analytics does not reset the allowance. Realtime refreshes in the Trace Explorer (TSE-87) are ordinary reads of this same allowance: the client coalesces
+them and respects `Retry-After`.
 
 ### Shared dates, filters and pagination
 
@@ -1298,6 +1298,12 @@ Treat revoked access as project unavailability; do not clear an otherwise valid 
 Expired/invalid JWT requires the existing session-expiry behavior. A transport outage
 alone must preserve the session. Reconnect with bounded backoff; there is no event replay.
 Do not calculate totals from notifications, and do not change an in-flight assistant context.
+
+The Trace Explorer (TSE-87) list and detail follow this contract through the shared client and `RefreshScheduler`, with two
+documented differences: there is no periodic 30-second refresh, and a refresh is redone on visibility or network return only
+when one was skipped while the tab was hidden or the browser offline. Notices are coalesced (250 ms, at most 1 s), at most one
+follow-up read is queued, a `Retry-After` deadline is respected and a failed read is never retried automatically; the last
+data stays visible as stale, with a Retry action.
 
 ### Assistant — TSE-80 / TSE-81
 
