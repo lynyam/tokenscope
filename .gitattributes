@@ -6,3 +6,7 @@ fixtures/evaluation/assistant/*.sse whitespace=-blank-at-eof
 
 # Preserve PDF bytes; disable textual diffing and merging.
 fixtures/evaluation/uploads/*.pdf binary
+backend/test/fixtures/documents/*.pdf binary
+
+# Canonical CSV bytes include CRLF record separators.
+fixtures/evaluation/responses/dashboard-golden.csv -text whitespace=cr-at-eol
