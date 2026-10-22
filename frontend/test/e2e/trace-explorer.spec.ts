@@ -441,6 +441,16 @@ function observeRealtime(page: Page, readPath: RegExp) {
 }
 type Observed = ReturnType<typeof observeRealtime>;
 
+/** No new read for `quietMs`: longer than the 250 ms coalescing, so the read requested by the acknowledgement has run. */
+async function readsSettled(seen: Observed, quietMs = 500) {
+  let last = seen.reads.length;
+  let since = Date.now();
+  await expect.poll(() => {
+    if (seen.reads.length !== last) { last = seen.reads.length; since = Date.now(); }
+    return Date.now() - since;
+  }, { message: "reads have settled" }).toBeGreaterThanOrEqual(quietMs);
+}
+
 /** The subscription is acknowledged once the page has read a second time (first load, then the acknowledgement). */
 const subscribed = (seen: Observed) =>
   expect.poll(() => seen.reads.length, { message: "realtime subscription acknowledged" }).toBeGreaterThanOrEqual(2);
@@ -591,16 +601,23 @@ test("realtime: changes made while the receiver is disconnected appear after the
   await page.route(/\/socket\.io\//, route => (down ? route.abort() : route.continue()));
 
   const seen = observeRealtime(page, LIST_READ);
+  let upgraded = false; // engine.io: the client sends "5" once the WebSocket has replaced long-polling
+  page.on("websocket", socket => socket.on("framesent", frame => { if (String(frame.payload) === "5") upgraded = true; }));
   await open(page, projectId);
   await idsEqual(page, ["rc-1"]);
   await subscribed(seen);
-  await expect.poll(() => seen.sockets.length, { message: "the WebSocket transport is in use" }).toBeGreaterThan(0);
+  await expect.poll(() => upgraded, { message: "the connection upgraded from long-polling to WebSocket" }).toBe(true);
+  await readsSettled(seen); // the read requested by the acknowledgement must not land after the disconnection
 
+  const closesBefore = seen.closes();
   down = true;
   await Promise.all(routes.splice(0).map(ws => ws.close()));
-  await expect.poll(() => seen.closes(), { message: "the WebSocket is really closed" }).toBeGreaterThan(0);
+  await expect.poll(() => seen.closes(), { message: "the WebSocket is really closed" }).toBeGreaterThan(closesBefore);
   const readsWhileDown = seen.reads.length;
   await ingest(request, key, rtBody("rc-2", "2026-10-01T10:00:00.000Z")); // missed by the disconnected page
+  // The server coalesces for 150 ms and never replays: let that window pass while the page is still offline,
+  // so any notice received after reconnecting could only be a replay and the assertion below is meaningful.
+  await page.waitForTimeout(600);
   expect(await visibleExternalIds(page)).toEqual(["rc-1"]);
   expect(seen.reads.length, "no read while disconnected").toBe(readsWhileDown);
 
