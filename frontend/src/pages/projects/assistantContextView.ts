@@ -1,6 +1,7 @@
 import type { AssistantContext } from "../../types/assistant.types";
 
-export const NO_OBSERVATIONS = "No observations";
+import { formatCostUsd, formatCount, NO_OBSERVATIONS } from "./dashboardFormat";
+export { NO_OBSERVATIONS } from "./dashboardFormat";
 
 export type ContextRow = { label: string; value: string };
 export type ContextModelRow = { name: string; details: string };
@@ -25,23 +26,12 @@ function show(value: unknown): string {
   return NO_OBSERVATIONS;
 }
 
-// "7200" -> "7,200". Works on the string: the exact value is never converted to a number.
-function groupDigits(value: string): string {
-  return /^\d+$/.test(value) ? value.replace(/\B(?=(\d{3})+(?!\d))/g, ",") : value;
-}
-
 function tokens(value: unknown): string {
-  return typeof value === "string" ? groupDigits(value) : show(value);
+  return typeof value === "string" ? formatCount(value) : show(value);
 }
 
-// "0.015350000000" -> "$0.01535". Trailing zeros are removed (at least 2 decimals stay),
-// so a tiny positive cost is never shown as $0.00.
 export function formatUsd(value: unknown): string {
-  if (typeof value !== "string" || !/^\d+\.\d+$/.test(value)) return show(value);
-  const [integer, fraction] = value.split(".");
-  let trimmed = fraction.replace(/0+$/, "");
-  if (trimmed.length < 2) trimmed = trimmed.padEnd(2, "0");
-  return "$" + groupDigits(integer) + "." + trimmed;
+  return typeof value === "string" ? formatCostUsd(value) : NO_OBSERVATIONS;
 }
 
 function activeFilters(filters: unknown): string {
@@ -55,18 +45,14 @@ function activeFilters(filters: unknown): string {
 }
 
 export function buildContextView(context: AssistantContext): ContextView {
-  const project = isRecord(context.project) ? context.project : {};
-  const window = isRecord(context.window) ? context.window : {};
-  const summary = isRecord(context.summary) ? context.summary : {};
-  const pricing = isRecord(context.pricing) ? context.pricing : {};
+  const { project, window, summary, pricing } = context;
 
   const errorRate =
     typeof summary.errorRatePct === "number" ? summary.errorRatePct + "%" : NO_OBSERVATIONS;
   const latency =
     typeof summary.averageLatencyMs === "number" ? summary.averageLatencyMs + " ms" : NO_OBSERVATIONS;
 
-  const models = (Array.isArray(context.byModel) ? context.byModel : [])
-    .filter(isRecord)
+  const models = context.byModel
     .map((item) => ({
       name: show(item.provider) + "/" + show(item.model),
       details:

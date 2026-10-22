@@ -614,7 +614,7 @@ These historical records are not guaranteed to be inside a moving
 last-seven-days window. The database tests load fixtures only into the
 guarded test database; they do not seed development data.
 
-### Dashboard assistant — TSE-80
+### Dashboard assistant — TSE-80 / TSE-81
 
 Configuration (backend only, in your untracked `.env`):
 
@@ -717,6 +717,55 @@ For the current architecture, see
 TSE-65 implements HTTPS evaluation startup using the existing Compose stack.
 The ownership table below also includes separately delivered features;
 their configuration and commands must be documented when implemented.
+
+Frontend checks (no live provider calls):
+
+```bash
+make frontendcheck
+make frontendtest
+docker compose exec frontend npm run build
+```
+
+The frontend reads the canonical `fixtures/evaluation/assistant/` through the
+existing evaluation-fixture reader. Compose already mounts that directory read-only;
+do not copy fixtures into `frontend/test/fixtures`.
+
+`frontend/test/e2e/assistant.spec.ts` uses the real application, authentication,
+analytics and PostgreSQL but **intercepts assistant responses**. It creates disposable
+accounts/project and ingests the six golden traces. Load the synthetic catalogue first.
+It covers all three roles, applied versus draft dates, same-scope refresh, explicit
+retry, Stop before headers, access loss, keyboard use and the 375px panel.
+Buffered fixtures do not prove progressive provider delivery.
+
+From the repository root, in development mode:
+
+```bash
+make up
+curl --fail --silent --show-error http://localhost:5173/api/v1/health/db
+docker compose cp fixtures/evaluation/model-prices.json backend:/tmp/model-prices.json
+docker compose exec -T backend npm run pricing:load -- --file /tmp/model-prices.json
+E2E_BASE_URL=http://localhost:5173 E2E_ARGS=assistant.spec.ts make frontende2e
+```
+
+Wait for health to return 200 before running tests. If the development image has
+not compiled the pricing script yet, use the build-and-load command in the existing
+catalogue section. For evaluation mode, rebuild first and trust the current exported
+Caddy root in the operating system/browser as described above. Node's extra CA
+setting alone does not configure Chromium trust. Never disable TLS verification.
+
+```bash
+make eval-up
+curl --fail --silent --show-error --cacert .local/eval/caddy-root.crt https://localhost:8443/api/v1/health/db
+docker compose cp fixtures/evaluation/model-prices.json backend:/tmp/model-prices.json
+docker compose exec -T backend npm run pricing:load -- --file /tmp/model-prices.json
+NODE_EXTRA_CA_CERTS="$PWD/.local/eval/caddy-root.crt" \
+E2E_BASE_URL=https://localhost:8443 E2E_ARGS=assistant.spec.ts make frontende2e
+```
+
+The real-provider browser verification is a separate, deliberate manual run:
+follow `docs/DEMO.md`, "Dashboard assistant UI — TSE-81". It consumes Gemini
+quota; it is never part of ordinary CI. Record its result separately from intercepted
+browser tests, including the tested commit, mode and any checks not run.
 
 ### Deployment ownership
 

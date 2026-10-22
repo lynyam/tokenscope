@@ -4,6 +4,7 @@ import {
   buildAssistantBody,
   validateAssistantQuestion,
 } from '../../src/api/assistant.api';
+import { readEvaluationFixture } from './helpers/evaluation-fixtures';
 import { apiPostStream } from '../../src/api/http-client';
 import { streamFromChunks, collect } from './helpers/stream';
 
@@ -31,9 +32,11 @@ const DONE = `event: done\ndata: ${JSON.stringify({
   requestId: 'r1', finishReason: 'stop', usage: null,
 })}\n\n`;
 
+const fixtureContext = JSON.parse(readEvaluationFixture('assistant/context.json'));
 const okContext = {
+  ...fixtureContext,
   project: { id: 'p1', name: 'Demo', description: null },
-  window: { from: FROM, to: TO },
+  window: { ...fixtureContext.window, from: FROM, to: TO },
   filters: { q: null, provider: 'openai', model: null, workflow: null, status: null },
 };
 
@@ -82,11 +85,10 @@ describe('buildAssistantBody', () => {
     expect(body.filters).toEqual({ workflow: 'MyWorkflow', status: 'ERROR' });
   });
 
-  it('ignore une valeur de status inconnue', () => {
-    const body = buildAssistantBody('Q', {
+  it('refuses an unknown status instead of silently broadening the selection', () => {
+    expect(() => buildAssistantBody('Q', {
       from: FROM, to: TO, filters: { status: 'WEIRD' } as never,
-    });
-    expect(body.filters).toEqual({});
+    })).toThrowError(expect.objectContaining({ kind: 'invalid-selection' }));
   });
 
   it("refuse une question vide ou faite d'espaces", () => {
@@ -185,7 +187,7 @@ describe('askAssistant', () => {
     mockStream([
       startWith({
         ...okContext,
-        window: { from: '2026-09-28T00:00:00Z', to: '2026-10-05T00:00:00Z' },
+        window: { ...fixtureContext.window, from: '2026-09-28T00:00:00Z', to: '2026-10-05T00:00:00Z' },
       }),
       DELTA,
       DONE,
@@ -242,4 +244,25 @@ describe('askAssistant', () => {
       name: 'AbortError',
     });
   });
+});
+
+it('counts Unicode question characters like the backend, then checks the JSON byte limit', () => {
+  expect(validateAssistantQuestion('😀'.repeat(1001))).toBeNull();
+  expect(() => buildAssistantBody('😀'.repeat(1001), selection)).not.toThrow();
+});
+
+it.each([
+  { ...selection, from: '2026-02-31T00:00:00Z' },
+  { ...selection, filters: { q: 'q'.repeat(101) } },
+  { ...selection, filters: { workflow: 'bad\nworkflow' } },
+  { ...selection, filters: { provider: '../bad' } },
+])('uses the dashboard validation rules before any request: %#', async invalid => {
+  await expect(ask({ selection: invalid })).rejects.toMatchObject({ kind: 'invalid-selection' });
+  expect(apiPostStream).not.toHaveBeenCalled();
+});
+
+it('does not normalize a different returned filter into an apparent scope match', async () => {
+  mockStream([startWith({ ...okContext, filters: { ...okContext.filters, provider: ' OPENAI ' } }), DELTA, DONE]);
+  const { events } = await ask();
+  await expect(collect(events)).rejects.toMatchObject({ kind: 'protocol' });
 });

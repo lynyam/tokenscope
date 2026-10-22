@@ -7,6 +7,8 @@ import {
   parseAssistantStream,
   AssistantStreamError,
 } from '../../src/api/assistant-stream';
+import { readEvaluationFixture } from './helpers/evaluation-fixtures';
+const context = JSON.parse(readEvaluationFixture('assistant/context.json'));
 import { streamFromChunks, collect } from './helpers/stream';
 
 // ---------------------------------------------------------------
@@ -94,11 +96,11 @@ describe('toEvent', () => {
 
   it('lit un start', () => {
     const data = JSON.stringify({
-      requestId: 'r1', provider: 'gemini', model: 'm', context: { a: 1 },
+      requestId: 'r1', provider: 'gemini', model: 'm', context,
     });
     expect(toEvent('start', data)).toEqual({
       type: 'start',
-      data: { requestId: 'r1', provider: 'gemini', model: 'm', context: { a: 1 } },
+      data: { requestId: 'r1', provider: 'gemini', model: 'm', context },
     });
   });
 
@@ -147,7 +149,7 @@ describe('toEvent', () => {
 // parseAssistantStream : la boucle complète
 // ---------------------------------------------------------------
 const START = `event: start\ndata: ${JSON.stringify({
-  requestId: 'r1', provider: 'gemini', model: 'm', context: {},
+  requestId: 'r1', provider: 'gemini', model: 'm', context,
 })}\n\n`;
 
 const delta = (text: string) =>
@@ -304,3 +306,59 @@ describe('parseAssistantStream', () => {
     const events = await collect(parseAssistantStream(body));
     expect(events).toHaveLength(3002); // start + 3000 delta + done
   });
+
+describe('network boundary regressions', () => {
+  it.each([
+    { ...context, summary: {} },
+    { ...context, summary: { ...context.summary, estimatedCostUsd: 0.01535 } },
+    { ...context, summary: { ...context.summary, inputTokens: 6000 } },
+    { ...context, pricing: { currency: 'USD' } },
+    { ...context, filters: { ...context.filters, status: 'UNKNOWN' } },
+    { ...context, generatedAt: '2026-02-31T00:00:00Z' },
+    { ...context, series: [{ ...context.series[0], inputTokens: '-1' }] },
+    { ...context, byModel: [{ ...context.byModel[0], model: null }] },
+  ])('rejects malformed context before displaying it: %#', async invalid => {
+    const body = streamFromChunks([`event: start\ndata: ${JSON.stringify({
+      requestId: 'r1', provider: 'gemini', model: 'm', context: invalid,
+    })}\n\n`]);
+    const iterator = parseAssistantStream(body);
+    await expect(iterator.next()).rejects.toMatchObject({ kind: 'protocol' });
+    expect(body.locked).toBe(false);
+  });
+
+  it.each([-1, 0.5, Number.MAX_SAFE_INTEGER + 1])('rejects invalid usage %s', inputTokens => {
+    expect(() => toEvent('done', JSON.stringify({
+      requestId: 'r1', finishReason: 'stop', usage: { inputTokens, outputTokens: 0 },
+    }))).toThrow(AssistantStreamError);
+  });
+
+  it('requires start before a terminal error', async () => {
+    await expect(collect(parseAssistantStream(streamFromChunks([ERROR]))))
+      .rejects.toMatchObject({ kind: 'protocol' });
+  });
+
+  it('does not call a whitespace-only answer complete', async () => {
+    await expect(collect(parseAssistantStream(streamFromChunks([START, delta(' \n '), DONE]))))
+      .rejects.toMatchObject({ kind: 'protocol' });
+  });
+
+  it('checks raw frame bytes before normalizing CRLF', async () => {
+    const largeCommentFrame = ':x\r\n'.repeat(17000) + '\r\n';
+    await expect(collect(parseAssistantStream(streamFromChunks([START, largeCommentFrame]))))
+      .rejects.toMatchObject({ kind: 'limit' });
+  });
+
+  it('flushes and rejects an unfinished UTF-8 character at EOF', async () => {
+    await expect(collect(parseAssistantStream(streamFromChunks([START, new Uint8Array([0xc3])]))))
+      .rejects.toMatchObject({ kind: 'protocol' });
+  });
+
+  it('releases the reader after completion and early consumer cancellation', async () => {
+    const complete = streamFromChunks([START, delta('ok'), DONE]);
+    await collect(parseAssistantStream(complete));
+    expect(complete.locked).toBe(false);
+    const stopped = streamFromChunks([START, delta('ok'), DONE]);
+    for await (const _event of parseAssistantStream(stopped)) break;
+    expect(stopped.locked).toBe(false);
+  });
+});

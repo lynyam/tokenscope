@@ -8,16 +8,16 @@ import { askAssistant, buildAssistantBody } from '../../src/api/assistant.api';
 import { apiPostStream } from '../../src/api/http-client';
 import type { AssistantEvent } from '../../src/types/assistant.types';
 import { streamFromChunks, collect } from './helpers/stream';
-import { readFixture } from './helpers/fixtures';
+import { readEvaluationFixture } from './helpers/evaluation-fixtures';
 
-const successSse = readFixture('success.sse');
-const partialTimeoutSse = readFixture('partial-timeout.sse');
-const lengthSse = readFixture('length.sse');
-const refusalSse = readFixture('refusal.sse');
-const unexpectedEofSse = readFixture('unexpected-eof.sse');
-const contextJson = readFixture('context.json');
-const requestJson = readFixture('request.json');
-const boundariesJson = readFixture('chunk-boundaries.json');
+const successSse = readEvaluationFixture('assistant/success.sse');
+const partialTimeoutSse = readEvaluationFixture('assistant/partial-timeout.sse');
+const lengthSse = readEvaluationFixture('assistant/length.sse');
+const refusalSse = readEvaluationFixture('assistant/refusal.sse');
+const unexpectedEofSse = readEvaluationFixture('assistant/unexpected-eof.sse');
+const contextJson = readEvaluationFixture('assistant/context.json');
+const requestJson = readEvaluationFixture('assistant/request.json');
+const boundariesJson = readEvaluationFixture('assistant/chunk-boundaries.json');
 
 vi.mock('../../src/api/http-client', () => ({ apiPostStream: vi.fn() }));
 

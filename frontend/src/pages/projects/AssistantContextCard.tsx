@@ -11,7 +11,7 @@ export function AssistantContextCard({ context }: { context: AssistantContext })
   return (
     <section
       aria-label="Context used"
-      className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700"
+      className="rounded-md border border-border bg-muted p-3 text-xs text-foreground"
     >
       <p className="mb-1 font-semibold">Context used</p>
       <dl className="space-y-0.5 break-words">
@@ -39,7 +39,7 @@ export function AssistantContextCard({ context }: { context: AssistantContext })
         ))}
       </dl>
       {view.syntheticPricing && (
-        <p className="mt-1 font-medium">Costs use synthetic pricing.</p>
+        <p className="mt-1 font-medium">Some costs use synthetic pricing.</p>
       )}
       {view.models.length > 0 && (
         <details className="mt-1">
@@ -53,7 +53,7 @@ export function AssistantContextCard({ context }: { context: AssistantContext })
           </ul>
         </details>
       )}
-      <p className="mt-2 text-slate-500">{CONTEXT_NOTICE}</p>
+      <p className="mt-2 text-muted-foreground">{CONTEXT_NOTICE}</p>
     </section>
   );
 }

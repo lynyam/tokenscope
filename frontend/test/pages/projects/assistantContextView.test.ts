@@ -4,9 +4,9 @@ import {
   formatUsd,
   NO_OBSERVATIONS,
 } from '../../../src/pages/projects/assistantContextView';
-import { readFixture } from '../../api/helpers/fixtures';
+import { readEvaluationFixture } from '../../api/helpers/evaluation-fixtures';
 
-const contextJson = readFixture('context.json');
+const contextJson = readEvaluationFixture('assistant/context.json');
 
 const context = JSON.parse(contextJson);
 
@@ -71,12 +71,7 @@ describe('buildContextView : valeurs inconnues et filtres', () => {
     expect(view.filters).toBe('provider: openai · workflow: Daily · status: ERROR');
   });
 
-  it('ne plante pas si le contexte est incomplet', () => {
-    const view = buildContextView({});
-    expect(view.projectName).toBe(NO_OBSERVATIONS);
-    expect(view.models).toEqual([]);
-    expect(view.syntheticPricing).toBe(false);
-  });
+
 });
 
 describe('formatUsd', () => {
@@ -90,8 +85,8 @@ describe('formatUsd', () => {
     expect(formatUsd('0.000000000001')).toBe('$0.000000000001');
   });
 
-  it('sépare les milliers sans convertir en nombre', () => {
-    expect(formatUsd('12345.670000000000')).toBe('$12,345.67');
+  it('uses the same exact cost representation as the dashboard', () => {
+    expect(formatUsd('12345.670000000000')).toBe('$12345.67');
   });
 
   it('null reste "No observations"', () => {

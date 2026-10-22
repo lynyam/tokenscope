@@ -1,3 +1,4 @@
+import { isAssistantContext } from "./assistant-context";
 import type { AssistantEvent } from '../types/assistant.types';
 
 export const MAX_FRAME_BYTES = 64 * 1024; // une trame
@@ -10,19 +11,18 @@ function byteLength(text: string): number {
 }
 
 export function extractFrames(buffer: string): { frames: string[]; rest: string } {
-  const pending = buffer.endsWith('\r') ? '\r' : '';
-  const text = (pending ? buffer.slice(0, -1) : buffer).replace(/\r\n/g, '\n');
-  const parts = text.split('\n\n');
+  // Preserve CRLF bytes until the frame limit has been checked. Normalizing
+  // first would allow a large frame to evade the wire-byte limit.
+  const parts = buffer.split(/\r?\n\r?\n/);
   const rest = parts.pop() ?? '';
-  const frames = parts.filter((part) => part.length > 0);
-  return { frames, rest: rest + pending };
+  return { frames: parts.filter(part => part.length > 0), rest };
 }
 
 export function parseFrame(frame: string): { event?: string; data: string } | null {
   let event: string | undefined;
   const dataLines: string[] = [];
 
-  for (const line of frame.split('\n')) {
+  for (const line of frame.split(/\r?\n/)) {
     if (line === '' || line.startsWith(':')) continue;
 
     const colon = line.indexOf(':');
@@ -72,10 +72,10 @@ export function toEvent(name: string | undefined, data: string): AssistantEvent 
   switch (name) {
     case 'start':
       if (
-        typeof json.requestId === 'string' &&
-        typeof json.provider === 'string' &&
-        typeof json.model === 'string' &&
-        isObject(json.context)
+        typeof json.requestId === 'string' && json.requestId.trim() !== '' &&
+        json.provider === 'gemini' &&
+        typeof json.model === 'string' && json.model.trim() !== '' &&
+        isAssistantContext(json.context)
       ) {
         return {
           type: 'start',
@@ -100,10 +100,10 @@ export function toEvent(name: string | undefined, data: string): AssistantEvent 
       const usageOk =
         usage === null ||
         (isObject(usage) &&
-          typeof usage.inputTokens === 'number' &&
-          typeof usage.outputTokens === 'number');
+          typeof usage.inputTokens === 'number' && Number.isSafeInteger(usage.inputTokens) && usage.inputTokens >= 0 &&
+          typeof usage.outputTokens === 'number' && Number.isSafeInteger(usage.outputTokens) && usage.outputTokens >= 0);
       if (
-        typeof json.requestId === 'string' &&
+        typeof json.requestId === 'string' && json.requestId.trim() !== '' &&
         (json.finishReason === 'stop' || json.finishReason === 'length') &&
         usageOk
       ) {
@@ -124,7 +124,7 @@ export function toEvent(name: string | undefined, data: string): AssistantEvent 
 
     case 'error':
       if (
-        typeof json.requestId === 'string' &&
+        typeof json.requestId === 'string' && json.requestId.trim() !== '' &&
         typeof json.code === 'string' &&
         typeof json.message === 'string' &&
         typeof json.retryable === 'boolean'
@@ -170,7 +170,7 @@ export async function* parseAssistantStream(
         if (phase !== 'streaming') {
           throw new AssistantStreamError('protocol', 'delta reçu avant start');
         }
-        if (event.data.text !== '') receivedText = true;
+        if (event.data.text.trim() !== '') receivedText = true;
         answerBytes += byteLength(event.data.text);
         if (answerBytes > MAX_ANSWER_BYTES) {
           throw new AssistantStreamError('limit', 'réponse trop longue');
@@ -189,8 +189,10 @@ export async function* parseAssistantStream(
         phase = 'ended';
         break;
       case 'error':
-        // Un error avant start est accepté : il n'y a pas encore d'id à comparer.
-        if (requestId !== null && event.data.requestId !== requestId) {
+        if (phase !== 'streaming') {
+          throw new AssistantStreamError('protocol', 'error received before start');
+        }
+        if (event.data.requestId !== requestId) {
           throw new AssistantStreamError('protocol', 'requestId différent de start');
         }
         phase = 'ended';
@@ -209,7 +211,12 @@ export async function* parseAssistantStream(
         throw new AssistantStreamError('interrupted', 'connexion interrompue');
       }
 
-      if (result.done) break;
+      if (result.done) {
+        // Flush the decoder so an unfinished UTF-8 character is not silently lost.
+        try { decoder.decode(); }
+        catch { throw new AssistantStreamError('protocol', 'Invalid UTF-8 text'); }
+        break;
+      }
 
       try {
         buffer += decoder.decode(result.value, { stream: true });
@@ -249,6 +256,7 @@ export async function* parseAssistantStream(
     throw new AssistantStreamError('interrupted', 'flux terminé sans done ni error');
   } finally {
     // Quoi qu'il arrive, on libère la lecture.
-    await reader.cancel().catch(() => {});
+    try { await reader.cancel(); } catch { /* The transport may already be closed. */ }
+    finally { reader.releaseLock(); }
   }
 }

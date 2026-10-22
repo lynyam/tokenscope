@@ -255,7 +255,7 @@ function ProjectDetail({ organizationId, projectId }: { organizationId: string; 
         </Link>
         <Link className="underline" to={"/organizations/" + encodeURIComponent(organizationId) + "/projects/" + encodeURIComponent(projectId) + "/documents"}>Documents</Link>
       </nav>
-            <ProjectDashboard
+      <ProjectDashboard
         organizationId={organizationId}
         projectId={projectId}
         onUnavailable={clearProject}

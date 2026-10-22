@@ -1,4 +1,7 @@
-import { useCallback, useEffect, useId, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useReducer, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { getAuthSessionSnapshot, isAuthSessionCurrent, subscribeToAuthInvalidation } from "../../api/auth-session";
+import type { AssistantSelectionState } from "../../hooks/useProjectAnalytics";
 import { isAbortError } from "../../api/http-client";
 import type { ApiStreamResponse } from "../../api/http-client";
 import {
@@ -15,9 +18,6 @@ import { assistantScopeKey } from "../../api/assistant-scope";
 import type { AssistantSelection } from "../../types/assistant.types";
 import { assistantReducer, initialAssistantState, isActive } from "./assistantState";
 import { AssistantContextCard } from "./AssistantContextCard";
-
-// What the dashboard tells us about the applied selection.
-export type AssistantSelectionState = "loading" | "ready" | "empty" | "error" | "invalid";
 
 export type DashboardAssistantProps = {
   organizationId: string;
@@ -89,16 +89,26 @@ export function DashboardAssistant({
     current?.controller.abort();
   }, []);
 
-  // Another project, period or filters: stop and clear the previous answer.
-  useEffect(() => {
+  const clearAnswer = useCallback(() => {
     cancelActive();
     dispatch({ type: "reset" });
+    setQuestion("");
     setSubmittedQuestion("");
     setValidationError(null);
-  }, [scopeKey, cancelActive]);
+  }, [cancelActive]);
+
+  // Clear before painting a different scope or login. A refresh of the same
+  // selection does not change either dependency, so its fixed answer survives.
+  const sessionRevision = getAuthSessionSnapshot().revision;
+  useLayoutEffect(clearAnswer, [scopeKey, sessionRevision, clearAnswer]);
+
+  useEffect(() => subscribeToAuthInvalidation(() => {
+    clearAnswer();
+    setOpen(false);
+  }), [clearAnswer]);
 
   // Leaving the page: abort and clean up.
-  useEffect(() => cancelActive, [cancelActive]);
+  useLayoutEffect(() => cancelActive, [cancelActive]);
 
   // Focus management: textarea on open, launcher on close.
   useEffect(() => {
@@ -131,7 +141,15 @@ export function DashboardAssistant({
 
   function applyFailure(failure: AssistantFailure, stream: ApiStreamResponse | null) {
     // Only the session that started this request is invalidated.
-    if (failure.invalidateSession) stream?.invalidateSession();
+    if (failure.invalidateSession) {
+      stream?.invalidateSession();
+      clearAnswer();
+      return;
+    }
+    if (failure.clearContent) {
+      setQuestion("");
+      setSubmittedQuestion("");
+    }
     dispatch({ type: "fail", failure });
     if (failure.waitSeconds !== undefined) startCooldown(failure.waitSeconds);
     if (failure.notifyProjectUnavailable) onUnavailableRef.current?.();
@@ -153,7 +171,17 @@ export function DashboardAssistant({
     const id = ++requestSeq.current;
     const controller = new AbortController();
     active.current = { id, controller };
-    const isCurrent = () => active.current?.id === id;
+    const session = getAuthSessionSnapshot();
+    // Guard initial HTTP failures as well as streamed events. An old 404 must
+    // never clear the project belonging to a later login.
+    const isCurrent = () => {
+      if (active.current?.id !== id || controller.signal.aborted) return false;
+      if (!isAuthSessionCurrent(session)) {
+        clearAnswer();
+        return false;
+      }
+      return true;
+    };
 
     setValidationError(null);
     setSubmittedQuestion(question.trim());
@@ -169,13 +197,17 @@ export function DashboardAssistant({
         signal: controller.signal,
       });
       stream = answer.stream;
+      if (!isCurrent() || !stream.isSessionCurrent()) {
+        if (active.current?.id === id) clearAnswer();
+        await stream.body.cancel().catch(() => {});
+        return;
+      }
 
       for await (const event of answer.events) {
         if (!isCurrent()) return;
         if (!stream.isSessionCurrent()) {
           // Signed out or signed in as someone else: drop protected content.
-          cancelActive();
-          dispatch({ type: "reset" });
+          clearAnswer();
           return;
         }
         switch (event.type) {
@@ -201,7 +233,9 @@ export function DashboardAssistant({
       // Stop, close, scope change and unmount abort on purpose: not an error.
       if (controller.signal.aborted || isAbortError(error)) return;
       if (!isCurrent()) return;
-      applyFailure(describeAssistantError(error), stream);
+      if (stream && !stream.isSessionCurrent()) { clearAnswer(); return; }
+      const failure = describeAssistantError(error);
+      applyFailure({ ...failure, requestId: failure.requestId ?? stream?.requestId }, stream);
     } finally {
       // Only unlock if this request is still the current one.
       if (active.current?.id === id) {
@@ -218,11 +252,7 @@ export function DashboardAssistant({
   }
 
   function close() {
-    cancelActive();
-    dispatch({ type: "reset" });
-    setQuestion("");
-    setSubmittedQuestion("");
-    setValidationError(null);
+    clearAnswer();
     setOpen(false);
   }
 
@@ -250,14 +280,14 @@ export function DashboardAssistant({
 
   if (!open) {
     return (
-      <button
+      <Button
         ref={launcherRef}
         type="button"
         onClick={() => setOpen(true)}
-        className="fixed bottom-4 right-4 z-40 rounded-full bg-indigo-600 px-4 py-3 text-sm font-medium text-white shadow-lg hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2"
+        className="fixed bottom-4 right-4 z-40 rounded-full shadow-lg"
       >
         Ask assistant
-      </button>
+      </Button>
     );
   }
 
@@ -268,36 +298,36 @@ export function DashboardAssistant({
       onKeyDown={(event) => {
         if (event.key === "Escape") close();
       }}
-      className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-white md:inset-auto md:bottom-4 md:right-4 md:h-[34rem] md:w-96 md:rounded-xl md:border md:border-slate-200 md:shadow-2xl"
+      className="fixed bottom-4 left-4 right-4 z-50 flex h-[34rem] max-h-[calc(100dvh-2rem)] flex-col overflow-hidden rounded-xl border bg-background text-foreground shadow-2xl md:left-auto md:w-96"
     >
-      <header className="flex items-start justify-between gap-2 border-b border-slate-200 px-4 py-3">
+      <header className="flex items-start justify-between gap-2 border-b border-border px-4 py-3">
         <div className="min-w-0">
           <h2 className="text-base font-semibold">Ask assistant</h2>
-          <p className="break-words text-xs text-slate-600">{projectName}</p>
-          <p className="break-words text-xs text-slate-500">
+          <p className="break-words text-xs text-muted-foreground">{projectName}</p>
+          <p className="break-words text-xs text-muted-foreground">
             {selection.from} → {selection.to} (UTC)
           </p>
-          <p className="break-words text-xs text-slate-500">
+          <p className="break-words text-xs text-muted-foreground">
             {activeFilters.length === 0
               ? "No filters"
               : activeFilters.map(([key, value]) => key + ": " + value).join(" · ")}
           </p>
         </div>
-        <button
+        <Button
           type="button"
           onClick={close}
           aria-label="Close assistant"
-          className="rounded p-1 text-slate-500 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+          variant="ghost" size="icon-sm" className="rounded"
         >
           ✕
-        </button>
+        </Button>
       </header>
 
       <div className="flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-4 py-3">
         <p className="rounded-md bg-amber-50 p-2 text-xs text-amber-900">{NOTICE}</p>
 
         {submittedQuestion && state.status !== "ready" && (
-          <div className="ml-auto max-w-[85%] whitespace-pre-wrap break-words rounded-lg bg-indigo-600 px-3 py-2 text-sm text-white">
+          <div className="ml-auto max-w-[85%] whitespace-pre-wrap break-words rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground">
             {submittedQuestion}
           </div>
         )}
@@ -305,20 +335,23 @@ export function DashboardAssistant({
         {state.context && <AssistantContextCard context={state.context} />}
 
         {state.status === "requesting" && (
-          <p className="text-sm text-slate-600">Preparing answer…</p>
+          <p className="text-sm text-muted-foreground">Preparing answer…</p>
         )}
 
         {state.text && (
-          <div className="whitespace-pre-wrap break-words text-sm text-slate-900">
+          <div className="whitespace-pre-wrap break-words text-sm text-foreground">
             {state.text}
           </div>
         )}
 
+        {(state.status === "streaming" || state.status === "complete") && (
+          <p className="text-xs text-muted-foreground">{liveText}</p>
+        )}
         {state.status === "truncated" && (
           <p className="text-xs font-medium text-amber-700">{TRUNCATED}</p>
         )}
         {state.status === "stopped" && (
-          <p className="text-xs font-medium text-slate-600">{STOPPED}</p>
+          <p className="text-xs font-medium text-muted-foreground">{STOPPED}</p>
         )}
         {(state.status === "interrupted" || state.status === "failed") && state.failure && (
           <div className="rounded-md bg-red-50 p-2 text-xs text-red-800">
@@ -336,7 +369,7 @@ export function DashboardAssistant({
       </p>
 
       <form
-        className="space-y-2 border-t border-slate-200 px-4 py-3"
+        className="space-y-2 border-t border-border px-4 py-3"
         onSubmit={(event) => {
           event.preventDefault();
           void ask();
@@ -363,7 +396,7 @@ export function DashboardAssistant({
               void ask();
             }
           }}
-          className="w-full resize-none rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 read-only:bg-slate-50"
+          className="w-full resize-none rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring read-only:bg-muted bg-background"
         />
         {validationError && (
           <p id={errorId} className="text-xs text-red-700">
@@ -372,30 +405,30 @@ export function DashboardAssistant({
         )}
 
         {selectionState !== "ready" && (
-          <p className="text-xs text-slate-600">{BLOCKED_REASON[selectionState]}</p>
+          <p className="text-xs text-muted-foreground">{BLOCKED_REASON[selectionState]}</p>
         )}
         {waitLeft > 0 && (
-          <p className="text-xs text-slate-600">
+          <p className="text-xs text-muted-foreground">
             You can ask again in {waitLeft} {waitLeft === 1 ? "second" : "seconds"}.
           </p>
         )}
 
         <div className="flex gap-2">
-          <button
+          <Button
             type="submit"
             disabled={!canAsk}
-            className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-md"
           >
             Ask
-          </button>
+          </Button>
           {running && (
-            <button
+            <Button
               type="button"
               onClick={stop}
-              className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+              variant="outline" className="rounded-md"
             >
               Stop
-            </button>
+            </Button>
           )}
         </div>
       </form>

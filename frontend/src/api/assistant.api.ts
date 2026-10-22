@@ -1,7 +1,9 @@
+import { commonFilters, parseTraceSearchParams, validatePeriod } from "./trace-filters";
 import { apiPostStream } from "./http-client";
 import type { ApiStreamResponse } from "./http-client";
 import { AssistantStreamError, parseAssistantStream } from "./assistant-stream";
 import type {
+  AssistantContext,
   AskAssistantRequest,
   AssistantEvent,
   AssistantFilters,
@@ -10,7 +12,6 @@ import type {
 
 export const MAX_QUESTION_LENGTH = 2000;
 export const MAX_BODY_BYTES = 8 * 1024;
-const MAX_RANGE_MS = 90 * 24 * 60 * 60 * 1000;
 
 export class AssistantRequestError extends Error {
   constructor(
@@ -32,63 +33,32 @@ export function validateAssistantQuestion(
 ): "empty" | "too-long" | null {
   const trimmed = question.trim();
   if (trimmed.length === 0) return "empty";
-  if (trimmed.length > MAX_QUESTION_LENGTH) return "too-long";
+  if ([...trimmed].length > MAX_QUESTION_LENGTH) return "too-long";
   return null;
 }
 
-function cleanText(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  return trimmed === "" ? undefined : trimmed;
-}
-
-// Keeps only active filters, in a fixed key order. Workflow case is preserved.
-// PROVISIONAL: align with the dashboard's existing normalization rules.
+// Delegate filtering to the same parser used by the dashboard and Explorer.
+// Its default dates are irrelevant here: only the normalized filter fields are returned.
 export function normalizeFilters(filters: Record<string, unknown>): AssistantFilters {
-  const result: AssistantFilters = {};
-  const q = cleanText(filters.q);
-  if (q !== undefined) result.q = q;
-    const provider = cleanText(filters.provider)?.toLowerCase();
-  if (provider !== undefined) result.provider = provider;
-  const model = cleanText(filters.model)?.toLowerCase();
-  if (model !== undefined) result.model = model;
-  const workflow = cleanText(filters.workflow);
-  if (workflow !== undefined) result.workflow = workflow;
-  if (filters.status === "SUCCESS" || filters.status === "ERROR") {
-    result.status = filters.status;
+  const params = new URLSearchParams();
+  for (const key of ["q", "provider", "model", "workflow", "status"] as const) {
+    const value = filters[key];
+    if (value === undefined || value === null || value === "") continue;
+    if (typeof value !== "string") {
+      throw new AssistantRequestError("invalid-selection", "The selected filters are invalid.");
+    }
+    if (value.trim() === "") continue;
+    params.set(key, value);
   }
-  return result;
+  const parsed = parseTraceSearchParams(params);
+  if (!parsed.ok) throw new AssistantRequestError("invalid-selection", parsed.errors.join(" "));
+  const { from: _from, to: _to, ...normalized } = commonFilters(parsed.query);
+  return normalized;
 }
 
-function isUtcInstant(value: string): boolean {
-  return (
-    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(value) &&
-    !Number.isNaN(Date.parse(value))
-  );
-}
-
-// Never repairs an invalid selection: it refuses it.
 function assertValidSelection(selection: AssistantSelection): void {
-  const { from, to } = selection;
-  if (!isUtcInstant(from) || !isUtcInstant(to)) {
-    throw new AssistantRequestError(
-      "invalid-selection",
-      "The selected period must use valid UTC dates.",
-    );
-  }
-  const span = Date.parse(to) - Date.parse(from);
-  if (span <= 0) {
-    throw new AssistantRequestError(
-      "invalid-selection",
-      "The start of the period must be before its end.",
-    );
-  }
-  if (span > MAX_RANGE_MS) {
-    throw new AssistantRequestError(
-      "invalid-selection",
-      "The selected period cannot exceed 90 days.",
-    );
-  }
+  const error = validatePeriod(selection.from, selection.to);
+  if (error) throw new AssistantRequestError("invalid-selection", error);
 }
 
 // Builds the body field by field: nothing else can leak into the request.
@@ -100,7 +70,7 @@ export function buildAssistantBody(
   if (trimmed.length === 0) {
     throw new AssistantRequestError("empty-question", "Enter a question.");
   }
-  if (trimmed.length > MAX_QUESTION_LENGTH) {
+  if ([...trimmed].length > MAX_QUESTION_LENGTH) {
     throw new AssistantRequestError(
       "question-too-long",
       "The question must be at most " + MAX_QUESTION_LENGTH + " characters.",
@@ -125,10 +95,6 @@ export function buildAssistantBody(
   return body;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function sameInstant(value: unknown, expected: string): boolean {
   return typeof value === "string" && Date.parse(value) === Date.parse(expected);
 }
@@ -140,29 +106,25 @@ type ExpectedScope = {
   filters: AssistantFilters;
 };
 
-// ASSUMPTION to confirm with the backend fixtures: context.window = { from, to }.
+// The parser validates the shape; this binds the context to this exact request.
 function assertContextMatches(
-  context: Record<string, unknown>,
+  context: AssistantContext,
   expected: ExpectedScope,
 ): void {
   const mismatch = () =>
     new AssistantStreamError("protocol", "The returned context does not match the request.");
 
-  if (!isRecord(context.project) || context.project.id !== expected.projectId) {
+  if (context.project.id !== expected.projectId) {
     throw mismatch();
   }
   if (
-    !isRecord(context.window) ||
     !sameInstant(context.window.from, expected.from) ||
     !sameInstant(context.window.to, expected.to)
   ) {
     throw mismatch();
   }
-  if (!isRecord(context.filters)) throw mismatch();
-
-  const returned = normalizeFilters(context.filters);
   for (const key of ["q", "provider", "model", "workflow", "status"] as const) {
-    if (returned[key] !== expected.filters[key]) throw mismatch();
+    if ((context.filters[key] ?? undefined) !== expected.filters[key]) throw mismatch();
   }
 }
 

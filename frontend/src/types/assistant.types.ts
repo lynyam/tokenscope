@@ -1,6 +1,12 @@
-// Version simple : on précisera AssistantContext plus tard.
+import type { AnalyticsSnapshot, AppliedSelection, DashboardFilters } from "./analytics.types";
 
-export type AssistantContext = Record<string, unknown>;
+// The TSE-80 contract in docs/API.md; reuse the dashboard's analytics representation.
+export type AssistantContext = Pick<AnalyticsSnapshot,
+  "snapshotId" | "generatedAt" | "window" | "filters" | "summary" | "series" | "byModel"
+> & {
+  project: { id: string; name: string; description: string | null };
+  pricing: { currency: "USD"; containsSyntheticPricing: boolean };
+};
 
 export type AssistantUsage = { inputTokens: number; outputTokens: number } | null;
 
@@ -31,21 +37,10 @@ export type AssistantEvent =
   | { type: 'error'; data: ErrorPayload };
 
 
-// PROVISIONAL: replace with the dashboard's shared filter type once TSE-76 exists.
-export type AssistantFilters = {
-  q?: string;
-  provider?: string;
-  model?: string;
-  workflow?: string;
-  status?: 'SUCCESS' | 'ERROR';
-};
+export type AssistantFilters = DashboardFilters;
 
 // The dashboard's applied selection (exact resolved UTC dates + active filters).
-export type AssistantSelection = {
-  from: string;
-  to: string;
-  filters: AssistantFilters;
-};
+export type AssistantSelection = Pick<AppliedSelection, "from" | "to" | "filters">;
 
 // The exact JSON body sent to the backend.
 export type AskAssistantRequest = {
