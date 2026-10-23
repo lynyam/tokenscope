@@ -36,6 +36,22 @@ const NOTICE =
 const TRUNCATED = "Answer reached the output limit and may be incomplete";
 const STOPPED = "Stopped — answer incomplete";
 
+// The panel is anchored to the bottom-right corner, so it grows toward the top-left.
+const MIN_SIZE = { width: 320, height: 320 };
+const RESIZE_STEP = 24;
+const SCREEN_MARGIN = 32; // keeps the panel inside the viewport
+
+type PanelSize = { width: number; height: number };
+
+function clampSize(width: number, height: number): PanelSize {
+  const maxWidth = Math.max(MIN_SIZE.width, window.innerWidth - SCREEN_MARGIN);
+  const maxHeight = Math.max(MIN_SIZE.height, window.innerHeight - SCREEN_MARGIN);
+  return {
+    width: Math.min(maxWidth, Math.max(MIN_SIZE.width, Math.round(width))),
+    height: Math.min(maxHeight, Math.max(MIN_SIZE.height, Math.round(height))),
+  };
+}
+
 const BLOCKED_REASON: Record<Exclude<AssistantSelectionState, "ready">, string> = {
   loading: "Waiting for the dashboard to load this selection…",
   error: "The dashboard could not load this selection.",
@@ -64,6 +80,18 @@ export function DashboardAssistant({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const launcherRef = useRef<HTMLButtonElement>(null);
   const wasOpen = useRef(false);
+
+  // Follow the answer only while the reader is at the bottom. Scrolling up to read
+  // earlier content must never be overridden by incoming text.
+  const messagesRef = useRef<HTMLDivElement>(null);
+  const followRef = useRef(true);
+  const lastTextLength = useRef(0);
+
+  // Panel size chosen by the reader. null = default size. Kept when the panel is closed.
+  const panelRef = useRef<HTMLElement>(null);
+  const [size, setSize] = useState<PanelSize | null>(null);
+  const drag = useRef<{ axis: "width" | "height" | "both"; x: number; y: number; width: number; height: number } | null>(null);
+  const [hasNewBelow, setHasNewBelow] = useState(false);
 
   // Submission lock: a ref is readable immediately, unlike a disabled button.
   const lockRef = useRef(false);
@@ -95,6 +123,8 @@ export function DashboardAssistant({
     setQuestion("");
     setSubmittedQuestion("");
     setValidationError(null);
+    setHasNewBelow(false);
+    followRef.current = true;
   }, [cancelActive]);
 
   // Clear before painting a different scope or login. A refresh of the same
@@ -116,6 +146,31 @@ export function DashboardAssistant({
     else if (wasOpen.current) launcherRef.current?.focus();
     wasOpen.current = open;
   }, [open]);
+
+  // New text: follow it if the reader is at the bottom, otherwise only signal it.
+  useEffect(() => {
+    const box = messagesRef.current;
+    if (!box) return;
+    const grew = state.text.length > lastTextLength.current;
+    lastTextLength.current = state.text.length;
+    if (followRef.current) box.scrollTop = box.scrollHeight;
+    else if (grew) setHasNewBelow(true);
+  }, [state.text, state.status, state.context, submittedQuestion]);
+
+  function handleMessagesScroll() {
+    const box = messagesRef.current;
+    if (!box) return;
+    const distance = box.scrollHeight - box.scrollTop - box.clientHeight;
+    followRef.current = distance <= 24;
+    if (followRef.current) setHasNewBelow(false);
+  }
+
+  function jumpToLatest() {
+    const box = messagesRef.current;
+    if (box) box.scrollTop = box.scrollHeight;
+    followRef.current = true;
+    setHasNewBelow(false);
+  }
 
   // Countdown while the server asks us to wait (Retry-After).
   useEffect(() => {
@@ -167,6 +222,8 @@ export function DashboardAssistant({
       return;
     }
 
+    followRef.current = true; // a new question follows its own answer
+    setHasNewBelow(false);
     lockRef.current = true; // before the first await
     const id = ++requestSeq.current;
     const controller = new AbortController();
@@ -256,6 +313,52 @@ export function DashboardAssistant({
     setOpen(false);
   }
 
+  function currentSize(): PanelSize {
+    if (size) return size;
+    const box = panelRef.current?.getBoundingClientRect();
+    return { width: box?.width || 384, height: box?.height || 544 };
+  }
+
+  // Which sides of the panel a handle moves. The panel is anchored bottom-right,
+  // so only its left and top edges (and the corner between them) can be dragged.
+  type ResizeAxis = "width" | "height" | "both";
+
+  function startResize(axis: ResizeAxis) {
+    return (event: React.PointerEvent<HTMLElement>) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      drag.current = { axis, x: event.clientX, y: event.clientY, ...currentSize() };
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+    };
+  }
+
+  function moveResize(event: React.PointerEvent<HTMLElement>) {
+    const start = drag.current;
+    if (!start) return;
+    // Dragging toward the top-left makes the panel bigger.
+    const width = start.axis === "height" ? start.width : start.width + (start.x - event.clientX);
+    const height = start.axis === "width" ? start.height : start.height + (start.y - event.clientY);
+    setSize(clampSize(width, height));
+  }
+
+  function endResize() {
+    drag.current = null;
+  }
+
+  // Keyboard: the left-edge handle changes the width, the top-edge handle the height.
+  function resizeWithKeyboard(axis: Exclude<ResizeAxis, "both">) {
+    return (event: React.KeyboardEvent<HTMLElement>) => {
+      const { width, height } = currentSize();
+      if (event.key === "Home") setSize(null);
+      else if (axis === "width" && event.key === "ArrowLeft") setSize(clampSize(width + RESIZE_STEP, height));
+      else if (axis === "width" && event.key === "ArrowRight") setSize(clampSize(width - RESIZE_STEP, height));
+      else if (axis === "height" && event.key === "ArrowUp") setSize(clampSize(width, height + RESIZE_STEP));
+      else if (axis === "height" && event.key === "ArrowDown") setSize(clampSize(width, height - RESIZE_STEP));
+      else return;
+      event.preventDefault();
+    };
+  }
+
   const activeFilters = Object.entries(normalizeFilters(selection.filters));
 
   const liveText = (() => {
@@ -293,13 +396,51 @@ export function DashboardAssistant({
 
   return (
     <section
+      ref={panelRef}
       role="dialog"
       aria-label="Ask assistant"
+      style={size ? { width: size.width, height: size.height } : undefined}
       onKeyDown={(event) => {
         if (event.key === "Escape") close();
       }}
-      className="fixed bottom-4 left-4 right-4 z-50 flex h-[34rem] max-h-[calc(100dvh-2rem)] flex-col overflow-hidden rounded-xl border bg-background text-foreground shadow-2xl md:left-auto md:w-96"
+      className="fixed bottom-4 left-4 right-4 z-50 flex h-[34rem] max-h-[calc(100dvh-2rem)] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border bg-background text-foreground shadow-2xl md:left-auto md:w-96"
     >
+      {/* Invisible resize zones on the left edge, the top edge and the corner. Desktop only. */}
+      <button
+        type="button"
+        aria-label="Resize assistant width"
+        title="Drag to resize. Arrow keys resize, Home or double-click resets."
+        onPointerDown={startResize("width")}
+        onPointerMove={moveResize}
+        onPointerUp={endResize}
+        onPointerCancel={endResize}
+        onKeyDown={resizeWithKeyboard("width")}
+        onDoubleClick={() => setSize(null)}
+        className="absolute bottom-0 left-0 top-4 z-10 hidden w-2 cursor-ew-resize touch-none select-none rounded-none hover:bg-border focus:outline-none focus-visible:bg-ring md:block"
+      />
+      <button
+        type="button"
+        aria-label="Resize assistant height"
+        title="Drag to resize. Arrow keys resize, Home or double-click resets."
+        onPointerDown={startResize("height")}
+        onPointerMove={moveResize}
+        onPointerUp={endResize}
+        onPointerCancel={endResize}
+        onKeyDown={resizeWithKeyboard("height")}
+        onDoubleClick={() => setSize(null)}
+        className="absolute left-4 right-4 top-0 z-10 hidden h-2 cursor-ns-resize touch-none select-none rounded-none hover:bg-border focus:outline-none focus-visible:bg-ring md:block"
+      />
+      <div
+        aria-hidden
+        data-testid="assistant-resize-corner"
+        onPointerDown={startResize("both")}
+        onPointerMove={moveResize}
+        onPointerUp={endResize}
+        onPointerCancel={endResize}
+        onDoubleClick={() => setSize(null)}
+        className="absolute left-0 top-0 z-20 hidden size-4 cursor-nwse-resize touch-none select-none md:block"
+      />
+
       <header className="flex items-start justify-between gap-2 border-b border-border px-4 py-3">
         <div className="min-w-0">
           <h2 className="text-base font-semibold">Ask assistant</h2>
@@ -323,7 +464,12 @@ export function DashboardAssistant({
         </Button>
       </header>
 
-      <div className="flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-4 py-3">
+      <div
+        ref={messagesRef}
+        data-testid="assistant-messages"
+        onScroll={handleMessagesScroll}
+        className="flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-4 py-3"
+      >
         <p className="rounded-md bg-amber-50 p-2 text-xs text-amber-900">{NOTICE}</p>
 
         {submittedQuestion && state.status !== "ready" && (
@@ -360,6 +506,17 @@ export function DashboardAssistant({
               <p className="mt-1 break-all text-red-600">Request ID: {state.failure.requestId}</p>
             )}
           </div>
+        )}
+
+        {hasNewBelow && (
+          <Button
+            type="button"
+            size="xs"
+            onClick={jumpToLatest}
+            className="sticky bottom-0 ml-auto block rounded-full shadow"
+          >
+            New text below ↓
+          </Button>
         )}
       </div>
 
