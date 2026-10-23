@@ -2,8 +2,6 @@ import { Link } from "react-router-dom";
 import { LegalLayout } from "../../layouts/LegalLayout";
 import { useScrollToTop } from "../../hooks/useScrollToTop";
 
-const CONTACT_EMAIL = "contact@example.com";
-
 export function TermsPage() {
   useScrollToTop();
 
@@ -16,7 +14,7 @@ export function TermsPage() {
           LLM usage and estimated costs. It provides organization and project
           workspaces, trace ingestion and management, analytics, real-time
           updates, exports, document storage and an assistant for explaining
-          selected trace measurements.
+          selected project analytics.
         </p>
         <p>
           The application is under active development. These terms describe the
@@ -94,7 +92,7 @@ export function TermsPage() {
         <h2>Assistant output</h2>
         <p>
           The assistant uses an external LLM provider to generate explanations
-          from your question and selected trace measurements.
+          from your question, project name and description, and the selected project analytics.
         </p>
         <p>
           Generated answers can be incomplete or incorrect. Check calculations
@@ -157,9 +155,10 @@ export function TermsPage() {
           <Link to="/privacy">Privacy Policy</Link> before using those controls.
         </p>
         <p>
-          Organization deletion is irreversible through the application and
-          affects the organization’s shared data. It preserves global user
-          accounts and other organizations.
+          Organization deletion archives the organization and disables access to
+          its shared data. Records and document files remain stored; restoration
+          is not available in the application. Global accounts and other
+          organizations remain usable.
         </p>
         <p>
           The evaluation version does not include self-service account deletion.
@@ -171,8 +170,9 @@ export function TermsPage() {
       <section>
         <h2>Contact and updates</h2>
         <p>
-          For questions about these terms or private requests, write to{" "}
-          <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.
+          For personal-data questions, see the{' '}
+          <Link to="/privacy#your-information-and-requests">Privacy Policy’s contact section</Link>.
+          Do not put private information in a public issue.
         </p>
         <p>
           Use{" "}

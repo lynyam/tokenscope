@@ -2,15 +2,12 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { AppRouter } from "./router/AppRouter";
 import "./index.css";
-import { ThemeProvider } from "./context/ThemeContext";
-import { AuthProvider } from "./context/AuthContext";
+import { ThemeProvider } from "next-themes";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <ThemeProvider>
-      <AuthProvider>
-        <AppRouter />
-      </AuthProvider>
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+      <AppRouter />
     </ThemeProvider>
   </React.StrictMode>
 );

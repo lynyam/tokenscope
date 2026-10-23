@@ -29,6 +29,8 @@ services:
       JWT_ISSUER: tokenscope-test
       JWT_AUDIENCE: tokenscope-test-web
       JWT_ACCESS_TTL_SECONDS: "3600"
+      DOCUMENT_STORAGE_ROOT: /tmp/tokenscope-test-documents
+      REALTIME_ALLOWED_ORIGINS: "http://localhost:5173"
     depends_on:
       postgres-test:
         condition: service_healthy

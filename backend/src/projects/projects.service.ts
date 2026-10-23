@@ -1,3 +1,4 @@
+import { AccessChangesService } from "../access-changes/access-changes.service";
 import { HttpStatus, Injectable } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
 import { ApiException } from '../common/errors/api.exception';
@@ -27,6 +28,7 @@ export class ProjectsService {
         private readonly prisma: PrismaService,
         private readonly organizationAccess: OrganizationAccessService,
         private readonly projectAccess: ProjectAccessService,
+        private readonly accessChanges: AccessChangesService,
     ) { }
     async findAllForOrganization(userId: string, organizationId: string) {
         await this.organizationAccess.assertOrganizationMember(userId, organizationId);
@@ -184,6 +186,7 @@ export class ProjectsService {
             }
             throw error;
         }
+        await this.accessChanges.publish({ kind: "project.archived", organizationId, projectId });
     }
 
     private activeWritableProject(

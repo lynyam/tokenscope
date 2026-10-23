@@ -119,6 +119,33 @@ input/output handling, dependency review, and avoiding unsafe HTML reduce the
 risk. An HTTP-only cookie plus refresh/session design can replace this approach
 during production hardening.
 
+### Frontend transport session protection — TSE-72
+
+JSON, private-byte, multipart and streamed requests use the shared
+frontend HTTP client and the existing auth-session helper.
+
+A request captures the token and session revision once. Initial protected
+HTTP 401 responses invalidate only that captured matching session,
+including when the error body is empty, HTML or malformed JSON.
+
+Two logins may receive the same token string. The session revision prevents
+an earlier request from invalidating the newer login in that case.
+
+403, 404, conflicts, rate limits, server/provider failures, network failures
+and cancellation do not invalidate the application session.
+
+The frontend sends bearer credentials only to application API paths.
+Tokens are not placed in query parameters or exposed through the stream
+handoff object. Frontend components do not create separate token stores.
+
+The assistant parser may invalidate the originating session after a
+validated ACCESS_TOKEN_EXPIRED stream event. It uses the callback captured
+when opening that stream, never an unconditional current-session logout.
+
+Cancellation stops the browser operation. It does not prove a backend
+mutation was rolled back. Uploads, mutations and assistant requests are
+never automatically retried by the shared transport.
+
 ## Authorization
 
 Authentication answers “who is the caller?” Authorization answers “may this
@@ -137,6 +164,7 @@ project-specific member table or ACL.
 | Create organization | yes | yes | yes | no |
 | View organization | yes | yes | yes | no |
 | Rename organization | yes | no | no | no |
+| Archive (delete) organization | yes | no | no | no |
 | View members | yes | yes | yes | no |
 | Add member | yes | no | no | no |
 | Remove member | yes | no | no | no |
@@ -358,6 +386,10 @@ Use:
 This prevents an outsider from using status codes to enumerate organizations or
 projects while still giving legitimate members a useful permission error.
 
+An archived organization is treated as absent: it returns the same concealed
+`404 ORGANIZATION_NOT_FOUND` as an unknown organization, and its projects return
+`404` through the active-organization check.
+
 ## Ownership invariants
 
 ### Initial owner
@@ -399,6 +431,29 @@ PostgreSQL integration tests deliberately overlap two owner transactions and
 cover removal/removal, demotion/demotion, and mixed removal/demotion. They prove
 that one operation succeeds, the other returns `LAST_OWNER_REQUIRED` after
 retry, and one owner remains.
+
+## Organization archive
+
+`DELETE /organizations/:organizationId` is restricted to `OWNER`. Order of checks:
+
+1. authenticate the caller (JWT);
+2. require an active organization and an `OWNER` membership
+   (`404` for outsiders or archived organizations, `403` for ADMIN/MEMBER);
+3. only then compare `confirmSlug` exactly with the slug (`409
+   ORGANIZATION_CONFIRMATION_MISMATCH`).
+
+Comparing the slug after authorization prevents outsiders and non-owners from
+using the endpoint to confirm slugs. The operation runs in a `Serializable`
+transaction. Each attempt repeats authorization and the archive write. Only
+recognized serialization/write conflicts are retried, at most three attempts;
+exhaustion returns `409 CONCURRENT_MODIFICATION`. Final queries also filter on
+`archivedAt: null`, so a concurrent archive cannot be bypassed.
+
+Organization archive updates only the organization row: `archivedAt` is set
+and `updatedAt` is maintained automatically. Child rows and their existing
+lifecycle fields remain unchanged. Backend access checks require an active
+organization, including checks for project API keys, traces and analytics.
+There is no restore operation.
 
 ## Project lifecycle
 
@@ -522,6 +577,9 @@ The following are M1 completion requirements:
 | Archive behavior | Archived project disappears from normal list/detail/update |
 | Slug constraints | Conflicting organization/project slugs return `409` |
 | Mass assignment | Unknown/protected request properties return `400` |
+| Organization archive roles | ADMIN and MEMBER get `403`; outsiders get `404`; slug is never compared first |
+| Organization archive behavior | Archived organization, its members, and its projects become concealed `404`; a second deletion returns `404` |
+| Archive confirmation | Wrong, empty, whitespace-only, or differently-cased slug is rejected; unknown properties return `400` |
 
 At least the tenant-isolation, role, last-owner, and safe-output cases must be
 integration or end-to-end tests against PostgreSQL—not only mocked unit tests.
@@ -620,7 +678,21 @@ The key belongs to its project. Creator removal/demotion does not revoke it auto
 API-key management uses current OWNER/ADMIN membership and active project/organization checks. Creation and revocation use bounded
 serializable transactions with at most three attempts. Every retry rechecks authorization using the transaction client.
 
-Public handlers use PublicApi(), which applies IP quota, API-key verification and verified-key quota in that order. Public documentation routes must not use this decorator.
+Public trace handlers use PublicApi(), which applies IP quota, API-key
+verification and verified-key quota in that order.
+
+GET /api/v1/public/openapi.json and the Swagger UI/assets under
+/api/v1/public/docs/ are intentionally accessible without JWT or API key.
+They do not use PublicApi() and do not consume trace-operation quotas.
+
+Public documentation access does not grant access to trace data.
+All five /api/v1/public/traces operations continue to require X-API-Key,
+including when invoked through Swagger UI.
+
+Swagger UI uses locally served assets, disables the external Swagger
+validator and does not persist authorization. Users must enter a disposable
+project key deliberately; no key is embedded in the specification or examples.
+Interactive requests execute real operations and consume the normal quotas.
 
 ApiKeyAuthService.assertActivePrincipal(principal, tx) revalidates the credential inside consumer database operations without consuming quota.
 
@@ -651,7 +723,8 @@ Abort, permission, not-found, conflict, rate-limit and network failures do not i
 |---|---|
 | Public trace routes before key authentication | 60 requests/minute per trusted client IP |
 | Public trace routes after key authentication | 120 requests/minute per verified key |
-| Browser trace-list/analytics budget | Shared 60 requests/minute per user/project |
+| Browser trace list/detail and analytics | Shared 60 requests/minute per authenticated user/project |
+| Analytics integration — TSE-71 target | Reuse the same browser user/project budget |
 | Authorized document uploads | 5/minute per user |
 | Realtime connections | 5 simultaneous sockets per user |
 | Realtime subscribe attempts | 10 per 10 seconds per socket |
@@ -659,6 +732,21 @@ Abort, permission, not-found, conflict, rate-limit and network failures do not i
 | Assistant accepted requests | 5/minute per user and 30/minute per project |
 
 Public trace quotas apply across public trace routes. Database retries do not consume another HTTP quota.
+
+ProjectReadLimitInterceptor applies one shared browser-read budget to trace
+list, trace detail and analytics. Its counter uses the browser-project-reads namespace and the
+authenticated user ID plus project ID. It is distinct from the public
+client-IP and API-key budgets.
+
+The interceptor runs after JWT authentication and before parameter pipes and
+service-level project authorization. Malformed project UUIDs are left to the
+UUID pipe without consuming this budget. Requests with a valid project UUID
+consume capacity even if subsequent validation or authorization fails.
+
+Quota exhaustion returns 429 RATE_LIMITED with Retry-After in seconds.
+It does not clear the user's authentication session.
+
+TSE-71 reuses this budget through the HTTP interceptor. Internal analytics calls do not consume browser quota; the assistant owns its separate limits. Analytics is not marked implemented by this change.
 
 Use bounded bookkeeping. Do not introduce Redis for the single-backend evaluation deployment.
 
@@ -675,11 +763,48 @@ Logs must not contain complete trace payloads, metadata, API keys or raw
 database errors. Post-commit notification failure is logged safely and
 does not turn a committed ingestion into an HTTP failure.
 
+### Analytics snapshot authorization — TSE-71
+
+Analytics requires current organization membership and active project and
+organization records. Authorization and aggregate queries use the same
+transaction client. Aggregate SQL also includes tenant, membership,
+active-parent and deleted-trace conditions.
+
+A Repeatable Read snapshot established before a concurrent revocation can
+still reflect the earlier authorized state. A new snapshot established
+after revocation commits must reject access. Repeating a read inside the
+old snapshot does not discover the new revocation.
+
+Assistant pre-dispatch and streaming access checks must therefore use
+fresh reads after its analytics transaction has completed.
+
+SQL values are parameterized. Search escaping preserves literal percent,
+underscore and backslash characters. Analytics responses exclude raw
+trace metadata and credentials. Database failures use the existing safe error envelope.
+
 ### Realtime access
 
 Verify JWT signature and expiry using the existing token service.
 
-Validate exact allowed browser Origins for polling and WebSocket transport.
+Validate every Engine.IO request, including polling and WebSocket upgrades, against
+`REALTIME_ALLOWED_ORIGINS` (comma-separated exact HTTP(S) origins, no trailing slash).
+An absent configuration denies realtime transport requests; HTTP authentication remains unchanged.
+A present Origin must match exactly; reject `null` and unapproved origins.
+WebSocket upgrades require an approved Origin. The only missing-Origin exception is a
+polling GET with `Sec-Fetch-Site: same-origin` and an allowlisted Referer origin, because
+real browsers may omit Origin on same-origin GETs. Proxies preserve these browser headers.
+Non-browser clients can forge these headers: they are not identity or authorization.
+JWT verification and current project access remain mandatory. Never place credentials in URLs.
+
+TokenService returns verified `{ sub, exp }`; exp is Unix seconds. Realtime converts it
+to milliseconds, schedules disconnection and rechecks it before join and notification delivery.
+The HTTP guard keeps `request.user` limited to `{ id }` and attaches the verified
+expiry separately as `request.accessTokenExpiresAt` (milliseconds) for assistant HTTP streams.
+
+Post-commit access events use AccessChangesModule, which has no dependency on realtime
+or the assistant. Its listener errors are logged safely and cannot reverse a committed mutation.
+The existing TraceChangesService remains the only trace mutation publisher.
+No raw token, API key, socket auth body or exception details are logged.
 
 Check access when subscribing and again before notifications. Protect asynchronous subscription changes with a generation check.
 
@@ -707,6 +832,79 @@ Cancellation, expiry, access loss, timeout and disconnect must release provider 
 
 Keep provider credentials backend-only. Verify the actual account/model configuration and disclose applicable provider processing accurately. Do not promise zero retention or unlimited free use without evidence.
 
+#### TSE-80 implementation status
+
+Authorization:
+
+- The global JWT guard reuses the existing `TokenService.verifyAccessToken()`
+  result `{ sub, exp }`; the guard stores expiry as `request.accessTokenExpiresAt`
+  (milliseconds). The token is never decoded without verification, roles are not
+  added to it, and public auth responses are unchanged.
+- `ProjectAccessService.assertProjectAccess()` runs before any limit, inside the
+  analytics transaction (TSE-71), right before the provider call, and every
+  5 seconds while streaming. A lost membership or an archived organization/project
+  stops the stream with `PROJECT_NOT_FOUND`; a re-check that cannot complete stops
+  it with `INTERNAL_SERVER_ERROR`. Each access read has a five-second wait limit.
+  Re-checks never overlap (chained timers). A timed-out database operation may
+  still finish internally; its late result cannot resume output.
+- The stream also stops when the verified JWT expires (`ACCESS_TOKEN_EXPIRED`).
+
+Data sent to Gemini (`backend/src/assistant/assistant-prompt.ts`), built from an
+explicit allowlist:
+
+- the question;
+- project name and description;
+- window, applied filters, summary, time series, per-model breakdown and the
+  synthetic-pricing flag.
+
+Never sent: JWTs, API keys, user identities or emails, trace metadata, trace
+prompts, documents, snapshot/project/request IDs. Data is JSON-encoded inside
+`<analytics>` / `<question>` blocks with `<` and `>` escaped, and the fixed
+instructions say that this content is data, not instructions.
+
+Provider boundary: only `gemini-assistant.provider.ts` imports `@google/genai`.
+One attempt (`httpOptions.retryOptions.attempts: 1`, proven against the installed
+SDK by `test/assistant/gemini-sdk-retry.unit.spec.ts`), one candidate,
+600 output tokens, no tools, `automaticContinuation: false`. Provider errors are
+mapped to safe codes; raw SDK messages never reach clients or logs. A provider
+authentication failure is `503 LLM_UNAVAILABLE`, never a user `401`.
+
+Cancellation is client-side: on Stop, disconnect, deadline, expiry, access loss
+or shutdown, TokenScope aborts the SDK request, stops reading and writing, clears
+its timers and frees the user's slot. It cannot guarantee that Google stops
+computing an answer already in progress.
+
+Limits are in memory (`RateLimitService` plus a per-user active set). They are
+correct for the single backend instance of this MVP; several instances would
+each keep their own counters. Assistant quotas use a rolling 60-second window;
+user and project budgets are charged together only after both allow admission.
+Existing public/browser quotas retain their fixed-window behavior.
+
+Logging: one `assistant_answer` line per admitted answer with `requestId`,
+outcome code and duration only. Rejections before admission are logged by the
+existing `request_failed` filter line. Questions, descriptions, contexts,
+answers and raw provider errors are never logged.
+
+Gemini data handling depends on the account and region. Under the unpaid-service
+terms, submitted content and responses may be used for product improvement and
+human review. For the EEA, Switzerland and UK, the paid-service data-use terms
+also apply to unpaid quota. The terms separately restrict making API clients
+available in those regions to Paid Services. Confirm the actual account and
+intended audience; do not automatically enable billing.
+
+Reference: https://ai.google.dev/gemini-api/terms
+TokenScope discloses the question, project name/description and selected analytics
+sent to Gemini and makes no zero-retention claim.
+Record the verified model, account tier, region, quota, date and tested commit
+after the explicit live check. Until then, live-provider validation is pending.
+
+TSE-89 retains earlier assistant exchanges only in the mounted panel's memory.
+They are not persisted or sent as model history. Close, applied scope/session
+changes and access loss clear every retained answer/context. Model answers use a
+restricted `react-markdown` element allowlist: HTML remains escaped, and links,
+images and executable elements are not created. Do not add `rehype-raw` or render
+model output with `dangerouslySetInnerHTML`. Questions remain escaped plain text.
+
 ### Private files
 
 Authorize before accepting upload bytes and again before committing metadata.
@@ -728,3 +926,35 @@ Real PostgreSQL tests must cover tenant isolation, current roles, archived paren
 Realtime tests must use real connections. Browser tests must exercise the integrated UI. Provider stubs must remain separate from deliberate live-provider evidence.
 
 Logs and test artifacts must exclude credentials, file contents, questions, complete contexts and answers.
+
+## Private documents — TSE-78
+
+- Authorization precedes body parsing. An outsider receives a scoped `404`, a member without the role receives `403`, and a document is only reachable through its own project.
+- Uploads are limited to 10 MiB and to PDF, UTF-8 text and UTF-8 Markdown. Content is validated, not only the extension or client MIME type. Password-protected and permission-encrypted PDFs are rejected.
+- Client file names are display data only. They never form a filesystem path. Storage keys are server-generated UUIDs and are checked against a strict pattern before any file access.
+- Downloads send the stored media type with `nosniff`, `no-store` and a safe `Content-Disposition`. There is no public storage URL.
+- Files are stored with mode `0600` in a private directory that must not be served by any web server.
+- Upload quota is five authorized attempts per rolling minute per user, using the existing shared `RateLimitService.consumeRolling`. Denials include `Retry-After`; failed authorized attempts consume capacity. Counters are in memory and reset on restart. This remains a single-backend deployment.
+- PDF structural validation runs in a dedicated Node worker thread using `pdf-parse`. The worker is terminated after validation or the ten-second deadline, so CPU-bound parsing does not block the HTTP event loop. A worker thread is resource isolation, not a security sandbox or malware scanner. Parser diagnostics are not forwarded to application logs.
+- Validation checks format and structure. It is not a guarantee that a file is free of malware, and no antivirus scan is performed.
+- Documents are only stored for users. They are not sent to the assistant, indexed, or used for retrieval.
+- Uploads are received as `0600` temporary files in a private `0700` directory. Active temporary paths are protected from orphan cleanup. Validation reads up to 10 MiB per upload; PDF parsing also uses a worker copy and parser memory.
+- Caddy rejects request bodies above 11 MiB on `/api/*` before they reach the backend. Caddy answers `413` itself, so that response does not use the JSON error envelope.
+
+### Public legal pages
+
+`/privacy` and `/terms` do not mount `AuthProvider`, read the session or call
+workspace APIs. Visiting them preserves the stored token. Existing application
+routes still mount the provider and enforce their normal route guards.
+
+Legal content must describe the current Gemini analytics allowlist, client-side
+cancellation, browser-only assistant exchanges, inherited organization archive
+and retained document bytes. Older TSE-82 wording about OpenAI, a selected trace
+or physical organization deletion is superseded by the current implementation.
+
+Publication handoff remains required: confirm the instance operator, a private
+contact, applicable processing purposes/bases, hosting/recipients, retention and
+manual request handling, plus the actual Gemini account/region configuration.
+These facts cannot be inferred from source code. Do not substitute an example
+email or a public GitHub issue for a private personal-data contact. No claim of
+legal compliance is established by passing the navigation tests.

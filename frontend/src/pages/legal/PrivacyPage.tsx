@@ -35,7 +35,7 @@ const deletionActions = [
   {
     action: "Delete an organization",
     effect:
-      "Removes that organization’s memberships, projects, keys, traces and document records, and schedules removal of its document files. Global accounts and other organizations remain.",
+      "Archives the organization and makes its memberships, projects, keys, traces and documents inaccessible through the application. Records and document files remain stored. Restoration is not available in the application. Global accounts and other organizations remain usable.",
   },
 ];
 
@@ -50,7 +50,7 @@ export function PrivacyPage() {
           TokenScope is an educational and evaluation project for observing LLM
           usage and estimated costs. It provides shared organizations and
           projects, trace ingestion, analytics, document storage and an assistant
-          that explains selected trace measurements.
+          that explains selected project analytics.
         </p>
         <p>
           This policy explains the information handled by the evaluation
@@ -107,6 +107,11 @@ export function PrivacyPage() {
           send that trace to the company. The explicit assistant request is the
           external LLM data flow.
         </p>
+        <p>
+          Dashboards aggregate stored traces. CSV and PDF exports are generated in
+          your browser from the displayed analytics snapshot, including its period
+          and filters. Downloaded copies remain on the receiving device.
+        </p>
       </section>
 
       <section>
@@ -124,46 +129,48 @@ export function PrivacyPage() {
         </p>
         <p>
           The evaluation assistant does not automatically receive or analyze
-          uploaded documents. Uploading a file does not send it to OpenAI.
+          uploaded documents. Uploading a file does not send it to Gemini.
         </p>
       </section>
 
       <section>
-        <h2>Assistant requests and OpenAI</h2>
+        <h2>Assistant requests and Gemini</h2>
         <p>
-          When you submit a question in the trace assistant, TokenScope sends
-          your question to OpenAI together with selected facts from the
-          authorized trace: provider and model names, token counts, pricing and
-          cost breakdown, status and latency.
+          When you submit an assistant question, TokenScope sends Google’s Gemini
+          API your question, the project name and description, and analytics for
+          your selected UTC period and applied filters. The context includes
+          totals, time series, provider/model breakdowns and whether pricing is
+          synthetic. The backend builds a fixed authorized context for each answer.
         </p>
         <p>
-          The question is sent as you enter it. Do not include passwords, API
-          keys or confidential information that should not be sent to the
-          provider.
+          Surrounding whitespace is trimmed from your question. Do not include
+          credentials, personal or confidential information in questions, project
+          descriptions or filter values that should not be sent to the provider.
         </p>
         <p>
-          TokenScope does not automatically add uploaded documents, arbitrary
-          trace metadata, account email addresses or API credentials to the
-          assistant’s prompt.
+          TokenScope does not automatically add uploaded documents, individual
+          traces, arbitrary trace metadata, user identities, account email addresses
+          or API credentials to the assistant’s prompt.
         </p>
         <p>
-          Questions and answers are held in the current browser view and are
-          cleared when that view is left or reset. TokenScope does not save them
-          as persistent chat history in its application database.
+          Earlier questions and answers remain visible only in the open panel’s
+          memory. They are not sent as conversation history to Gemini and are not
+          saved in TokenScope’s database. Closing or leaving the panel, changing
+          the applied project, period or filters, changing session or losing access
+          clears these exchanges.
         </p>
         <p>
-          OpenAI processes the request under its API policies and the operator’s
-          account settings. Disabling saved response history does not guarantee
-          that all provider-side retention is disabled. See{" "}
-          <a href="https://developers.openai.com/api/docs/guides/your-data">
-            OpenAI’s API data controls
-          </a>
-          .
+          Google’s processing and retention depend on the account, service tier
+          and region. Under the unpaid-service terms, submitted content and
+          responses may be used for product improvement and human review. The
+          terms include regional exceptions and service restrictions. TokenScope
+          does not promise zero provider retention. See the{' '}
+          <a href="https://ai.google.dev/gemini-api/terms">Gemini API terms</a>.
         </p>
         <p>
-          Stopping a response cancels further processing where possible. It
-          cannot recall information already transmitted to the provider or
-          already displayed in the browser.
+          Stop aborts TokenScope’s request and stops consumption and forwarding
+          of the response. It cannot recall transmitted information or guarantee
+          that Google stops computation already in progress.
         </p>
       </section>
 
@@ -173,7 +180,9 @@ export function PrivacyPage() {
           TokenScope stores an access token in your browser’s local storage so
           that the session can be restored after a page reload. Signing out
           removes the application’s local session. Clearing the site’s browser
-          storage also removes that stored token.
+          storage also removes that stored token. The token uses the
+          <code> tokenscope.accessToken</code> key. Your light/dark preference is
+          stored separately under <code>theme</code>; signing out does not erase it.
         </p>
         <p>
           Signing out does not delete your account or workspace data. An
@@ -223,7 +232,7 @@ export function PrivacyPage() {
         <p>
           People administering the application’s database, file storage or
           hosting environment can have technical access to stored information.
-          OpenAI receives the information described in the assistant section
+          Google receives the information described in the assistant section
           when a user submits an assistant question.
         </p>
       </section>

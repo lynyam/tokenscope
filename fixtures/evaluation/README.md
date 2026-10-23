@@ -70,6 +70,21 @@ The context comes from the canonical analytics example.
 SSE output is deterministic test data, not live-provider evidence.
 The fixture model label is not a deployable Gemini model name.
 
+| File | Shows |
+|---|---|
+| request.json | Golden window, no filters |
+| request-filtered.json | Golden window with provider + status filters |
+| context.json | The `start.context` for request.json |
+| success.sse | start, two deltas (Unicode), done/stop |
+| length.sse | Output-limit completion (done/length) |
+| refusal.sse | Provider accepted the request, then refused (start + error) |
+| partial-timeout.sse | Partial answer, then LLM_TIMEOUT |
+| unexpected-eof.sse | Connection cut: no terminal event |
+| chunk-boundaries.json | Byte offsets for split-frame and UTF-8 decoding tests |
+
+The backend test `test/assistant/assistant-fixtures.unit.spec.ts` regenerates
+every `.sse` file with the fake provider and checks it byte for byte.
+
 ## Verification
 
 The backend fixture unit test checks golden arithmetic, upload
@@ -77,3 +92,12 @@ checksums and the dashboard assistant context.
 
 Passing these tests does not prove live ingestion, analytics,
 uploads, realtime or Gemini integration.
+
+## Dashboard CSV example (TSE-77 / C06)
+
+`responses/dashboard-golden.csv` exports `responses/analytics-golden.json`
+with the authorized fixture project name `Support Golden`. It contains the
+canonical 24-column header, one summary, 24 hourly buckets (including zeroes)
+and two model rows. UTF-8 and CRLF record separators are deliberate.
+The frontend tests compare this file byte for byte and independently check
+its parsed columns, rows, exact decimal strings and formula escaping.

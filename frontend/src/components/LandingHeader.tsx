@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { buttonVariants } from "./ui/button";
+import { ThemeToggle } from "./ThemeToggle";
 
 const signupFocusClasses =
   "focus-visible:outline-solid! focus-visible:outline-4! focus-visible:outline-offset-4! focus-visible:outline-amber-400! focus-visible:ring-0!";
@@ -83,6 +84,7 @@ export function LandingHeader({ isLoggedIn }: { isLoggedIn: boolean }) {
         </nav>
 
         <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+          <ThemeToggle />
           <LandingActions isLoggedIn={isLoggedIn} size="sm" />
         </div>
       </div>

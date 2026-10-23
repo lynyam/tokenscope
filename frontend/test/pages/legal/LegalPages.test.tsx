@@ -21,6 +21,7 @@ const legalPages = [
 ];
 
 beforeEach(() => {
+  vi.stubGlobal("scrollTo", vi.fn());
   window.history.replaceState({}, "", "/");
   document.title = "TokenScope";
   localStorage.clear();
@@ -105,4 +106,19 @@ describe.each(legalPages)("$heading public access", ({
     expect(fetchMock.mock.calls.length).toBeGreaterThan(verificationCalls);
     expect(getAccessToken()).toBe("existing-test-token");
   });
+});
+
+
+it.each([
+  "/organizations/o/projects/p/dashboard",
+  "/organizations/o/projects/p/traces",
+  "/organizations/o/projects/p/traces/t",
+  "/organizations/o/projects/p/documents",
+  "/organizations/o/projects/p/api-keys",
+])("keeps %s behind the existing authentication guard", async path => {
+  window.history.replaceState({}, "", path);
+  render(<AppRouter />);
+  expect(await screen.findByRole("button", { name: "Sign in" })).toBeInTheDocument();
+  expect(window.location.pathname).toBe("/signin");
+  expect(fetchMock).not.toHaveBeenCalled();
 });

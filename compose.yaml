@@ -8,6 +8,10 @@ services:
       - type: bind
         source: ./frontend
         target: /app
+      - type: bind
+        source: ./fixtures/evaluation
+        target: /fixtures/evaluation
+        read_only: true
       - type: volume
         source: tokenscope_frontend_node_modules
         target: /app/node_modules
@@ -35,6 +39,9 @@ services:
       - type: volume
         source: tokenscope_backend_node_modules
         target: /app/node_modules
+      - type: volume
+        source: tokenscope_documents
+        target: /var/lib/tokenscope/documents
     expose:
       - "${BACKEND_PORT}"
     environment:
@@ -44,7 +51,11 @@ services:
       JWT_ISSUER: "${JWT_ISSUER}"
       JWT_AUDIENCE: "${JWT_AUDIENCE}"
       JWT_ACCESS_TTL_SECONDS: "${JWT_ACCESS_TTL_SECONDS}"
+      DOCUMENT_STORAGE_ROOT: "/var/lib/tokenscope/documents"
       TRUSTED_PROXY_HOST: "frontend"
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      LLM_MODEL: "${LLM_MODEL:-}"
+      REALTIME_ALLOWED_ORIGINS: "${REALTIME_ALLOWED_ORIGINS:-http://localhost:5173,https://localhost:8443}"
     depends_on:
      postgres:
       condition: service_healthy
@@ -82,6 +93,7 @@ services:
 volumes:
   tokenscope_frontend_node_modules:
   tokenscope_backend_node_modules:
+  tokenscope_documents:
   tokenscope_postgres_data:
   tokenscope_dev_scratch:
   tokenscope_caddy_data:

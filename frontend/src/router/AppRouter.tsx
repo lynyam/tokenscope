@@ -1,26 +1,27 @@
 // Browser Router, enables routing to the components inside it
 import { BrowserRouter, Routes, Route, Outlet } from "react-router-dom";
 //import { BrowserRouter, Navigate, Routes, Route, Outlet} from "react-router-dom"
-
 //Pages
-import { SignInPage } from "../pages/auth/SignInPage";
-import { SignUpPage } from "../pages/auth/SignUpPage";
-import { OrganizationsPage } from "../pages/organizations/OrganizationsPage";
-
+import { SignInPage} from "../pages/auth/SignInPage";
+import { SignUpPage} from "../pages/auth/SignUpPage";
+import { OrganizationsPage} from "../pages/organizations/OrganizationsPage";
 //Layouts
 import { AuthLayout } from "../layouts/AuthLayout";
 import { AppLayout } from "../layouts/AppLayout";
 import { ProtectedRoute } from "../components/ProtectedRoute";
 import { AnonymousRoute } from "../components/AnonymousRoute";
-
 //Custom hook to get the current user
 //import { useCurrentUser } from "../hooks/useCurrentUser";
-
 import { OrganizationDetailPage } from "../pages/organizations/OrganizationDetailPage";
 import { MembersPage } from "../pages/organizations/MembersPage";
 import { ProjectsPage } from "../pages/projects/ProjectsPage";
 import { ProjectDetailPage } from "../pages/projects/ProjectDetailPage";
+import { TracesPage } from "../pages/projects/TracesPage";
+import { ProjectDashboardPage } from "../pages/projects/ProjectDashboardPage";
+import { TraceDetailPage } from "../pages/projects/TraceDetailPage";
+import { DocumentsPage } from "../pages/documents/DocumentsPage";
 import { LandingPage } from "../pages/LandingPage";
+import { ApiKeysPage } from "../pages/projects/ApiKeysPage";
 import { AuthProvider } from "../context/AuthContext";
 import { PrivacyPage } from "../pages/legal/PrivacyPage";
 import { TermsPage } from "../pages/legal/TermsPage";
@@ -28,89 +29,90 @@ import { TermsPage } from "../pages/legal/TermsPage";
 //Root redirection
 // function RootRedirect() {
 //   const { user, isLoading } = useCurrentUser();
-//
+
 //   if (isLoading) return <div role="status" className="flex min-h-screen items-center justify-center">Loading…</div>;
 //   if (user) return <Navigate to="/organizations" replace />;
 //   return <Navigate to="/signup" replace />;
 // }
 
-export function AppRouter() {
-  return (
-    <BrowserRouter>
-      <Routes>
-        {/* Legal pages remain accessible without session verification. */}
-        <Route path="/privacy" element={<PrivacyPage />} />
-        <Route path="/terms" element={<TermsPage />} />
+export function AppRouter()
+{
+    return(
+        <BrowserRouter>
+            <Routes>
+                <Route path="/privacy" element={<PrivacyPage />} />
+                <Route path="/terms" element={<TermsPage />} />
+                <Route element={<AuthProvider><Outlet /></AuthProvider>}>
+                <Route path="/" element={<LandingPage />} />
+                <Route path="/signin"
+                element={<AnonymousRoute><AuthLayout><SignInPage /></AuthLayout></AnonymousRoute>} />
+                <Route path="/signup" element={
+                    <AnonymousRoute>
+                        <AuthLayout><SignUpPage /></AuthLayout>
+                    </AnonymousRoute>
+                } />
+                <Route
+                    element={
+                    <ProtectedRoute>
+                        <AppLayout>
+                        <Outlet />
+                        </AppLayout>
+                    </ProtectedRoute>
+                    }
+                >
+                    <Route
+                    path="/organizations"
+                    element={<OrganizationsPage />}
+                    />
 
-        <Route
-          element={
-            <AuthProvider>
-              <Outlet />
-            </AuthProvider>
-          }
-        >
-          <Route path="/" element={<LandingPage />} />
+                    <Route
+                    path="/organizations/:organizationId"
+                    element={<OrganizationDetailPage />}
+                    />
 
-          <Route
-            path="/signin"
-            element={
-              <AnonymousRoute>
-                <AuthLayout>
-                  <SignInPage />
-                </AuthLayout>
-              </AnonymousRoute>
-            }
-          />
+                    <Route
+                    path="/organizations/:organizationId/members"
+                    element={<MembersPage />}
+                    />
 
-          <Route
-            path="/signup"
-            element={
-              <AnonymousRoute>
-                <AuthLayout>
-                  <SignUpPage />
-                </AuthLayout>
-              </AnonymousRoute>
-            }
-          />
+                    <Route
+                    path="/organizations/:organizationId/projects"
+                    element={<ProjectsPage />}
+                    />
 
-          <Route
-            element={
-              <ProtectedRoute>
-                <AppLayout>
-                  <Outlet />
-                </AppLayout>
-              </ProtectedRoute>
-            }
-          >
-            <Route
-              path="/organizations"
-              element={<OrganizationsPage />}
-            />
+                    <Route
+                    path="/organizations/:organizationId/projects/:projectId"
+                    element={<ProjectDetailPage />}
+                    />
 
-            <Route
-              path="/organizations/:organizationId"
-              element={<OrganizationDetailPage />}
-            />
+                    <Route
+                    path="/organizations/:organizationId/projects/:projectId/documents"
+                    element={<DocumentsPage />}
+                    />
 
-            <Route
-              path="/organizations/:organizationId/members"
-              element={<MembersPage />}
-            />
+                    <Route
+                    path="/organizations/:organizationId/projects/:projectId/dashboard"
+                    element={<ProjectDashboardPage />}
+                    />
 
-            <Route
-              path="/organizations/:organizationId/projects"
-              element={<ProjectsPage />}
-            />
+                    <Route
+                    path="/organizations/:organizationId/projects/:projectId/traces"
+                    element={<TracesPage />}
+                    />
 
-            <Route
-              path="/organizations/:organizationId/projects/:projectId"
-              element={<ProjectDetailPage />}
-            />
-          </Route>
+                    <Route
+                    path="/organizations/:organizationId/projects/:projectId/traces/:traceId"
+                    element={<TraceDetailPage />}
+                    />
+                    <Route
+                        path="/organizations/:organizationId/projects/:projectId/api-keys"
+                        element={<ApiKeysPage />}
+                    />
+                </Route>
 
-          <Route path="*" element={<h1>404 Not Found</h1>} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
-  );
+                <Route path="*" element={<h1>404 Not Found</h1>} />
+                </Route>
+            </Routes>
+        </BrowserRouter>
+    );
 }

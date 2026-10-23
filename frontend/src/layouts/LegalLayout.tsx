@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { LegalLinks } from "../components/LegalLinks";
+import { ThemeToggle } from "../components/ThemeToggle";
 
 interface LegalLayoutProps {
   title: string;
@@ -23,7 +24,7 @@ export function LegalLayout({ title, children }: LegalLayoutProps) {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border">
-        <div className="mx-auto max-w-3xl px-6 py-5">
+        <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-6 py-5">
           <Link
             to="/"
             className="inline-flex items-center gap-2 rounded-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
@@ -35,6 +36,7 @@ export function LegalLayout({ title, children }: LegalLayoutProps) {
             />
             TokenScope
           </Link>
+          <ThemeToggle />
         </div>
       </header>
 
@@ -44,7 +46,7 @@ export function LegalLayout({ title, children }: LegalLayoutProps) {
         </h1>
 
         <p className="mt-4 text-sm text-muted-foreground">
-          Last updated: <time dateTime="2026-10-03">3 October 2026</time>
+          Last updated: <time dateTime="2026-10-23">23 October 2026</time>
         </p>
 
         <div className="mt-10 space-y-10 wrap-break-word leading-relaxed [&_h2]:mb-4 [&_h2]:font-heading [&_h2]:text-xl [&_h2]:font-semibold [&_p+p]:mt-4 [&_ul]:mt-4 [&_ul]:list-disc [&_ul]:space-y-2 [&_ul]:pl-6 [&_a]:underline [&_a]:underline-offset-4 [&_a]:focus-visible:outline-2 [&_a]:focus-visible:outline-offset-4 [&_a]:focus-visible:outline-ring">

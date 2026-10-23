@@ -158,7 +158,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             Unable to verify your session
           </h1>
           <p>{sessionError}</p>
-                    <button
+          <button
             type="button"
             className="rounded-lg border px-4 py-2"
             onClick={() => setVerificationAttempt(value => value + 1)}

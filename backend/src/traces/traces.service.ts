@@ -21,6 +21,13 @@ import {
 	type TraceResponse,
 } from "./trace.mapper";
 import { TraceChangesService } from "./trace-changes.service";
+import { invalidUsage } from "../common/validation/usage-values";
+import { publicTraceScope } from "./trace-scope";
+import {
+	assertTraceVersion,
+	assertVersionCanAdvance,
+	parseTraceVersion,
+} from "./trace-version";
 
 export interface IngestResult {
 	trace: TraceResponse;
@@ -134,9 +141,7 @@ export class TracesService {
 		// The transaction has committed before execution reaches here.
 		if (result.created) {
 			try {
-				await this.changes.publish({
-					projectId: principal.projectId,
-				});
+				await this.publishCommittedChange(principal.projectId);
 			} catch {
 				// Do not log raw errors, trace payloads, metadata or credentials.
 				this.logger.warn(JSON.stringify({
@@ -147,5 +152,177 @@ export class TracesService {
 		}
 
 		return result;
+	}
+
+	async replace(
+		principal: ApiKeyPrincipal,
+		traceId: string,
+		ifMatch: string | undefined,
+		payload: NormalizedTracePayload,
+	): Promise<TraceResponse> {
+		const payloadHash = hashTracePayload(payload);
+
+		const result = await runSerializable(this.prisma, async tx => {
+			await this.apiKeyAuth.assertActivePrincipal(principal, tx);
+
+			const scope = publicTraceScope(principal);
+
+			const existing = await tx.trace.findFirst({
+				where: { AND: [scope, { id: traceId }] },
+				include: traceResponseInclude,
+			});
+
+			if (!existing) {
+				throw new ApiException(404, "TRACE_NOT_FOUND", "Trace not found.");
+			}
+
+			// Parse after the scoped lookup so inaccessible resources do not
+			// reveal their current version or existence.
+			const expected = parseTraceVersion(ifMatch);
+			assertTraceVersion(existing.version, expected);
+
+			if (payload.externalId !== existing.externalId) {
+				invalidUsage("externalId", "A trace externalId cannot be changed.");
+			}
+
+			if (existing.payloadHash === payloadHash) {
+				return {
+					trace: mapTrace(existing),
+					changed: false,
+				};
+			}
+
+			assertVersionCanAdvance(existing.version);
+
+			const occurredAt = new Date(payload.occurredAt);
+
+			const price = await this.pricing.findEffectivePrice(
+				tx,
+				payload.provider,
+				payload.model,
+				occurredAt,
+			);
+
+			const costs = calculateTraceCost({
+				inputTokens: payload.inputTokens,
+				outputTokens: payload.outputTokens,
+				inputUsdPerMillion: price.inputUsdPerMillion,
+				outputUsdPerMillion: price.outputUsdPerMillion,
+			});
+
+			const changed = await tx.trace.updateMany({
+				where: {
+					AND: [
+						scope,
+						{ id: traceId, version: expected },
+					],
+				},
+				data: {
+					provider: payload.provider,
+					model: payload.model,
+					workflow: payload.workflow,
+					inputTokens: payload.inputTokens,
+					outputTokens: payload.outputTokens,
+					latencyMs: payload.latencyMs,
+					status: payload.status,
+					occurredAt,
+					metadata: payload.metadata,
+					priceVersionId: price.id,
+					inputUsdPerMillion: price.inputUsdPerMillion,
+					outputUsdPerMillion: price.outputUsdPerMillion,
+					...costs,
+					payloadHash,
+					version: { increment: 1 },
+					updatedAt: new Date(),
+				},
+			});
+
+			if (changed.count !== 1) {
+				throw new ApiException(
+					412,
+					"TRACE_VERSION_CONFLICT",
+					"The trace changed. Read it again before deciding on a correction.",
+				);
+			}
+
+			const row = await tx.trace.findFirstOrThrow({
+				where: { AND: [scope, { id: traceId }] },
+				include: traceResponseInclude,
+			});
+
+			return {
+				trace: mapTrace(row),
+				changed: true,
+			};
+		});
+
+		if (result.changed) {
+			await this.publishCommittedChange(principal.projectId);
+		}
+
+		return result.trace;
+	}
+
+	async remove(
+		principal: ApiKeyPrincipal,
+		traceId: string,
+		ifMatch: string | undefined,
+	): Promise<void> {
+		await runSerializable(this.prisma, async tx => {
+			await this.apiKeyAuth.assertActivePrincipal(principal, tx);
+
+			const scope = publicTraceScope(principal);
+
+			const existing = await tx.trace.findFirst({
+				where: { AND: [scope, { id: traceId }] },
+				select: { id: true, version: true },
+			});
+
+			if (!existing) {
+				throw new ApiException(404, "TRACE_NOT_FOUND", "Trace not found.");
+			}
+
+			const expected = parseTraceVersion(ifMatch);
+			assertTraceVersion(existing.version, expected);
+			assertVersionCanAdvance(existing.version);
+
+			const now = new Date();
+
+			const removed = await tx.trace.updateMany({
+				where: {
+					AND: [
+						scope,
+						{ id: traceId, version: expected },
+					],
+				},
+				data: {
+					deletedAt: now,
+					updatedAt: now,
+					version: { increment: 1 },
+				},
+			});
+
+			if (removed.count !== 1) {
+				throw new ApiException(
+					412,
+					"TRACE_VERSION_CONFLICT",
+					"The trace changed. Read it again before deciding on deletion.",
+				);
+			}
+		});
+
+		await this.publishCommittedChange(principal.projectId);
+	}
+
+	private async publishCommittedChange(projectId: string): Promise<void> {
+		try {
+			await this.changes.publish({ projectId });
+		} catch {
+			// The database mutation is already committed.
+			this.logger.warn(JSON.stringify({
+				event: "trace_change_publication_failed",
+				projectId,
+			}));
+		}
 	}
 }
