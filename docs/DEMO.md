@@ -840,7 +840,10 @@ Keep the returned trace id and ETag for PUT/DELETE. Do not commit the key.
    Presets resolve once: Live does not silently advance their upper boundary.
 
 Record dev and trusted-HTTPS browser results separately. Dashboard realtime does not establish
-that Explorer realtime is integrated; verify that separately in TSE-87.
+Explorer realtime: TSE-87 verifies the real list and detail screens separately.
+Leave an Explorer browser open while another client ingests, corrects and deletes a trace in its
+applied period. Check the rows/detail change without Refresh or reload, then check reconnection
+and access revocation. Keep the same URL selection throughout; notifications do not advance dates.
 
 
 ### Dashboard assistant UI — TSE-81

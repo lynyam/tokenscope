@@ -6,9 +6,12 @@ import { listTraces, getModelChoices } from "@/api/traces.api";
 import { ApiError } from "@/api/http-client";
 import { notifyProjectsChanged } from "@/api/project-events";
 import type { Trace, TracePage } from "@/types/trace.types";
-import { saveAccessToken } from "@/api/auth-session";
+import { clearAuthSession, getAuthSessionSnapshot, isAuthSessionCurrent, saveAccessToken } from "@/api/auth-session";
 
 vi.mock("@/api/traces.api", () => ({ listTraces: vi.fn(), getTrace: vi.fn(), getModelChoices: vi.fn() }));
+vi.mock("@/context/AuthContext", () => ({
+  useAuthContext: () => ({ user: { id: "viewer" }, isLoading: false }),
+}));
 
 const listMock = vi.mocked(listTraces);
 const choicesMock = vi.mocked(getModelChoices);
@@ -42,20 +45,23 @@ function Probe() {
 }
 
 function renderAt(initial: string) {
-  return render(
+  const tree = () => (
     <MemoryRouter initialEntries={[initial]}>
       <Link to={path("p2")}>go p2</Link>
       <Routes>
         <Route path="/organizations/:organizationId/projects/:projectId/traces" element={<TracesPage />} />
       </Routes>
       <Probe />
-    </MemoryRouter>,
+    </MemoryRouter>
   );
+  const view = render(tree());
+  return { ...view, rerenderPage: () => view.rerender(tree()) };
 }
 const url = () => screen.getByTestId("url").textContent ?? "";
 const lastQuery = () => listMock.mock.calls.at(-1)![2];
 
 beforeEach(() => {
+  saveAccessToken("explorer-session");
   listMock.mockReset();
   choicesMock.mockReset();
   choicesMock.mockResolvedValue({
@@ -102,6 +108,7 @@ it("debounces search into one request and resets the page", async () => {
   fireEvent.change(input, { target: { value: "SUPPORT" } });
   expect(listMock).toHaveBeenCalledTimes(1);
   await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(0); });
   expect(listMock).toHaveBeenCalledTimes(2);
   expect(lastQuery()).toMatchObject({ q: "SUPPORT", page: 1 });
   expect(url()).toContain("q=SUPPORT");
@@ -116,6 +123,7 @@ it("keeps a filter chosen while the search timer is pending", async () => {
   fireEvent.change(screen.getByLabelText("Search"), { target: { value: "SUPPORT" } });
   fireEvent.change(screen.getByLabelText("Status"), { target: { value: "SUCCESS" } });
   await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(0); });
   expect(url()).toContain("status=SUCCESS");
   expect(url()).toContain("q=SUPPORT");
   expect(lastQuery()).toMatchObject({ q: "SUPPORT", status: "SUCCESS" });
@@ -133,6 +141,7 @@ it("keeps the search when the workflow timer fires after it", async () => {
   await act(async () => { await vi.advanceTimersByTimeAsync(100); });
   expect(url()).toContain("q=SUPPORT");
   await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(0); });
   expect(url()).toContain("q=SUPPORT");
   expect(url()).toContain("workflow=billing");
   expect(lastQuery()).toMatchObject({ q: "SUPPORT", workflow: "billing" });
@@ -186,6 +195,7 @@ it("never shows project A rows in project B", async () => {
   const b = deferred<TracePage>();
   listMock.mockReturnValueOnce(a.promise).mockReturnValueOnce(b.promise);
   renderAt(path("p1"));
+  await waitFor(() => expect(listMock).toHaveBeenCalledTimes(1));
   fireEvent.click(screen.getByText("go p2"));
   await act(async () => { b.resolve(page([trace(2, { workflow: "B-work" })])); });
   await act(async () => { a.resolve(page([trace(1, { workflow: "A-work" })])); });
@@ -396,4 +406,294 @@ it("discards a response from a superseded login", async () => {
   expect(
     screen.queryByText("old-private-data"),
   ).not.toBeInTheDocument();
+});
+
+// ---- Realtime refresh (TSE-87) ----
+// Controlled realtime channel: the tests fire the three callbacks by hand.
+const realtime = vi.hoisted(() => ({
+  handlers: null as null | { onChanged: () => void; onSynced: () => void; onRevoked: () => void },
+  enabled: true,
+}));
+vi.mock("@/hooks/useProjectRealtime", () => ({
+  useProjectRealtime: (
+    _organizationId: string,
+    _projectId: string,
+    handlers: { onChanged: () => void; onSynced: () => void; onRevoked: () => void },
+    enabled = true,
+  ) => {
+    realtime.handlers = handlers;
+    realtime.enabled = enabled;
+    return "live";
+  },
+}));
+
+afterEach(() => {
+  setVisibility("visible");
+  realtime.handlers = null;
+  realtime.enabled = true;
+});
+
+async function flush(ms = 0) {
+  await act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+}
+
+function notify(kind: "onChanged" | "onSynced" | "onRevoked") {
+  act(() => { realtime.handlers![kind](); });
+}
+
+function setVisibility(state: "visible" | "hidden") {
+  Object.defineProperty(document, "visibilityState", { configurable: true, get: () => state });
+}
+
+// Opens the list with the first read settled, under a controlled clock.
+async function openLoaded(search = GOLDEN, rows = page([trace(1)])) {
+  vi.useFakeTimers();
+  listMock.mockResolvedValueOnce(rows);
+  const view = renderAt(path("p1", search));
+  await flush();
+  expect(listMock).toHaveBeenCalledTimes(1);
+  return view;
+}
+
+it("refreshes after a notice with the same applied query, keeping the rows meanwhile", async () => {
+  await openLoaded(GOLDEN + "&q=SUPPORT&page=2", page([trace(1)], { page: 2, total: 60, totalPages: 3 }));
+  const firstQuery = lastQuery();
+  const next = deferred<TracePage>();
+  listMock.mockReturnValueOnce(next.promise);
+  notify("onChanged");
+  await flush(300);
+  expect(listMock).toHaveBeenCalledTimes(2);
+  expect(lastQuery()).toEqual(firstQuery); // same instants, filters and page
+  expect(screen.getByText("Updating…")).toBeInTheDocument();
+  expect(screen.getByText("$0.0018")).toBeInTheDocument(); // confirmed rows stay visible
+  await act(async () => {
+    next.resolve(page([trace(1), trace(9, { workflow: "New-row" })], { page: 2, total: 61, totalPages: 3 }));
+  });
+  expect(screen.queryByText("Updating…")).not.toBeInTheDocument();
+  expect(screen.getByTestId("trace-summary")).toHaveTextContent("61 traces · Page 2 of 3");
+  expect(screen.getByText("New-row")).toBeInTheDocument();
+  expect(url()).toContain("q=SUPPORT");
+  expect(url()).toContain("page=2");
+});
+
+it("does not resolve the default period again on a notice", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-10-21T10:00:00.000Z"));
+  listMock.mockResolvedValue(page([trace(1)]));
+  renderAt(path("p1", ""));
+  await flush();
+  await flush(1);
+  expect(listMock).toHaveBeenCalledTimes(1);
+  const first = lastQuery();
+  vi.setSystemTime(new Date("2026-10-21T11:00:00.000Z"));
+  notify("onChanged");
+  await flush(300);
+  expect(listMock).toHaveBeenCalledTimes(2);
+  expect(lastQuery().from).toBe(first.from);
+  expect(lastQuery().to).toBe(first.to);
+});
+
+it("coalesces a burst of notices and an acknowledgement into one read", async () => {
+  await openLoaded();
+  listMock.mockResolvedValue(page([trace(1)]));
+  act(() => {
+    realtime.handlers!.onChanged();
+    realtime.handlers!.onChanged();
+    realtime.handlers!.onSynced();
+  });
+  await flush(300);
+  expect(listMock).toHaveBeenCalledTimes(2);
+  await flush(2000);
+  expect(listMock).toHaveBeenCalledTimes(2);
+});
+
+it("queues exactly one follow-up when a notice arrives during a read", async () => {
+  await openLoaded();
+  const slow = deferred<TracePage>();
+  listMock.mockReturnValueOnce(slow.promise).mockResolvedValue(page([trace(1)]));
+  notify("onChanged");
+  await flush(300);
+  expect(listMock).toHaveBeenCalledTimes(2);
+  notify("onChanged");
+  notify("onChanged");
+  notify("onChanged");
+  await flush(2000);
+  expect(listMock).toHaveBeenCalledTimes(2); // still one read at a time
+  await act(async () => { slow.resolve(page([trace(1)])); });
+  await flush(1);
+  expect(listMock).toHaveBeenCalledTimes(3); // one follow-up, not three
+  await flush(2000);
+  expect(listMock).toHaveBeenCalledTimes(3);
+});
+
+it("recovers once to the last valid page after a deletion, keeping the query", async () => {
+  await openLoaded(GOLDEN + "&q=SUPPORT&page=3", page([trace(1)], { page: 3, total: 51, totalPages: 3 }));
+  listMock
+    .mockResolvedValueOnce(page([], { page: 3, total: 50, totalPages: 2 }))
+    .mockResolvedValueOnce(page([trace(2)], { page: 2, total: 50, totalPages: 2 }));
+  notify("onChanged");
+  await flush(300);
+  await flush(1);
+  expect(listMock).toHaveBeenCalledTimes(3);
+  expect(url()).toContain("page=2");
+  expect(url()).toContain("q=SUPPORT");
+  expect(lastQuery()).toMatchObject({ q: "SUPPORT", page: 2 });
+  expect(screen.getByTestId("trace-summary")).toHaveTextContent("50 traces · Page 2 of 2");
+  await flush(2000);
+  expect(listMock).toHaveBeenCalledTimes(3); // no pagination loop
+});
+
+it("keeps the confirmed rows with an error and a deliberate Retry after a transient failure", async () => {
+  await openLoaded();
+  listMock.mockRejectedValueOnce(new ApiError(500, "INTERNAL_SERVER_ERROR", "boom", undefined, "req-500"));
+  notify("onChanged");
+  await flush(300);
+  expect(screen.getByText("$0.0018")).toBeInTheDocument(); // not turned into an empty result
+  expect(screen.queryByText("No traces match this period and these filters.")).not.toBeInTheDocument();
+  expect(screen.getByText("Request ID: req-500")).toBeInTheDocument();
+  await flush(5000);
+  expect(listMock).toHaveBeenCalledTimes(2); // no automatic retry loop
+  listMock.mockResolvedValueOnce(page([trace(1), trace(7, { workflow: "Back-again" })]));
+  fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+  await flush(1);
+  expect(listMock).toHaveBeenCalledTimes(3);
+  expect(screen.getByText("Back-again")).toBeInTheDocument();
+  expect(screen.queryByText("Request ID: req-500")).not.toBeInTheDocument();
+});
+
+it("does not read again before the Retry-After deadline, whatever the trigger", async () => {
+  await openLoaded();
+  listMock.mockRejectedValueOnce(new ApiError(429, "RATE_LIMITED", "slow", undefined, undefined, 10));
+  notify("onChanged");
+  await flush(300);
+  expect(listMock).toHaveBeenCalledTimes(2);
+  listMock.mockResolvedValue(page([trace(1, { workflow: "After-limit" })]));
+  notify("onChanged");
+  notify("onSynced");
+  await flush(5000);
+  expect(listMock).toHaveBeenCalledTimes(2); // deadline not reached
+  await flush(5500);
+  expect(listMock).toHaveBeenCalledTimes(3); // one read once the deadline has passed
+  expect(screen.getByText("After-limit")).toBeInTheDocument();
+});
+
+it("does not read while the tab is hidden and reads once when it is visible again", async () => {
+  await openLoaded();
+  setVisibility("hidden");
+  listMock.mockResolvedValue(page([trace(1, { workflow: "While-hidden" })]));
+  notify("onChanged");
+  notify("onChanged");
+  await flush(2000);
+  expect(listMock).toHaveBeenCalledTimes(1);
+  setVisibility("visible");
+  act(() => { document.dispatchEvent(new Event("visibilitychange")); });
+  await flush(1);
+  expect(listMock).toHaveBeenCalledTimes(2);
+  expect(screen.getByText("While-hidden")).toBeInTheDocument();
+});
+
+it("clears the rows when access is revoked and keeps the signed-in session", async () => {
+  await openLoaded();
+  const session = getAuthSessionSnapshot();
+  notify("onRevoked");
+  expect(screen.getByText("This project is not available.")).toBeInTheDocument();
+  expect(screen.queryByText("$0.0018")).not.toBeInTheDocument();
+  expect(realtime.enabled).toBe(false);
+  expect(isAuthSessionCurrent(session)).toBe(true);
+  notify("onChanged");
+  await flush(2000);
+  expect(listMock).toHaveBeenCalledTimes(1);
+});
+
+it("drops queued work and shows nothing of project A after switching to project B", async () => {
+  await openLoaded(GOLDEN, page([trace(1, { workflow: "A-work" })]));
+  listMock.mockResolvedValue(page([trace(2, { workflow: "B-work" })]));
+  notify("onChanged"); // a refresh of project A is queued...
+  fireEvent.click(screen.getByText("go p2")); // ...and the person leaves before it runs
+  await flush(2000);
+  expect(listMock).toHaveBeenCalledTimes(2); // first read of A + first read of B, nothing else
+  expect(screen.queryByText("A-work")).not.toBeInTheDocument();
+  expect(screen.getByText("B-work")).toBeInTheDocument();
+});
+
+it("cleans up on unmount: no read after leaving the page", async () => {
+  const view = await openLoaded();
+  notify("onChanged");
+  view.unmount();
+  await flush(2000);
+  expect(listMock).toHaveBeenCalledTimes(1);
+});
+
+it("cancelling a read in flight causes no unhandled rejection", async () => {
+  const view = await openLoaded();
+  listMock.mockImplementationOnce((_o, _p, _q, signal) => new Promise((_resolve, reject) => {
+    signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+  }));
+  notify("onChanged");
+  await flush(300);
+  expect(listMock).toHaveBeenCalledTimes(2);
+  view.unmount(); // aborts the read: vitest fails the run on an unhandled rejection
+  await flush(1);
+});
+
+it("clears confirmed rows before loading the same query for a new session", async () => {
+  const view = await openLoaded(GOLDEN, page([trace(1, { workflow: "Old-session-private" })]));
+  const next = deferred<TracePage>();
+  listMock.mockReturnValueOnce(next.promise);
+  saveAccessToken("replacement-session");
+  view.rerenderPage();
+  expect(screen.queryByText("Old-session-private")).not.toBeInTheDocument();
+  await flush();
+  expect(screen.queryByText("Old-session-private")).not.toBeInTheDocument();
+  expect(listMock).toHaveBeenCalledTimes(2);
+  await act(async () => { next.resolve(page([trace(2, { workflow: "New-session-data" })])); });
+  expect(screen.getByText("New-session-data")).toBeInTheDocument();
+});
+
+it("invalidation cancels queued reads and the catalogue without starting tokenless work", async () => {
+  const catalogue = deferred<Awaited<ReturnType<typeof getModelChoices>>>();
+  choicesMock.mockReturnValueOnce(catalogue.promise);
+  await openLoaded();
+  const catalogueSignal = choicesMock.mock.calls[0][0];
+  notify("onChanged");
+  act(() => { clearAuthSession(); });
+  await flush(2000);
+  expect(listMock).toHaveBeenCalledTimes(1);
+  expect(choicesMock).toHaveBeenCalledTimes(1);
+  expect(catalogueSignal?.aborted).toBe(true);
+  expect(realtime.enabled).toBe(false);
+  expect(screen.queryByText("$0.0018")).not.toBeInTheDocument();
+  await act(async () => { catalogue.resolve({ providers: [], modelsByProvider: {} }); });
+});
+
+it("defers even the first list read while hidden, then reconciles once", async () => {
+  vi.useFakeTimers();
+  setVisibility("hidden");
+  listMock.mockResolvedValue(page([trace(1)]));
+  renderAt(path("p1"));
+  notify("onSynced");
+  await flush(2000);
+  expect(listMock).not.toHaveBeenCalled();
+  setVisibility("visible");
+  act(() => { document.dispatchEvent(new Event("visibilitychange")); });
+  await flush(1);
+  expect(listMock).toHaveBeenCalledTimes(1);
+});
+
+it("does not turn notices into hidden-tab retries after the first read fails", async () => {
+  vi.useFakeTimers();
+  listMock.mockRejectedValueOnce(new ApiError(503, "UNAVAILABLE", "Unavailable"));
+  renderAt(path("p1"));
+  await flush();
+  setVisibility("hidden");
+  listMock.mockResolvedValue(page([trace(1)]));
+  notify("onChanged");
+  await flush(300);
+  notify("onSynced");
+  await flush(300);
+  expect(listMock).toHaveBeenCalledTimes(1);
+  setVisibility("visible");
+  act(() => { document.dispatchEvent(new Event("visibilitychange")); });
+  await flush(1);
+  expect(listMock).toHaveBeenCalledTimes(2);
 });

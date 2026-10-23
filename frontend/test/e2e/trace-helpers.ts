@@ -87,3 +87,12 @@ export async function visibleExternalIds(page: Page): Promise<string[]> {
     links => links.map(link => (link.getAttribute("aria-label") ?? "").replace("View trace ", "")),
   );
 }
+
+
+/** Corrects a trace through the public API: PUT with the current If-Match version. */
+export async function replacePublic(request: APIRequestContext, key: string, trace: Ingested, body: TraceBody): Promise<Ingested> {
+  const response = await publicCall(() =>
+    request.put(`${API}/public/traces/${trace.id}`, { headers: { "X-API-Key": key, "If-Match": trace.etag }, data: body }));
+  expect(response.status(), "replace trace").toBe(200);
+  return { id: trace.id, etag: response.headers()["etag"] };
+}

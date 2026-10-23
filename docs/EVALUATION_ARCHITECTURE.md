@@ -325,9 +325,17 @@ Project access loss clears protected content without signing the user out.
 TSE-73 provides the backend realtime transport and notifications.
 TSE-76 provides the shared frontend project realtime client in `frontend/src/api/realtime-client.ts` and `useProjectRealtime`.
 
-TSE-87 owns connecting the existing Explorer list/detail to this client. Until that integration is verified, the Explorer supports manual Refresh and detects remote access loss on its next HTTP request.
+TSE-87 connects the Explorer list (`TracesPage.tsx`) and detail (`TraceDetailPage.tsx`) to this client; there is no second socket implementation.
 
-In TSE-87, connect active list/detail views to trace-change, reconnection and access-revocation handling. Reuse that client; do not create another socket implementation. Verify the combined browser behavior before claiming realtime acceptance complete.
+- A `traces.changed` notice is only an invalidation hint. It never changes the applied query (URL filters, period, sort, page, page size); the screen is re-read through the same HTTP endpoints. A default period is resolved once and is not re-resolved by a notice.
+- Reads go through `RefreshScheduler` (`frontend/src/lib/refresh-scheduler.ts`): notices are coalesced (250 ms, at most 1 s of waiting), one read runs at a time, at most one follow-up is queued, a Retry-After deadline is respected and a failed read is never retried automatically.
+- A read is also requested after every acknowledged subscription, first time and after each reconnection, because the server does not replay events missed while disconnected.
+- A failed refresh keeps the last data visible as stale, with Retry, instead of showing an empty result. Deleting the last row of the last page recovers to the last valid page and keeps the query. Deleting the open trace shows a detail-only not-found state.
+- `access.revoked`, or an HTTP loss of access, clears the protected content and keeps the session signed in; realtime is switched off for that scope. Revocation is emitted on membership removal and parent archive, not on demotion to MEMBER.
+- When the tab is hidden or the browser offline, refreshes are skipped and redone once when it is visible or online again. Subscriptions are released on unmount, on project change and when the session changes (the connection is keyed by organization, project and session revision and closes with its last listener).
+- Manual Refresh and Retry remain available.
+
+Downstream consumers must keep reusing the shared client and `RefreshScheduler`. The Explorer's realtime evidence (tested commit, commands, results, environment and limitations) is recorded in `docs/LOCAL_DEVELOPMENT.md`, “Trace Explorer browser tests”.
 
 ### Analytics integration — TSE-71
 The implementation is registered through AnalyticsModule, which exports
