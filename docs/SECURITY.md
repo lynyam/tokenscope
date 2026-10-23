@@ -940,3 +940,21 @@ Logs and test artifacts must exclude credentials, file contents, questions, comp
 - Documents are only stored for users. They are not sent to the assistant, indexed, or used for retrieval.
 - Uploads are received as `0600` temporary files in a private `0700` directory. Active temporary paths are protected from orphan cleanup. Validation reads up to 10 MiB per upload; PDF parsing also uses a worker copy and parser memory.
 - Caddy rejects request bodies above 11 MiB on `/api/*` before they reach the backend. Caddy answers `413` itself, so that response does not use the JSON error envelope.
+
+### Public legal pages
+
+`/privacy` and `/terms` do not mount `AuthProvider`, read the session or call
+workspace APIs. Visiting them preserves the stored token. Existing application
+routes still mount the provider and enforce their normal route guards.
+
+Legal content must describe the current Gemini analytics allowlist, client-side
+cancellation, browser-only assistant exchanges, inherited organization archive
+and retained document bytes. Older TSE-82 wording about OpenAI, a selected trace
+or physical organization deletion is superseded by the current implementation.
+
+Publication handoff remains required: confirm the instance operator, a private
+contact, applicable processing purposes/bases, hosting/recipients, retention and
+manual request handling, plus the actual Gemini account/region configuration.
+These facts cannot be inferred from source code. Do not substitute an example
+email or a public GitHub issue for a private personal-data contact. No claim of
+legal compliance is established by passing the navigation tests.

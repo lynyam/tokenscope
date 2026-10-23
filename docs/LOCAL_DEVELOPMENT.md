@@ -1238,3 +1238,33 @@ and empty selections. A separate case delays only the bundled font response,
 then ingests a real trace and checks that the pending PDF retains its captured
 snapshot while the displayed dashboard refreshes. Backend responses are not mocked.
 Inspect downloaded PDFs visually as described in `docs/DEMO.md` too.
+
+## Public legal pages, theme and shared navigation — PR #40
+
+From `frontend`, with host dependencies installed using `npm ci`:
+
+```bash
+npm run check
+npm run test
+npm run build
+E2E_BASE_URL=http://localhost:5173 npm run test:e2e -- public-navigation.spec.ts
+```
+
+The first seven browser tests need only the running frontend. The final test uses
+real signup/organization/project APIs through the existing helpers and therefore
+needs a healthy backend and migrated PostgreSQL. No catalogue import or trace
+fixtures are required for this spec. API unavailability is deliberately injected
+only in the public/session-failure scenarios. No live Gemini call is made.
+
+For evaluation, rebuild from the repository root with `make eval-up`, trust its
+exported CA in the browser as already documented, then run from the host:
+
+```bash
+NODE_EXTRA_CA_CERTS="$PWD/.local/eval/caddy-root.crt" \
+E2E_BASE_URL=https://localhost:8443 \
+E2E_ARGS=public-navigation.spec.ts make frontende2e
+```
+
+The Node CA setting does not install browser trust. Keep TLS validation enabled.
+Existing feature E2E suites still need their own documented fixtures. Run the full
+frontend suite after this shared router/layout change before merging.

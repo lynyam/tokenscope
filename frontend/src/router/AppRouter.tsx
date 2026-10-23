@@ -22,6 +22,9 @@ import { TraceDetailPage } from "../pages/projects/TraceDetailPage";
 import { DocumentsPage } from "../pages/documents/DocumentsPage";
 import { LandingPage } from "../pages/LandingPage";
 import { ApiKeysPage } from "../pages/projects/ApiKeysPage";
+import { AuthProvider } from "../context/AuthContext";
+import { PrivacyPage } from "../pages/legal/PrivacyPage";
+import { TermsPage } from "../pages/legal/TermsPage";
 
 //Root redirection
 // function RootRedirect() {
@@ -37,6 +40,9 @@ export function AppRouter()
     return(
         <BrowserRouter>
             <Routes>
+                <Route path="/privacy" element={<PrivacyPage />} />
+                <Route path="/terms" element={<TermsPage />} />
+                <Route element={<AuthProvider><Outlet /></AuthProvider>}>
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/signin"
                 element={<AnonymousRoute><AuthLayout><SignInPage /></AuthLayout></AnonymousRoute>} />
@@ -105,6 +111,7 @@ export function AppRouter()
                 </Route>
 
                 <Route path="*" element={<h1>404 Not Found</h1>} />
+                </Route>
             </Routes>
         </BrowserRouter>
     );

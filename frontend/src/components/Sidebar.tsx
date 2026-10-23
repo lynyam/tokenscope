@@ -1,9 +1,13 @@
+import { useEffect, useState } from "react";
+import { Menu } from "lucide-react";
+import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "./ui/dialog";
+import { Button } from "./ui/button";
+import { ThemeToggle } from "./ThemeToggle";
 import { OrganizationSwitcher } from "./OrganizationSwitcher";
 import { UserMenu } from "./UserMenu";
 import { CollapsibleNavItem } from "./ProjectMenu";
 import { Separator } from "../components/ui/separator";
-import { Link } from "react-router-dom";
-import { useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import { useOrganizationProjects } from "../hooks/useOrganizationProjects";
 
 
@@ -17,14 +21,32 @@ export function Sidebar() {
 		accessLost,
 	} = useOrganizationProjects(organizationId);
 
-	return (
-		<aside className="flex h-full w-56 flex-col border-r p-4">
+	const [open, setOpen] = useState(false);
+	const [desktop, setDesktop] = useState(() => window.matchMedia("(min-width: 768px)").matches);
+	const { pathname } = useLocation();
+
+	useEffect(() => {
+		const media = window.matchMedia("(min-width: 768px)");
+		const update = () => setDesktop(media.matches);
+		update();
+		media.addEventListener("change", update);
+		return () => media.removeEventListener("change", update);
+	}, []);
+
+	useEffect(() => { setOpen(false); }, [pathname, desktop]);
+
+	// Render one set of menus. The page remains mounted when navigation resizes.
+	const contents = (
+		<>
 			<div className="flex items-center gap-2">
 				<img src="/logo/logo.svg" alt="TokenScope logo" className="h-7 w-7" />
 				<span className="text-lg font-semibold">TokenScope</span>
 			</div>
 			<Separator className="mt-2 mb-2" />
-			<nav className="flex flex-1 flex-col gap-1">
+			<nav aria-label="Workspace" className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto"
+				onClick={event => {
+					if ((event.target as HTMLElement).closest("a[href]")) setOpen(false);
+				}}>
 				{organizationId && (
 					accessLost ? (
 						<div className="px-3 text-sm">
@@ -75,11 +97,30 @@ export function Sidebar() {
 				)}
 			</nav>
 
-			<div className="flex flex-col gap-3">
+			<div className="flex shrink-0 flex-col gap-3 pt-3">
+				<ThemeToggle />
 				<OrganizationSwitcher />
 				<Separator />
 				<UserMenu />
 			</div>
-		</aside>
+		</>
+	);
+
+	if (desktop) {
+		return <aside aria-label="Workspace navigation" className="flex h-full w-56 shrink-0 flex-col border-r p-4">{contents}</aside>;
+	}
+
+	return (
+		<div className="shrink-0 border-b bg-background p-2">
+			<Dialog open={open} onOpenChange={setOpen}>
+				<DialogTrigger render={<Button variant="outline" size="sm" />}>
+					<Menu className="size-4" /> Open menu
+				</DialogTrigger>
+				<DialogContent className="top-0 left-0 flex h-dvh w-72 translate-x-0 translate-y-0 flex-col gap-0 p-4 pt-16 sm:max-w-none">
+					<DialogTitle className="sr-only">Workspace navigation</DialogTitle>
+					{contents}
+				</DialogContent>
+			</Dialog>
+		</div>
 	);
 }

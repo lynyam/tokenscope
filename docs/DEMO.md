@@ -956,3 +956,25 @@ loaded. Open its Analytics section; apply the exact UTC period
 Run in development and HTTPS evaluation mode using the setup in
 `docs/LOCAL_DEVELOPMENT.md`, “Dashboard export checks — TSE-77”. Record the tested
 commit/mode and distinguish automated download checks from visual PDF inspection.
+
+## Public legal pages and responsive navigation — PR #40
+
+1. Open `/privacy` and `/terms` directly, signed out; refresh each. Verify headings,
+   browser titles, footer links and long-text readability at 375px and 200% zoom.
+2. Keep a token stored and deliberately block `/api/v1/auth/me`. The application
+   shows its existing verification error; its legal links must still work. Direct
+   legal navigation must not call `/auth/me` or erase the token. Remove the block
+   before returning to the application.
+3. Toggle light/dark, visit a legal page and reload. Verify the preference persists;
+   check notifications after a normal application action use the same theme.
+4. At 375px, open navigation using the keyboard. Tab remains inside the drawer;
+   Escape/Close returns focus to Open menu. Follow Members and switch organizations;
+   the drawer closes and the destination is usable. At 768px and 1440px, desktop
+   navigation is visible. Resize back without losing a page's unsaved form draft.
+5. Open project Analytics, Traces/detail, Documents and API Keys using existing role
+   accounts. Verify links, guarded access, realtime and assistant behavior still
+   work. This is integration verification, not a replacement for TSE-88's full
+   responsive matrix or TSE-84's cross-browser checks.
+6. Before declaring TSE-82 complete, supply the real operator/private-contact and
+   deployment facts listed in `SECURITY.md`. Verify the published text against the
+   final deployment; public GitHub issues must not solicit personal information.

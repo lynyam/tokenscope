@@ -87,3 +87,24 @@ TODO: verify command, and file permissions in the project, could not change pres
 
 Claude conversation to have context:
 https://claude.ai/share/c5e31bfe-ea22-47cd-8885-6d8bb26fbd55
+
+## Integrated public navigation and theme
+
+`main.tsx` uses the already installed `next-themes` provider with `attribute="class"`.
+It is shared by theme buttons and Sonner notifications. The saved `theme` preference
+is independent of `tokenscope.accessToken`; theme changes do not change authentication.
+
+`AppRouter.tsx` owns one `AuthProvider` boundary around the existing application
+routes. `/privacy` and `/terms` are outside it and must render without calling
+`/auth/me`, including with an invalid stored token or an unavailable API.
+
+The sidebar preserves `useOrganizationProjects` and its `accessLost` handling.
+At widths below 768px it uses the existing modal Dialog for focus containment,
+Escape, explicit Close and focus return. Above that breakpoint it becomes a
+fixed-width sidebar in the layout. Resizing navigation does not remount page content.
+
+PR #40 covers this shared shell, theme and legal navigation. It does not establish
+that every integrated page is responsive. TSE-88 still owns the full page/panel
+matrix at 375 x 812, 768 x 1024 and 1440 x 900, including table scrolling, dialogs,
+charts, exports, documents and the assistant. Record actual browser evidence;
+do not treat component tests as proof of viewport geometry.
