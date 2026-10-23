@@ -681,7 +681,7 @@ describe('sending with the keyboard', () => {
     await openPanel();
     type('First question');
     fireEvent.keyDown(field(), { key: 'Enter' });
-    await screen.findByText('Answer complete.');
+    await screen.findAllByText('Answer complete.');
 
     expect(field()).toHaveValue('');
     expect(field()).not.toHaveAttribute('readonly');
@@ -705,5 +705,124 @@ describe('sending with the keyboard', () => {
   it('explains the keys under the field', async () => {
     await openPanel();
     expect(screen.getByText('Enter to send · Shift+Enter for a new line')).toBeInTheDocument();
+  });
+});
+
+describe('expanding the panel', () => {
+  const expandButton = () => screen.getByRole('button', { name: 'Expand assistant' });
+  const collapseButton = () => screen.getByRole('button', { name: 'Collapse assistant' });
+  const dialog = () => screen.getByRole('dialog', { name: 'Ask assistant' });
+
+  it('toggles between Expand and Collapse', async () => {
+    const { user } = await openPanel();
+    expect(expandButton()).toHaveAttribute('aria-pressed', 'false');
+    expect(dialog()).not.toHaveAttribute('data-expanded');
+
+    await user.click(expandButton());
+    expect(collapseButton()).toHaveAttribute('aria-pressed', 'true');
+    expect(dialog()).toHaveAttribute('data-expanded', 'true');
+
+    await user.click(collapseButton());
+    expect(expandButton()).toBeInTheDocument();
+    expect(dialog()).not.toHaveAttribute('data-expanded');
+  });
+
+  it('works from the keyboard and keeps the focus on the button', async () => {
+    const { user } = await openPanel();
+    const button = expandButton();
+    button.focus();
+
+    await user.keyboard('{Enter}');
+    expect(dialog()).toHaveAttribute('data-expanded', 'true');
+    expect(collapseButton()).toBe(button); // same element, only its label changed
+    expect(button).toHaveFocus();
+
+    await user.keyboard(' ');
+    expect(dialog()).not.toHaveAttribute('data-expanded');
+    expect(button).toHaveFocus();
+  });
+
+  it('keeps the text being typed', async () => {
+    const { user } = await openPanel();
+    type('A question being written');
+
+    await user.click(expandButton());
+    expect(screen.getByLabelText('Your question')).toHaveValue('A question being written');
+
+    await user.click(collapseButton());
+    expect(screen.getByLabelText('Your question')).toHaveValue('A question being written');
+  });
+
+  it('keeps the question, the answer, the context and the running stream, without a new request', async () => {
+    const { answer, user } = await startLiveQuestion();
+    await answer.push(start);
+    await answer.push(delta('Partial answer'));
+    await screen.findByText('Partial answer');
+
+    await user.click(expandButton());
+
+    expect(askAssistant).toHaveBeenCalledTimes(1);
+    expect(signals[0].aborted).toBe(false);
+    expect(screen.getByText('What did it cost?')).toBeInTheDocument(); // the question bubble
+    expect(screen.getByText('Context used')).toBeInTheDocument();
+    expect(screen.getByText('Partial answer')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument();
+
+    // The same stream keeps feeding the panel, and Collapse changes nothing either.
+    await answer.push(delta(' continues'));
+    expect(await screen.findByText('Partial answer continues')).toBeInTheDocument();
+    await user.click(collapseButton());
+    await answer.push(delta(' and ends'));
+    await answer.push(done);
+
+    expect(await screen.findByText('Partial answer continues and ends')).toBeInTheDocument();
+    expect(askAssistant).toHaveBeenCalledTimes(1);
+    expect(signals[0].aborted).toBe(false);
+  });
+
+  it('Stop still works while expanded', async () => {
+    const { answer, user } = await startLiveQuestion();
+    await answer.push(start);
+    await answer.push(delta('Partial'));
+    await screen.findByText('Partial');
+    await user.click(expandButton());
+
+    await user.click(screen.getByRole('button', { name: 'Stop' }));
+
+    expect(signals[0].aborted).toBe(true);
+  });
+
+  it('leaves the expanded mode when the reader resizes by hand', async () => {
+    const { user } = await openPanel();
+    vi.spyOn(dialog(), 'getBoundingClientRect').mockReturnValue({ width: 900, height: 700 } as DOMRect);
+    await user.click(expandButton());
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Resize assistant width' }), { key: 'ArrowLeft' });
+
+    expect(dialog()).not.toHaveAttribute('data-expanded');
+    expect(dialog()).toHaveStyle({ width: '924px', height: '700px' });
+    expect(expandButton()).toBeInTheDocument();
+  });
+
+  it('Home or a double click on a resize zone also collapses', async () => {
+    const { user } = await openPanel();
+    await user.click(expandButton());
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Resize assistant height' }), { key: 'Home' });
+    expect(dialog()).not.toHaveAttribute('data-expanded');
+
+    await user.click(expandButton());
+    fireEvent.doubleClick(screen.getByTestId('assistant-resize-corner'));
+    expect(dialog()).not.toHaveAttribute('data-expanded');
+  });
+
+  it('keeps the expanded state when the panel is closed and reopened, and Escape still closes', async () => {
+    const { user } = await openPanel();
+    await user.click(expandButton());
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Ask assistant' }));
+    expect(dialog()).toHaveAttribute('data-expanded', 'true');
   });
 });

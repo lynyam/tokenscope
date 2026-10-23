@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useReducer, useRef, useState } from "react";
+import { Maximize2, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getAuthSessionSnapshot, isAuthSessionCurrent, subscribeToAuthInvalidation } from "../../api/auth-session";
 import type { AssistantSelectionState } from "../../hooks/useProjectAnalytics";
@@ -93,6 +94,9 @@ export function DashboardAssistant({
   // Panel size chosen by the reader. null = default size. Kept when the panel is closed.
   const panelRef = useRef<HTMLElement>(null);
   const [size, setSize] = useState<PanelSize | null>(null);
+  // Expand button: a large reading area, within the viewport. Same component, same state:
+  // the question, the answer, the context and a running stream are untouched.
+  const [expanded, setExpanded] = useState(false);
   const drag = useRef<{ axis: "width" | "height" | "both"; x: number; y: number; width: number; height: number } | null>(null);
   const [hasNewBelow, setHasNewBelow] = useState(false);
 
@@ -160,6 +164,12 @@ export function DashboardAssistant({
     if (followRef.current) box.scrollTop = box.scrollHeight;
     else if (grew) setHasNewBelow(true);
   }, [state.text, state.status, state.context, submittedQuestion]);
+
+  // The visible area changed: keep following the answer if the reader was at the bottom.
+  useEffect(() => {
+    const box = messagesRef.current;
+    if (box && followRef.current) box.scrollTop = box.scrollHeight;
+  }, [size, expanded]);
 
   function handleMessagesScroll() {
     const box = messagesRef.current;
@@ -323,7 +333,7 @@ export function DashboardAssistant({
   }
 
   function currentSize(): PanelSize {
-    if (size) return size;
+    if (size && !expanded) return size;
     const box = panelRef.current?.getBoundingClientRect();
     return { width: box?.width || 384, height: box?.height || 544 };
   }
@@ -337,6 +347,7 @@ export function DashboardAssistant({
       if (event.button !== 0) return;
       event.preventDefault();
       drag.current = { axis, x: event.clientX, y: event.clientY, ...currentSize() };
+      setExpanded(false);
       event.currentTarget.setPointerCapture?.(event.pointerId);
     };
   }
@@ -358,12 +369,13 @@ export function DashboardAssistant({
   function resizeWithKeyboard(axis: Exclude<ResizeAxis, "both">) {
     return (event: React.KeyboardEvent<HTMLElement>) => {
       const { width, height } = currentSize();
-      if (event.key === "Home") setSize(null);
+      if (event.key === "Home") { setSize(null); setExpanded(false); }
       else if (axis === "width" && event.key === "ArrowLeft") setSize(clampSize(width + RESIZE_STEP, height));
       else if (axis === "width" && event.key === "ArrowRight") setSize(clampSize(width - RESIZE_STEP, height));
       else if (axis === "height" && event.key === "ArrowUp") setSize(clampSize(width, height + RESIZE_STEP));
       else if (axis === "height" && event.key === "ArrowDown") setSize(clampSize(width, height - RESIZE_STEP));
       else return;
+      if (event.key !== "Home") setExpanded(false);
       event.preventDefault();
     };
   }
@@ -408,7 +420,12 @@ export function DashboardAssistant({
       ref={panelRef}
       role="dialog"
       aria-label="Ask assistant"
-      style={size ? { width: size.width, height: size.height } : undefined}
+      data-expanded={expanded ? "true" : undefined}
+      style={
+        expanded
+          ? { width: "min(56rem, calc(100vw - 2rem))", height: "calc(100dvh - 2rem)" }
+          : size ? { width: size.width, height: size.height } : undefined
+      }
       onKeyDown={(event) => {
         if (event.key === "Escape") close();
       }}
@@ -424,7 +441,7 @@ export function DashboardAssistant({
         onPointerUp={endResize}
         onPointerCancel={endResize}
         onKeyDown={resizeWithKeyboard("width")}
-        onDoubleClick={() => setSize(null)}
+        onDoubleClick={() => { setSize(null); setExpanded(false); }}
         className="absolute bottom-0 left-0 top-4 z-10 hidden w-2 cursor-ew-resize touch-none select-none rounded-none hover:bg-border focus:outline-none focus-visible:bg-ring md:block"
       />
       <button
@@ -436,7 +453,7 @@ export function DashboardAssistant({
         onPointerUp={endResize}
         onPointerCancel={endResize}
         onKeyDown={resizeWithKeyboard("height")}
-        onDoubleClick={() => setSize(null)}
+        onDoubleClick={() => { setSize(null); setExpanded(false); }}
         className="absolute left-4 right-4 top-0 z-10 hidden h-2 cursor-ns-resize touch-none select-none rounded-none hover:bg-border focus:outline-none focus-visible:bg-ring md:block"
       />
       <div
@@ -446,7 +463,7 @@ export function DashboardAssistant({
         onPointerMove={moveResize}
         onPointerUp={endResize}
         onPointerCancel={endResize}
-        onDoubleClick={() => setSize(null)}
+        onDoubleClick={() => { setSize(null); setExpanded(false); }}
         className="absolute left-0 top-0 z-20 hidden size-4 cursor-nwse-resize touch-none select-none md:block"
       />
 
@@ -463,14 +480,25 @@ export function DashboardAssistant({
               : activeFilters.map(([key, value]) => key + ": " + value).join(" · ")}
           </p>
         </div>
-        <Button
-          type="button"
-          onClick={close}
-          aria-label="Close assistant"
-          variant="ghost" size="icon-sm" className="rounded"
-        >
-          ✕
-        </Button>
+        <div className="flex shrink-0 items-center gap-1">
+          <Button
+            type="button"
+            onClick={() => setExpanded(value => !value)}
+            aria-label={expanded ? "Collapse assistant" : "Expand assistant"}
+            aria-pressed={expanded}
+            variant="ghost" size="icon-sm" className="rounded"
+          >
+            {expanded ? <Minimize2 aria-hidden /> : <Maximize2 aria-hidden />}
+          </Button>
+          <Button
+            type="button"
+            onClick={close}
+            aria-label="Close assistant"
+            variant="ghost" size="icon-sm" className="rounded"
+          >
+            ✕
+          </Button>
+        </div>
       </header>
 
       <div
