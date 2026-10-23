@@ -42,6 +42,22 @@ export function isActive(status: AssistantStatus): boolean {
   return status === "requesting" || status === "streaming";
 }
 
+// Shared by visible exchanges and the active answer's screen-reader live region.
+export function assistantStatusText(state: AssistantState): string {
+  switch (state.status) {
+    case "requesting": return "Preparing answer…";
+    case "streaming": return "Answer in progress.";
+    case "complete": return "Answer complete.";
+    case "truncated": return "Answer reached the output limit and may be incomplete";
+    case "stopped": return state.text
+      ? "Stopped — answer incomplete"
+      : "Stopped before an answer was received.";
+    case "interrupted":
+    case "failed": return state.failure?.message ?? "";
+    default: return "";
+  }
+}
+
 export function assistantReducer(
   state: AssistantState,
   action: AssistantAction,
@@ -51,7 +67,7 @@ export function assistantReducer(
       return initialAssistantState;
 
     case "submit":
-      // A new request replaces the previous answer and its context.
+      // A new active answer; DashboardAssistant retains earlier exchanges for display.
       if (isActive(state.status)) return state;
       return { ...initialAssistantState, status: "requesting" };
 

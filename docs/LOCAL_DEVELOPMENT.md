@@ -735,6 +735,13 @@ analytics and PostgreSQL but **intercepts assistant responses**. It creates disp
 accounts/project and ingests the six golden traces. Load the synthetic catalogue first.
 It covers all three roles, applied versus draft dates, same-scope refresh, explicit
 retry, Stop before headers, access loss, keyboard use and the 375px panel.
+TSE-89 also checks Expand/Collapse without another request and wheel access to
+Stop at the panel's minimum size. It also verifies immediate composer clearing,
+explicit question reuse, retained exchanges, collapsed context and rendered Markdown.
+`AssistantExchange.test.tsx` covers the disclosure and inert Markdown rendering.
+`DashboardAssistant.streaming.test.tsx` feeds
+an unread byte stream through the real assistant API/parser into the component,
+proving that complete fragments render before `done` and Stop cancels reading.
 Buffered fixtures do not prove progressive provider delivery.
 
 From the repository root, in development mode:

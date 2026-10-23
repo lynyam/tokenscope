@@ -1496,6 +1496,32 @@ Stop, close, changed selection, session invalidation and unmount cancel consumpt
 Initial HTTP failures and streamed failures use the existing safe error conventions;
 only captured-session authentication failure signs out the user. Access loss clears
 protected content and delegates project unavailability to the existing dashboard.
+
+TSE-89 keeps one question per backend request. After local validation, submission
+immediately clears the composer and displays the question in its bubble, before
+waiting for HTTP headers or SSE `start`. Earlier exchanges remain visible in
+component memory for this open panel and scope; they are never sent to Gemini or
+saved to browser storage. This is display history, not provider conversation memory.
+Each answer retains its own returned snapshot and completion/error status.
+
+Stop keeps the question and partial answer in place. Before any text it displays
+"Stopped before an answer was received."; otherwise "Stopped — answer incomplete".
+Stop and ordinary failures do not automatically refill the composer. **Reuse
+question** copies a retained question into the composer and focuses it without a
+request; only an explicit Ask sends it. Enter submits; Shift+Enter adds a line,
+and Enter during IME composition does not submit. Existing cooldowns still apply.
+
+**Context used** is collapsed by default using native details/summary; expanding
+it reveals all existing facts, generation time and the provider/model disclosure.
+Answers render a restricted Markdown subset (paragraphs, emphasis, headings,
+lists, quotations and code) as text arrives. Raw HTML stays escaped; images and
+clickable links are not rendered. User questions remain escaped plain text.
+
+Expand/Collapse and resizing affect only presentation: they never remount the
+assistant, reset its fixed context or send another request. Incoming text follows
+the bottom only while the reader is already there; scrolling up pauses following.
+Close, applied project/date/filter changes, session changes and access loss clear
+all exchanges and their contexts, as well as cancelling any active request.
 No automatic retry, conversation persistence or document/RAG integration is added.
 
 ### Private documents — TSE-78 / TSE-79

@@ -898,6 +898,13 @@ sent to Gemini and makes no zero-retention claim.
 Record the verified model, account tier, region, quota, date and tested commit
 after the explicit live check. Until then, live-provider validation is pending.
 
+TSE-89 retains earlier assistant exchanges only in the mounted panel's memory.
+They are not persisted or sent as model history. Close, applied scope/session
+changes and access loss clear every retained answer/context. Model answers use a
+restricted `react-markdown` element allowlist: HTML remains escaped, and links,
+images and executable elements are not created. Do not add `rehype-raw` or render
+model output with `dangerouslySetInnerHTML`. Questions remain escaped plain text.
+
 ### Private files
 
 Authorize before accepting upload bytes and again before committing metadata.
