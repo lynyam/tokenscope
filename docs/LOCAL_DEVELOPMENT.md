@@ -614,7 +614,7 @@ These historical records are not guaranteed to be inside a moving
 last-seven-days window. The database tests load fixtures only into the
 guarded test database; they do not seed development data.
 
-### Dashboard assistant — TSE-80
+### Dashboard assistant — TSE-80 / TSE-81
 
 Configuration (backend only, in your untracked `.env`):
 
@@ -717,6 +717,55 @@ For the current architecture, see
 TSE-65 implements HTTPS evaluation startup using the existing Compose stack.
 The ownership table below also includes separately delivered features;
 their configuration and commands must be documented when implemented.
+
+Frontend checks (no live provider calls):
+
+```bash
+make frontendcheck
+make frontendtest
+docker compose exec frontend npm run build
+```
+
+The frontend reads the canonical `fixtures/evaluation/assistant/` through the
+existing evaluation-fixture reader. Compose already mounts that directory read-only;
+do not copy fixtures into `frontend/test/fixtures`.
+
+`frontend/test/e2e/assistant.spec.ts` uses the real application, authentication,
+analytics and PostgreSQL but **intercepts assistant responses**. It creates disposable
+accounts/project and ingests the six golden traces. Load the synthetic catalogue first.
+It covers all three roles, applied versus draft dates, same-scope refresh, explicit
+retry, Stop before headers, access loss, keyboard use and the 375px panel.
+Buffered fixtures do not prove progressive provider delivery.
+
+From the repository root, in development mode:
+
+```bash
+make up
+curl --fail --silent --show-error http://localhost:5173/api/v1/health/db
+docker compose cp fixtures/evaluation/model-prices.json backend:/tmp/model-prices.json
+docker compose exec -T backend npm run pricing:load -- --file /tmp/model-prices.json
+E2E_BASE_URL=http://localhost:5173 E2E_ARGS=assistant.spec.ts make frontende2e
+```
+
+Wait for health to return 200 before running tests. If the development image has
+not compiled the pricing script yet, use the build-and-load command in the existing
+catalogue section. For evaluation mode, rebuild first and trust the current exported
+Caddy root in the operating system/browser as described above. Node's extra CA
+setting alone does not configure Chromium trust. Never disable TLS verification.
+
+```bash
+make eval-up
+curl --fail --silent --show-error --cacert .local/eval/caddy-root.crt https://localhost:8443/api/v1/health/db
+docker compose cp fixtures/evaluation/model-prices.json backend:/tmp/model-prices.json
+docker compose exec -T backend npm run pricing:load -- --file /tmp/model-prices.json
+NODE_EXTRA_CA_CERTS="$PWD/.local/eval/caddy-root.crt" \
+E2E_BASE_URL=https://localhost:8443 E2E_ARGS=assistant.spec.ts make frontende2e
+```
+
+The real-provider browser verification is a separate, deliberate manual run:
+follow `docs/DEMO.md`, "Dashboard assistant UI — TSE-81". It consumes Gemini
+quota; it is never part of ordinary CI. Record its result separately from intercepted
+browser tests, including the tested commit, mode and any checks not run.
 
 ### Deployment ownership
 
@@ -991,16 +1040,19 @@ docker compose exec backend sh -c 'npm run build >/dev/null && npm run pricing:l
 
 The loader is idempotent. When the catalogue is missing, the suite stops at its first step with this pointer.
 
-#### Recorded evidence — TSE-87 (Trace Explorer realtime)
+#### Historical PR evidence — TSE-87 (Trace Explorer realtime)
 
-Tested commit: `db40796` on `feature/tse-87-complete-trace-explorer-tse-75-realtime-integration-with-the`, which already contains
-`origin/develop` at `de37cc5`. The final commit differs from it only by documentation and by removing the sentence
-“Realtime updates: pending integration.” from the Traces page (`git diff db40796 --stat`).
+The author-reported results below concern `db40796` on
+`feature/tse-87-complete-trace-explorer-tse-75-realtime-integration-with-the`, based on develop `de37cc5`.
+They do not validate a later merge with develop or subsequent review corrections. Rerun the component suite,
+type check, build and Explorer browser suite in both development and trusted HTTPS on the final candidate;
+record that commit and its results separately. The browser suite observes the real subscription acknowledgement,
+so it does not require a redundant second HTTP read just to prove the subscription succeeded.
 
 | Check | Command | Result |
 | --- | --- | --- |
 | Component tests | `make frontendtest` | 623 passed, 32 files |
-| Types, lint, build | `make frontendcheck`; `docker compose exec -T frontend npm run build` | no errors |
+| Type check and build | `make frontendcheck`; `docker compose exec -T frontend npm run build` | no errors |
 | Development, Explorer | `E2E_BASE_URL=http://localhost:5173 make frontende2e E2E_ARGS="trace-explorer.spec.ts"` | 22 passed (12 existing, 10 realtime) |
 | Development, full suite | `E2E_BASE_URL=http://localhost:5173 make frontende2e` | 69 passed |
 | Evaluation HTTPS, TSE-76 | `NODE_EXTRA_CA_CERTS="$PWD/.local/eval/caddy-root.crt" E2E_BASE_URL=https://localhost:8443 make frontende2e E2E_ARGS="realtime.spec.ts"` | 3 passed |
@@ -1132,3 +1184,50 @@ E2E_BASE_URL=https://localhost:8443 npm run test:e2e -- project-dashboard.spec.t
 Retain the Vite and Caddy `/socket.io` proxies already provided by TSE-73.
 Record the tested commit, mode, exact commands and results. A unit test does not prove HTTPS
 or real socket/browser integration. Full responsive validation remains tracked by TSE-88.
+
+### Dashboard export checks — TSE-77
+
+The controls consume the existing dashboard handoff and authorized project.
+Exports do not fetch analytics or call an export endpoint. PDF code and its
+bundled font load only on the first PDF request. Unit tests read the shared
+`fixtures/evaluation/responses/` files; do not make frontend copies.
+
+In development, from the repository root:
+
+```bash
+make up
+curl --fail --silent --show-error --max-time 20 http://localhost:5173/api/v1/health/db
+make frontendcheck
+make frontendtest
+docker compose exec frontend npm run build
+make frontende2e-setup
+docker compose cp fixtures/evaluation/model-prices.json backend:/tmp/model-prices.json
+docker compose exec -T backend npm run pricing:load -- --file /tmp/model-prices.json
+E2E_BASE_URL=http://localhost:5173 E2E_ARGS=dashboard-export.spec.ts make frontende2e
+```
+
+Wait for HTTP 200 before continuing. If the development pricing script has not
+been built, run `docker compose exec backend npm run build` before `pricing:load`.
+The browser spec creates its own disposable account/project and ingests the six
+golden traces. Do not manually seed traces into that project.
+
+Repeat after rebuilding evaluation mode:
+
+```bash
+make eval-up
+curl --fail --silent --show-error --max-time 20 --cacert .local/eval/caddy-root.crt https://localhost:8443/api/v1/health/db
+docker compose cp fixtures/evaluation/model-prices.json backend:/tmp/model-prices.json
+docker compose exec -T backend npm run pricing:load -- --file /tmp/model-prices.json
+NODE_EXTRA_CA_CERTS="$PWD/.local/eval/caddy-root.crt" \
+E2E_BASE_URL=https://localhost:8443 E2E_ARGS=dashboard-export.spec.ts make frontende2e
+```
+
+Trust the current Caddy CA in the browser/OS before the HTTPS run; Node's
+`NODE_EXTRA_CA_CERTS` only configures Node. Keep TLS verification enabled.
+After `make fullclean`, reload the catalogue and trust the newly generated CA.
+
+The browser suite downloads and parses real CSV/PDF files for golden, filtered
+and empty selections. A separate case delays only the bundled font response,
+then ingests a real trace and checks that the pending PDF retains its captured
+snapshot while the displayed dashboard refreshes. Backend responses are not mocked.
+Inspect downloaded PDFs visually as described in `docs/DEMO.md` too.

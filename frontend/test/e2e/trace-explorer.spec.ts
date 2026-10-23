@@ -376,7 +376,7 @@ test(
     }
   },
 );
-// Mutates the pagination project: keep it last.
+// Last scenario that mutates the shared pagination project; later cases create their own projects.
 test("deleting the last row of the last page recovers to the previous page", async ({ page, request }) => {
   await open(page, paged.projectId, goldenSearch("&page=3"));
   await expect(summary(page)).toHaveText("51 traces · Page 3 of 3");
@@ -411,6 +411,7 @@ const DETAIL_READ = /\/projects\/[^/]+\/traces\/[0-9a-f-]{36}$/;
 /** What a receiving page saw: realtime notices, HTTP reads of its own resource, WebSocket opens, full page loads. */
 function observeRealtime(page: Page, readPath: RegExp) {
   const notices: number[] = [];
+  const subscriptions: number[] = [];
   const noticeProjects = new Set<string>();
   const reads: number[] = [];
   const sockets: string[] = [];
@@ -418,6 +419,17 @@ function observeRealtime(page: Page, readPath: RegExp) {
   let closes = 0;
   const revoked: number[] = [];
   const note = (text: string) => {
+    // Engine.IO polling can contain several packets; WebSocket carries one at a time.
+    // Observe the real Socket.IO acknowledgement instead of assuming it caused two HTTP reads.
+    for (const packet of text.split("\x1e")) {
+      const ack = /^43\/realtime,\d+(\[.*\])$/s.exec(packet);
+      if (ack) {
+        try {
+          const [result] = JSON.parse(ack[1]);
+          if (result?.ok === true && typeof result.projectId === "string") subscriptions.push(Date.now());
+        } catch { /* Not a subscription acknowledgement. */ }
+      }
+    }
     if (text.includes("access.revoked")) revoked.push(Date.now());
     if (!text.includes("traces.changed")) return;
     notices.push(Date.now());
@@ -437,7 +449,7 @@ function observeRealtime(page: Page, readPath: RegExp) {
   page.on("request", request => {
     if (request.method() === "GET" && readPath.test(new URL(request.url()).pathname)) reads.push(Date.now());
   });
-  return { notices, noticeProjects, revoked, reads, sockets, loads: () => loads, closes: () => closes };
+  return { notices, subscriptions, noticeProjects, revoked, reads, sockets, loads: () => loads, closes: () => closes };
 }
 type Observed = ReturnType<typeof observeRealtime>;
 
@@ -451,9 +463,11 @@ async function readsSettled(seen: Observed, quietMs = 500) {
   }, { message: "reads have settled" }).toBeGreaterThanOrEqual(quietMs);
 }
 
-/** The subscription is acknowledged once the page has read a second time (first load, then the acknowledgement). */
-const subscribed = (seen: Observed) =>
-  expect.poll(() => seen.reads.length, { message: "realtime subscription acknowledged" }).toBeGreaterThanOrEqual(2);
+/** Initial loading and subscription reconciliation are allowed to share a single HTTP read. */
+async function subscribed(seen: Observed) {
+  await expect.poll(() => seen.subscriptions.length, { message: "realtime subscription acknowledged" }).toBeGreaterThan(0);
+  await readsSettled(seen);
+}
 
 /** The screen changed because a notice arrived and an HTTP read followed, never because of a reload. */
 function expectNoticeThenRead(seen: Observed, readsBefore: number) {

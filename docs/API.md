@@ -1483,6 +1483,21 @@ Ownership notes:
 - TSE-76: the dashboard must send its applied, resolved selection (never "last7days").
 - TSE-81: owns the UI, Stop button, and the complete / truncated / stopped / interrupted / failed states.
 
+### TSE-81 frontend integration
+
+`ProjectDetailPage` mounts `DashboardAssistant` through `ProjectDashboard.renderExtras`.
+The existing applied selection supplies exact UTC dates and normalized filters;
+no new route, backend endpoint, provider call in the browser or trace-detail assistant is added.
+`apiPostStream` owns authenticated transport. The assistant validates SSE payloads
+and the returned project/date/filter scope before showing context, then retains
+that fixed context through same-selection dashboard refreshes.
+
+Stop, close, changed selection, session invalidation and unmount cancel consumption.
+Initial HTTP failures and streamed failures use the existing safe error conventions;
+only captured-session authentication failure signs out the user. Access loss clears
+protected content and delegates project unavailability to the existing dashboard.
+No automatic retry, conversation persistence or document/RAG integration is added.
+
 ### Private documents — TSE-78 / TSE-79
 
 Upload accepts exactly one multipart file field named `file`, no extra fields, and 1–10,485,760 file bytes.

@@ -6,6 +6,7 @@ import { defaultTraceQuery, parseTraceSearchParams, serializeTraceQuery } from "
 import { getModelChoices, listTraces } from "../../api/traces.api";
 import { useProjectArchived } from "../../hooks/useProjectArchived";
 import { useProjectRealtime } from "../../hooks/useProjectRealtime";
+import { useAuthContext } from "../../context/AuthContext";
 import { RefreshScheduler } from "../../lib/refresh-scheduler";
 import type { TraceListQuery, TracePage, TraceSortField } from "../../types/trace.types";
 import { TraceFilterForm, type ChoicesState, type QueryPatch } from "./TraceFilterForm";
@@ -26,8 +27,13 @@ type View =
 
 export function TracesPage() {
   const { organizationId, projectId } = useParams();
+  const { user, isLoading } = useAuthContext();
+  const session = getAuthSessionSnapshot();
+  if (isLoading || !user || !session.token) return null;
   if (!organizationId || !projectId) return <p role="alert">Missing organization or project.</p>;
-  return <TraceExplorer key={organizationId + "/" + projectId} organizationId={organizationId} projectId={projectId} />;
+  // As on DocumentsPage, a new login must discard all state from the previous session.
+  return <TraceExplorer key={`${organizationId}/${projectId}/${session.revision}/${user.id}`}
+    organizationId={organizationId} projectId={projectId} />;
 }
 
 function TraceExplorer({ organizationId, projectId }: { organizationId: string; projectId: string }) {
@@ -48,7 +54,8 @@ function TraceExplorer({ organizationId, projectId }: { organizationId: string; 
     until: number;
     failure: Extract<TraceFailure, { kind: "rate-limit" }>;
   } | null>(null);
-  const sessionRevision = getAuthSessionSnapshot().revision;
+  const { revision: sessionRevision, token } = getAuthSessionSnapshot();
+  const hasSession = token !== null;
   const blocked = archived || revoked || unavailable !== null;
 
   // Resolve the default period (and any normalization) once, without adding history entries.
@@ -61,14 +68,13 @@ function TraceExplorer({ organizationId, projectId }: { organizationId: string; 
   // One scheduler per scope (project + applied query + session). All triggers go through it:
   // first load, notifications, reconnection, Refresh / Retry. A new scope disposes the old one.
   useEffect(() => {
-    if (blocked) {
+    if (blocked || !hasSession) {
       setView({ key: "", phase: "loading" });
       return;
     }
     if (!ready || !query) return;
     const key = canonical!;
     let stopped = false;
-    let hasLoaded = false;
     let missed = false; // a refresh was skipped (tab hidden / offline): redo it once when possible
     const session = getAuthSessionSnapshot();
     const isCurrent = () => !stopped && isAuthSessionCurrent(session);
@@ -82,7 +88,8 @@ function TraceExplorer({ organizationId, projectId }: { organizationId: string; 
       },
       run: async signal => {
         if (!isCurrent()) return;
-        if (hasLoaded && !canRun()) { missed = true; return; }
+        if (!canRun()) { missed = true; return; }
+        missed = false;
         setView(previous =>
           previous.key === key && "data" in previous
             ? { key, phase: "updating", data: previous.data }
@@ -96,7 +103,6 @@ function TraceExplorer({ organizationId, projectId }: { organizationId: string; 
             setSearchParams(serializeTraceQuery({ ...query, page: lastPage }), { replace: true });
             return;
           }
-          hasLoaded = true;
           setView({ key, phase: "ready", data });
         } catch (error) {
           if (!isCurrent() || signal.aborted || isAbortError(error)) return;
@@ -154,7 +160,7 @@ function TraceExplorer({ organizationId, projectId }: { organizationId: string; 
     };
     // `query` is derived from `canonical`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [organizationId, projectId, canonical, ready, blocked, sessionRevision]);
+  }, [organizationId, projectId, canonical, ready, blocked, sessionRevision, hasSession]);
 
   // Declared after the effect above: the scheduler exists when the first acknowledgement arrives.
   useProjectRealtime(organizationId, projectId, {
@@ -162,12 +168,12 @@ function TraceExplorer({ organizationId, projectId }: { organizationId: string; 
     // After every acknowledged subscription (also after a reconnection): changes may have been missed.
     onSynced: () => schedulerRef.current?.request("coalesced"),
     onRevoked: () => setRevoked(true),
-  }, !blocked && ready && query !== null);
+  }, hasSession && !blocked && ready && query !== null);
 
   const [choices, setChoices] = useState<ChoicesState>({ phase: "loading" });
   const [choicesAttempt, setChoicesAttempt] = useState(0);
   useEffect(() => {
-    if (blocked) {
+    if (blocked || !hasSession) {
       setChoices({ phase: "loading" });
       return;
     }
@@ -200,7 +206,7 @@ function TraceExplorer({ organizationId, projectId }: { organizationId: string; 
       });
 
     return () => controller.abort();
-  }, [choicesAttempt, blocked]);
+  }, [choicesAttempt, blocked, sessionRevision, hasSession]);
 
   const apply = useCallback((next: TraceListQuery, replace = false) => {
     setSearchParams(serializeTraceQuery(next), { replace });

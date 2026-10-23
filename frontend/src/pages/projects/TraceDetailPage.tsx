@@ -1,4 +1,3 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +7,7 @@ import { formatUtcTime } from "../../api/trace-format";
 import { getTrace } from "../../api/traces.api";
 import { useProjectArchived } from "../../hooks/useProjectArchived";
 import { useProjectRealtime } from "../../hooks/useProjectRealtime";
+import { useAuthContext } from "../../context/AuthContext";
 import { RefreshScheduler } from "../../lib/refresh-scheduler";
 import type { Trace } from "../../types/trace.types";
 import { TraceFailureNotice } from "./TraceFailureNotice";
@@ -26,8 +26,12 @@ type State =
 
 export function TraceDetailPage() {
   const { organizationId, projectId, traceId } = useParams();
+  const { user, isLoading } = useAuthContext();
+  const session = getAuthSessionSnapshot();
+  if (isLoading || !user || !session.token) return null;
   if (!organizationId || !projectId || !traceId) return <p role="alert">Missing trace.</p>;
-  return <TraceDetail key={organizationId + "/" + projectId + "/" + traceId}
+  // A confirmed trace and its access-loss state belong to one authenticated session.
+  return <TraceDetail key={`${organizationId}/${projectId}/${traceId}/${session.revision}/${user.id}`}
     organizationId={organizationId} projectId={projectId} traceId={traceId} />;
 }
 
@@ -42,7 +46,8 @@ function TraceDetail({ organizationId, projectId, traceId }: { organizationId: s
   const [state, setState] = useState<State>({ phase: "loading" });
   const schedulerRef = useRef<RefreshScheduler | null>(null);
   const cooldownUntil = useRef(0);
-  const sessionRevision = getAuthSessionSnapshot().revision;
+  const { revision: sessionRevision, token } = getAuthSessionSnapshot();
+  const hasSession = token !== null;
   const listPath = "/organizations/" + encodeURIComponent(organizationId) + "/projects/" + encodeURIComponent(projectId) + "/traces";
 
   // Return to the list the person came from; a direct visit goes to the default list.
@@ -57,12 +62,11 @@ function TraceDetail({ organizationId, projectId, traceId }: { organizationId: s
 
   // All triggers (first load, notification, reconnection, Retry) go through one scheduler.
   useEffect(() => {
-    if (archived || revoked) {
+    if (archived || revoked || !hasSession) {
       setState({ phase: "loading" });
       return;
     }
     let stopped = false;
-    let hasLoaded = false;
     let missed = false; // a refresh was skipped (tab hidden / offline): redo it once when possible
     const session = getAuthSessionSnapshot();
     const isCurrent = () => !stopped && isAuthSessionCurrent(session);
@@ -76,13 +80,13 @@ function TraceDetail({ organizationId, projectId, traceId }: { organizationId: s
       },
       run: async signal => {
         if (!isCurrent()) return;
-        if (hasLoaded && !canRun()) { missed = true; return; }
+        if (!canRun()) { missed = true; return; }
+        missed = false;
         setState(previous =>
           "trace" in previous ? { phase: "updating", trace: previous.trace } : { phase: "loading" });
         try {
           const trace = await getTrace(organizationId, projectId, traceId, signal);
           if (!isCurrent() || signal.aborted) return;
-          hasLoaded = true;
           setState({ phase: "ready", trace });
         } catch (error) {
           if (!isCurrent() || signal.aborted || isAbortError(error)) return;
@@ -122,7 +126,7 @@ function TraceDetail({ organizationId, projectId, traceId }: { organizationId: s
       document.removeEventListener("visibilitychange", reconcile);
       window.removeEventListener("online", reconcile);
     };
-  }, [organizationId, projectId, traceId, archived, revoked, sessionRevision]);
+  }, [organizationId, projectId, traceId, archived, revoked, sessionRevision, hasSession]);
 
   // Declared after the effect above: the scheduler exists when the first acknowledgement arrives.
   useProjectRealtime(organizationId, projectId, {
@@ -130,7 +134,7 @@ function TraceDetail({ organizationId, projectId, traceId }: { organizationId: s
     // After every acknowledged subscription (also after a reconnection): changes may have been missed.
     onSynced: () => schedulerRef.current?.request("coalesced"),
     onRevoked: () => setRevoked(true),
-  }, !projectGone && !traceGone);
+  }, hasSession && !projectGone && !traceGone);
 
   const retry = () => schedulerRef.current?.request("immediate");
   const back = <Link to={returnTo}>← Back to traces</Link>;

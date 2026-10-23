@@ -6,9 +6,12 @@ import { listTraces, getModelChoices } from "@/api/traces.api";
 import { ApiError } from "@/api/http-client";
 import { notifyProjectsChanged } from "@/api/project-events";
 import type { Trace, TracePage } from "@/types/trace.types";
-import { getAuthSessionSnapshot, isAuthSessionCurrent, saveAccessToken } from "@/api/auth-session";
+import { clearAuthSession, getAuthSessionSnapshot, isAuthSessionCurrent, saveAccessToken } from "@/api/auth-session";
 
 vi.mock("@/api/traces.api", () => ({ listTraces: vi.fn(), getTrace: vi.fn(), getModelChoices: vi.fn() }));
+vi.mock("@/context/AuthContext", () => ({
+  useAuthContext: () => ({ user: { id: "viewer" }, isLoading: false }),
+}));
 
 const listMock = vi.mocked(listTraces);
 const choicesMock = vi.mocked(getModelChoices);
@@ -42,20 +45,23 @@ function Probe() {
 }
 
 function renderAt(initial: string) {
-  return render(
+  const tree = () => (
     <MemoryRouter initialEntries={[initial]}>
       <Link to={path("p2")}>go p2</Link>
       <Routes>
         <Route path="/organizations/:organizationId/projects/:projectId/traces" element={<TracesPage />} />
       </Routes>
       <Probe />
-    </MemoryRouter>,
+    </MemoryRouter>
   );
+  const view = render(tree());
+  return { ...view, rerenderPage: () => view.rerender(tree()) };
 }
 const url = () => screen.getByTestId("url").textContent ?? "";
 const lastQuery = () => listMock.mock.calls.at(-1)![2];
 
 beforeEach(() => {
+  saveAccessToken("explorer-session");
   listMock.mockReset();
   choicesMock.mockReset();
   choicesMock.mockResolvedValue({
@@ -628,4 +634,66 @@ it("cancelling a read in flight causes no unhandled rejection", async () => {
   expect(listMock).toHaveBeenCalledTimes(2);
   view.unmount(); // aborts the read: vitest fails the run on an unhandled rejection
   await flush(1);
+});
+
+it("clears confirmed rows before loading the same query for a new session", async () => {
+  const view = await openLoaded(GOLDEN, page([trace(1, { workflow: "Old-session-private" })]));
+  const next = deferred<TracePage>();
+  listMock.mockReturnValueOnce(next.promise);
+  saveAccessToken("replacement-session");
+  view.rerenderPage();
+  expect(screen.queryByText("Old-session-private")).not.toBeInTheDocument();
+  await flush();
+  expect(screen.queryByText("Old-session-private")).not.toBeInTheDocument();
+  expect(listMock).toHaveBeenCalledTimes(2);
+  await act(async () => { next.resolve(page([trace(2, { workflow: "New-session-data" })])); });
+  expect(screen.getByText("New-session-data")).toBeInTheDocument();
+});
+
+it("invalidation cancels queued reads and the catalogue without starting tokenless work", async () => {
+  const catalogue = deferred<Awaited<ReturnType<typeof getModelChoices>>>();
+  choicesMock.mockReturnValueOnce(catalogue.promise);
+  await openLoaded();
+  const catalogueSignal = choicesMock.mock.calls[0][0];
+  notify("onChanged");
+  act(() => { clearAuthSession(); });
+  await flush(2000);
+  expect(listMock).toHaveBeenCalledTimes(1);
+  expect(choicesMock).toHaveBeenCalledTimes(1);
+  expect(catalogueSignal?.aborted).toBe(true);
+  expect(realtime.enabled).toBe(false);
+  expect(screen.queryByText("$0.0018")).not.toBeInTheDocument();
+  await act(async () => { catalogue.resolve({ providers: [], modelsByProvider: {} }); });
+});
+
+it("defers even the first list read while hidden, then reconciles once", async () => {
+  vi.useFakeTimers();
+  setVisibility("hidden");
+  listMock.mockResolvedValue(page([trace(1)]));
+  renderAt(path("p1"));
+  notify("onSynced");
+  await flush(2000);
+  expect(listMock).not.toHaveBeenCalled();
+  setVisibility("visible");
+  act(() => { document.dispatchEvent(new Event("visibilitychange")); });
+  await flush(1);
+  expect(listMock).toHaveBeenCalledTimes(1);
+});
+
+it("does not turn notices into hidden-tab retries after the first read fails", async () => {
+  vi.useFakeTimers();
+  listMock.mockRejectedValueOnce(new ApiError(503, "UNAVAILABLE", "Unavailable"));
+  renderAt(path("p1"));
+  await flush();
+  setVisibility("hidden");
+  listMock.mockResolvedValue(page([trace(1)]));
+  notify("onChanged");
+  await flush(300);
+  notify("onSynced");
+  await flush(300);
+  expect(listMock).toHaveBeenCalledTimes(1);
+  setVisibility("visible");
+  act(() => { document.dispatchEvent(new Event("visibilitychange")); });
+  await flush(1);
+  expect(listMock).toHaveBeenCalledTimes(2);
 });

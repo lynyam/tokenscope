@@ -697,8 +697,9 @@ The 16-point figure remains a target until complete functionality and the subjec
 
 ### Assistant demo — TSE-80
 
-Backend demo before TSE-81's UI (golden project loaded as in
-LOCAL_DEVELOPMENT.md, "Dashboard assistant — TSE-80"):
+Backend/proxy check (golden project loaded as in
+LOCAL_DEVELOPMENT.md, "Dashboard assistant — TSE-80 / TSE-81").
+The UI demonstration follows under "Dashboard assistant UI — TSE-81":
 
 1. Select the golden period: `2026-10-01T00:00:00.000Z` to `2026-10-02T00:00:00.000Z`, no filters.
 2. Ask: "Which model contributes most to the estimated cost?"
@@ -839,6 +840,71 @@ Keep the returned trace id and ETag for PUT/DELETE. Do not commit the key.
    Presets resolve once: Live does not silently advance their upper boundary.
 
 Record dev and trusted-HTTPS browser results separately. Dashboard realtime does not establish
-Explorer realtime: the Explorer list and detail have their own browser scenarios (`trace-explorer.spec.ts`, TSE-87).
-With a receiving browser left open on the Explorer, ingest, correct and delete a trace through the public API and
-confirm that the list, count, order and open detail update without clicking Refresh or reloading.
+Explorer realtime: TSE-87 verifies the real list and detail screens separately.
+Leave an Explorer browser open while another client ingests, corrects and deletes a trace in its
+applied period. Check the rows/detail change without Refresh or reload, then check reconnection
+and access revocation. Keep the same URL selection throughout; notifications do not advance dates.
+
+
+### Dashboard assistant UI — TSE-81
+
+This is an **opt-in live Gemini check**, not the intercepted Playwright suite.
+Use a disposable project, backend-only Gemini configuration and the canonical
+catalogue + six golden traces described in LOCAL_DEVELOPMENT.md. Do not load
+transcripts into the application or use uploaded documents as assistant context.
+
+1. Sign in as an organization member and open the project detail's Analytics dashboard.
+   Apply `2026-10-01T00:00:00.000Z` to `2026-10-02T00:00:00.000Z`, without filters.
+2. Open **Ask assistant**. Confirm no assistant POST occurs until Ask. Read the disclosure.
+3. Ask which model contributes most to estimated cost. In Network verify one authenticated
+   POST containing only `question`, `from`, `to`, `filters`; do not export credentials.
+4. In **Context used**, verify six traces, 6,000 input + 1,200 output = 7,200 total tokens,
+   `$0.01535` (wire value `0.015350000000`), explicit UTC dates, generation timestamp
+   and synthetic pricing. Verify visible text arrives before completion, without
+   asserting exact Gemini wording. The expected highest-cost group is fixture-b/demo-large.
+5. Refresh dashboard data for the same selection: the answer/context stay unchanged.
+   Edit a date draft without applying: it also stays. Apply changed dates or filters:
+   the answer/context clear, and any current generation is aborted.
+6. Deliberately submit another question. While requesting/streaming, click **Stop**.
+   Text must stop growing and show **Stopped — answer incomplete**. Verify the backend
+   records `assistant_answer` with `outcome: client_left` for that request. If it had
+   already completed, that attempt did not test cancellation; record it honestly.
+7. After cleanup, explicitly Ask again: one new request may succeed; no automatic retry.
+   Close and reopen: question, context and answer are cleared. Test keyboard Escape too.
+8. Repeat generation and Stop through `https://localhost:8443`, with the real CA trusted.
+   Use a fresh rate-limit window between runs. A timeout/quota failure is a visible failure,
+   not proof of successful streaming. Never change deadlines just to get this check green.
+
+OWNER, ADMIN and MEMBER mounting, deterministic failures and scope handling are also
+covered by `assistant.spec.ts`; those assistant responses are intercepted. Keep that
+result separate from this live-provider proof. Record commit, mode, results and limits;
+redact JWTs, API keys and Gemini credentials from evidence.
+
+### Dashboard exports — TSE-77 manual check
+
+Use a project containing the six golden traces with the synthetic catalogue
+loaded. Open its Analytics section; apply the exact UTC period
+`2026-10-01T00:00:00.000Z` to `2026-10-02T00:00:00.000Z` (exclusive end).
+
+1. Confirm six traces, 6000 input tokens, 1200 output tokens and estimated cost
+   USD 0.01535. Export CSV and PDF; neither click should request analytics again.
+2. CSV has 24 columns and 27 data rows: one summary, 24 series buckets and two
+   models. Its summary cost is exactly `0.015350000000`. Selection metadata and
+   snapshot identity agree across every row.
+3. Open the actual PDF. Check project identity, generated time, UTC period,
+   filters, summary, all model/series rows, repeated table headers, page numbers
+   and the estimate/synthetic-pricing note. Check wrapping with a long name.
+4. Filter `provider=fixture-a`: three traces and cost `0.007150000000`. Both files
+   describe that filter. Then select an empty period: export stays available,
+   series contains zero buckets and PDF null averages/rates say `No observations`.
+5. While a new applied selection loads, exports are disabled. A same-selection
+   refresh can export the last displayed snapshot. Sign-out, access loss or
+   navigation must discard pending downloads; generation failure offers Retry.
+6. Verify a name such as `Équipe Ελληνικά Кириллица` visually. DejaVu Sans does
+   not cover all accepted Unicode characters (notably CJK and some emoji): do
+   not count that test as proof of unrestricted Unicode coverage. Broader font
+   coverage remains an acceptance gap until a font/fallback is supplied and tested.
+
+Run in development and HTTPS evaluation mode using the setup in
+`docs/LOCAL_DEVELOPMENT.md`, “Dashboard export checks — TSE-77”. Record the tested
+commit/mode and distinguish automated download checks from visual PDF inspection.

@@ -5,10 +5,13 @@ import { TraceDetailPage } from "@/pages/projects/TraceDetailPage";
 import { getTrace } from "@/api/traces.api";
 import { ApiError } from "@/api/http-client";
 import type { Trace } from "@/types/trace.types";
-import { getAuthSessionSnapshot, isAuthSessionCurrent, saveAccessToken } from "@/api/auth-session";
+import { clearAuthSession, getAuthSessionSnapshot, isAuthSessionCurrent, saveAccessToken } from "@/api/auth-session";
 import { notifyProjectsChanged } from "@/api/project-events";
 
 vi.mock("@/api/traces.api", () => ({ listTraces: vi.fn(), getTrace: vi.fn(), getModelChoices: vi.fn() }));
+vi.mock("@/context/AuthContext", () => ({
+  useAuthContext: () => ({ user: { id: "viewer" }, isLoading: false }),
+}));
 const getMock = vi.mocked(getTrace);
 
 const trace: Trace = {
@@ -22,16 +25,21 @@ const trace: Trace = {
 
 const LIST = "?from=2026-10-01T00%3A00%3A00.000Z&to=2026-10-02T00%3A00%3A00.000Z&q=SUPPORT";
 function renderDetail(state?: unknown) {
-  return render(
+  const tree = () => (
     <MemoryRouter initialEntries={[{ pathname: "/organizations/o1/projects/p1/traces/t1", state }]}>
       <Routes>
         <Route path="/organizations/:organizationId/projects/:projectId/traces/:traceId" element={<TraceDetailPage />} />
       </Routes>
-    </MemoryRouter>,
+    </MemoryRouter>
   );
+  const view = render(tree());
+  return { ...view, rerenderPage: () => view.rerender(tree()) };
 }
 
-beforeEach(() => getMock.mockReset());
+beforeEach(() => {
+  getMock.mockReset();
+  saveAccessToken("detail-session");
+});
 
 it("shows every recorded fact with exact decimal strings and escaped metadata", async () => {
   getMock.mockResolvedValue(trace);
@@ -338,4 +346,61 @@ it("cancelling a read in flight causes no unhandled rejection", async () => {
   expect(getMock).toHaveBeenCalledTimes(2);
   view.unmount(); // aborts the read: vitest fails the run on an unhandled rejection
   await flush(1);
+});
+
+it("clears a confirmed detail before loading it for a new session", async () => {
+  const view = await openLoaded();
+  const next = deferred<Trace>();
+  getMock.mockReturnValueOnce(next.promise);
+  saveAccessToken("replacement-session");
+  view.rerenderPage();
+  expect(screen.queryByText("Trace ext-001")).not.toBeInTheDocument();
+  await flush();
+  expect(screen.queryByText("Trace ext-001")).not.toBeInTheDocument();
+  expect(getMock).toHaveBeenCalledTimes(2);
+  await act(async () => { next.resolve({ ...trace, externalId: "new-session" }); });
+  expect(screen.getByText("Trace new-session")).toBeInTheDocument();
+});
+
+it("invalidation clears detail and queued work without starting a tokenless request", async () => {
+  await openLoaded();
+  getMock.mockResolvedValue(trace);
+  notify("onChanged");
+  act(() => { clearAuthSession(); });
+  await flush(2000);
+  expect(getMock).toHaveBeenCalledTimes(1);
+  expect(realtime.enabled).toBe(false);
+  expect(screen.queryByText("Trace ext-001")).not.toBeInTheDocument();
+});
+
+it("defers even the first detail read while hidden, then reconciles once", async () => {
+  vi.useFakeTimers();
+  setVisibility("hidden");
+  getMock.mockResolvedValue(trace);
+  renderDetail();
+  notify("onSynced");
+  await flush(2000);
+  expect(getMock).not.toHaveBeenCalled();
+  setVisibility("visible");
+  act(() => { document.dispatchEvent(new Event("visibilitychange")); });
+  await flush(1);
+  expect(getMock).toHaveBeenCalledTimes(1);
+});
+
+it("does not turn notices into hidden-tab retries after the first detail read fails", async () => {
+  vi.useFakeTimers();
+  getMock.mockRejectedValueOnce(new ApiError(503, "UNAVAILABLE", "Unavailable"));
+  renderDetail();
+  await flush();
+  setVisibility("hidden");
+  getMock.mockResolvedValue(trace);
+  notify("onChanged");
+  await flush(300);
+  notify("onSynced");
+  await flush(300);
+  expect(getMock).toHaveBeenCalledTimes(1);
+  setVisibility("visible");
+  act(() => { document.dispatchEvent(new Event("visibilitychange")); });
+  await flush(1);
+  expect(getMock).toHaveBeenCalledTimes(2);
 });
