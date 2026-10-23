@@ -17,8 +17,8 @@ import {
 import type { AssistantFailure } from "../../api/assistant-errors";
 import { assistantScopeKey } from "../../api/assistant-scope";
 import type { AssistantSelection } from "../../types/assistant.types";
-import { assistantReducer, initialAssistantState, isActive } from "./assistantState";
-import { AssistantContextCard } from "./AssistantContextCard";
+import { assistantReducer, assistantStatusText, initialAssistantState, isActive, type AssistantState } from "./assistantState";
+import { AssistantExchange } from "./AssistantExchange";
 
 export type DashboardAssistantProps = {
   organizationId: string;
@@ -34,8 +34,6 @@ export type DashboardAssistantProps = {
 
 const NOTICE =
   "Your question, project name and description, and analytics for the selected period and filters are sent to Gemini to generate an answer. Do not include secrets.";
-const TRUNCATED = "Answer reached the output limit and may be incomplete";
-const STOPPED = "Stopped — answer incomplete";
 
 // The panel is anchored to the bottom-right corner, so it grows toward the top-left.
 const MIN_SIZE = { width: 320, height: 320 };
@@ -71,6 +69,10 @@ export function DashboardAssistant({
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState("");
   const [submittedQuestion, setSubmittedQuestion] = useState("");
+  // Display-only history for this mounted panel and scope. Never sent to Gemini.
+  const [history, setHistory] = useState<Array<{
+    id: number; question: string; answer: AssistantState;
+  }>>([]);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [state, dispatch] = useReducer(assistantReducer, initialAssistantState);
   const [cooldownEnd, setCooldownEnd] = useState<number | null>(null);
@@ -87,8 +89,6 @@ export function DashboardAssistant({
   const messagesRef = useRef<HTMLDivElement>(null);
   const followRef = useRef(true);
   const lastTextLength = useRef(0);
-  // The question being answered: put back in the field if the request fails, so it can be retried.
-  const submittedRef = useRef("");
   const hintId = useId();
 
   // Panel size chosen by the reader. null = default size. Kept when the panel is closed.
@@ -132,7 +132,7 @@ export function DashboardAssistant({
     setValidationError(null);
     setHasNewBelow(false);
     followRef.current = true;
-    submittedRef.current = "";
+    setHistory([]);
   }, [cancelActive]);
 
   // Clear before painting a different scope or login. A refresh of the same
@@ -218,9 +218,7 @@ export function DashboardAssistant({
     if (failure.clearContent) {
       setQuestion("");
       setSubmittedQuestion("");
-    } else {
-      // Nothing was answered: give the question back (unless the reader already typed another).
-      setQuestion(current => (current === "" ? submittedRef.current : current));
+      setHistory([]); // Access loss also removes earlier protected exchanges.
     }
     dispatch({ type: "fail", failure });
     if (failure.waitSeconds !== undefined) startCooldown(failure.waitSeconds);
@@ -242,6 +240,10 @@ export function DashboardAssistant({
     followRef.current = true; // a new question follows its own answer
     setHasNewBelow(false);
     lockRef.current = true; // before the first await
+    if (submittedQuestion && state.status !== "ready") {
+      const previous = { id: requestSeq.current, question: submittedQuestion, answer: state };
+      setHistory(items => [...items, previous]);
+    }
     const id = ++requestSeq.current;
     const controller = new AbortController();
     active.current = { id, controller };
@@ -259,8 +261,7 @@ export function DashboardAssistant({
 
     setValidationError(null);
     setSubmittedQuestion(question.trim());
-    submittedRef.current = question;
-    setQuestion(""); // the question now lives in the conversation, not in the field
+    setQuestion(""); // Immediately move the valid question from the composer to its bubble.
     dispatch({ type: "submit" });
 
     let stream: ApiStreamResponse | null = null;
@@ -327,6 +328,13 @@ export function DashboardAssistant({
     cancelActive();
   }
 
+  function reuseQuestion(value: string) {
+    if (lockRef.current) return;
+    setQuestion(value);
+    setValidationError(null);
+    textareaRef.current?.focus(); // Reuse edits the draft; only Ask submits it.
+  }
+
   function close() {
     clearAnswer();
     setOpen(false);
@@ -382,25 +390,7 @@ export function DashboardAssistant({
 
   const activeFilters = Object.entries(normalizeFilters(selection.filters));
 
-  const liveText = (() => {
-    switch (state.status) {
-      case "requesting":
-        return "Preparing answer…";
-      case "streaming":
-        return "Answer in progress.";
-      case "complete":
-        return "Answer complete.";
-      case "truncated":
-        return TRUNCATED;
-      case "stopped":
-        return STOPPED;
-      case "interrupted":
-      case "failed":
-        return state.failure?.message ?? "";
-      default:
-        return "";
-    }
-  })();
+  const liveText = assistantStatusText(state);
 
   if (!open) {
     return (
@@ -429,7 +419,7 @@ export function DashboardAssistant({
       onKeyDown={(event) => {
         if (event.key === "Escape") close();
       }}
-      className="fixed bottom-4 left-4 right-4 z-50 flex h-[34rem] max-h-[calc(100dvh-2rem)] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border bg-background text-foreground shadow-2xl md:left-auto md:w-96"
+      className="fixed bottom-4 left-4 right-4 z-50 flex h-[34rem] max-h-[calc(100dvh-2rem)] max-w-[calc(100vw-2rem)] flex-col overflow-x-hidden overflow-y-auto rounded-xl border bg-background text-foreground shadow-2xl md:left-auto md:w-96"
     >
       {/* Invisible resize zones on the left edge, the top edge and the corner. Desktop only. */}
       <button
@@ -467,7 +457,7 @@ export function DashboardAssistant({
         className="absolute left-0 top-0 z-20 hidden size-4 cursor-nwse-resize touch-none select-none md:block"
       />
 
-      <header className="flex items-start justify-between gap-2 border-b border-border px-4 py-3">
+      <header className="flex shrink-0 items-start justify-between gap-2 border-b border-border px-4 py-3">
         <div className="min-w-0">
           <h2 className="text-base font-semibold">Ask assistant</h2>
           <p className="break-words text-xs text-muted-foreground">{projectName}</p>
@@ -505,44 +495,17 @@ export function DashboardAssistant({
         ref={messagesRef}
         data-testid="assistant-messages"
         onScroll={handleMessagesScroll}
-        className="flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-4 py-3"
+        className="min-h-24 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-4 py-3"
       >
         <p className="rounded-md bg-amber-50 p-2 text-xs text-amber-900">{NOTICE}</p>
 
-        {submittedQuestion && state.status !== "ready" && (
-          <div className="ml-auto max-w-[85%] whitespace-pre-wrap break-words rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground">
-            {submittedQuestion}
-          </div>
-        )}
-
-        {state.context && <AssistantContextCard context={state.context} />}
-
-        {state.status === "requesting" && (
-          <p className="text-sm text-muted-foreground">Preparing answer…</p>
-        )}
-
-        {state.text && (
-          <div className="whitespace-pre-wrap break-words text-sm text-foreground">
-            {state.text}
-          </div>
-        )}
-
-        {(state.status === "streaming" || state.status === "complete") && (
-          <p className="text-xs text-muted-foreground">{liveText}</p>
-        )}
-        {state.status === "truncated" && (
-          <p className="text-xs font-medium text-amber-700">{TRUNCATED}</p>
-        )}
-        {state.status === "stopped" && (
-          <p className="text-xs font-medium text-muted-foreground">{STOPPED}</p>
-        )}
-        {(state.status === "interrupted" || state.status === "failed") && state.failure && (
-          <div className="rounded-md bg-red-50 p-2 text-xs text-red-800">
-            <p className="break-words">{state.failure.message}</p>
-            {state.failure.requestId && (
-              <p className="mt-1 break-all text-red-600">Request ID: {state.failure.requestId}</p>
-            )}
-          </div>
+        {history.map(exchange => (
+          <AssistantExchange key={exchange.id} question={exchange.question}
+            answer={exchange.answer} onReuse={reuseQuestion} reuseDisabled={running} />
+        ))}
+        {state.status !== "ready" && (
+          <AssistantExchange key={requestSeq.current} question={submittedQuestion}
+            answer={state} onReuse={reuseQuestion} reuseDisabled={running} />
         )}
 
         {hasNewBelow && (
@@ -563,7 +526,7 @@ export function DashboardAssistant({
       </p>
 
       <form
-        className="space-y-2 border-t border-border px-4 py-3"
+        className="shrink-0 space-y-2 border-t border-border px-4 py-3"
         onSubmit={(event) => {
           event.preventDefault();
           void ask();
@@ -576,6 +539,7 @@ export function DashboardAssistant({
           id={fieldId}
           ref={textareaRef}
           value={question}
+          placeholder="Ask a new question…"
           readOnly={running}
           rows={3}
           aria-invalid={validationError ? true : undefined}

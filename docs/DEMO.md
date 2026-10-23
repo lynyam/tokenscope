@@ -840,7 +840,10 @@ Keep the returned trace id and ETag for PUT/DELETE. Do not commit the key.
    Presets resolve once: Live does not silently advance their upper boundary.
 
 Record dev and trusted-HTTPS browser results separately. Dashboard realtime does not establish
-that Explorer realtime is integrated; verify that separately in TSE-87.
+Explorer realtime: TSE-87 verifies the real list and detail screens separately.
+Leave an Explorer browser open while another client ingests, corrects and deletes a trace in its
+applied period. Check the rows/detail change without Refresh or reload, then check reconnection
+and access revocation. Keep the same URL selection throughout; notifications do not advance dates.
 
 
 ### Dashboard assistant UI — TSE-81
@@ -855,7 +858,7 @@ transcripts into the application or use uploaded documents as assistant context.
 2. Open **Ask assistant**. Confirm no assistant POST occurs until Ask. Read the disclosure.
 3. Ask which model contributes most to estimated cost. In Network verify one authenticated
    POST containing only `question`, `from`, `to`, `filters`; do not export credentials.
-4. In **Context used**, verify six traces, 6,000 input + 1,200 output = 7,200 total tokens,
+4. Expand **Context used** and verify six traces, 6,000 input + 1,200 output = 7,200 total tokens,
    `$0.01535` (wire value `0.015350000000`), explicit UTC dates, generation timestamp
    and synthetic pricing. Verify visible text arrives before completion, without
    asserting exact Gemini wording. The expected highest-cost group is fixture-b/demo-large.
@@ -863,10 +866,12 @@ transcripts into the application or use uploaded documents as assistant context.
    Edit a date draft without applying: it also stays. Apply changed dates or filters:
    the answer/context clear, and any current generation is aborted.
 6. Deliberately submit another question. While requesting/streaming, click **Stop**.
-   Text must stop growing and show **Stopped — answer incomplete**. Verify the backend
+   Text must stop growing and show **Stopped — answer incomplete** (or
+   **Stopped before an answer was received.** if no text arrived). Verify the backend
    records `assistant_answer` with `outcome: client_left` for that request. If it had
    already completed, that attempt did not test cancellation; record it honestly.
-7. After cleanup, explicitly Ask again: one new request may succeed; no automatic retry.
+7. After cleanup, use **Reuse question**, then Ask (or type a new question):
+   one new request may succeed; no automatic retry.
    Close and reopen: question, context and answer are cleared. Test keyboard Escape too.
 8. Repeat generation and Stop through `https://localhost:8443`, with the real CA trusted.
    Use a fresh rate-limit window between runs. A timeout/quota failure is a visible failure,
@@ -876,6 +881,52 @@ OWNER, ADMIN and MEMBER mounting, deterministic failures and scope handling are 
 covered by `assistant.spec.ts`; those assistant responses are intercepted. Keep that
 result separate from this live-provider proof. Record commit, mode, results and limits;
 redact JWTs, API keys and Gemini credentials from evidence.
+
+#### Assistant improvements — TSE-89
+
+Repeat these checks in dev and HTTPS eval using the live setup above. Rebuild
+eval after source changes. Do not replace the live result with an intercepted test.
+
+1. Submit a question with Enter (Shift+Enter adds a line). The field clears
+   immediately and the question appears in its bubble while "Preparing answer…"
+   is shown. Stop before text: the question remains in the bubble, the input stays
+   empty, and the stopped status explains that no answer arrived. **Reuse question**
+   fills the input without sending; a deliberate Ask sends one new request.
+   Ordinary failures follow the same explicit reuse flow, with no automatic retry.
+2. While an answer is arriving, Expand/Collapse using Enter or Space on the button.
+   Confirm one POST throughout, unchanged context, and continuing answer text.
+   Drag to the minimum size: wheel scrolling must still reach the composer and Stop.
+   Resize the viewport too; Close, Expand and Stop must remain reachable.
+3. With enough answer text to scroll, stay at the bottom and observe following.
+   Scroll up: incoming text must not pull the view back down. Use **New text below**
+   to resume following. Stop must remain effective in expanded and compact modes.
+4. In DevTools, record when the first complete `delta` is received, when its text
+   appears, and when `done` arrives. Use a longer but bounded question, for example
+   "Compare both models and explain costs, tokens and errors in six short paragraphs."
+   Text must appear while the response is still in progress. Do not require a
+   particular number of tokens per fragment or add artificial typing delays.
+5. If the answer arrives all at once, use the existing unbuffered
+   `backend/test/manual/assistant-proxy-check.sh` with the same mode/model/scope.
+   Progressive wire events with delayed UI point to frontend rendering; batching
+   on the wire requires comparing provider/backend/proxy timing before assigning
+   a cause. Dev success alone does not validate HTTPS. A single short provider
+   fragment followed immediately by `done` is inconclusive for progressive display.
+
+6. Ask a second question in the same scope. Both exchanges remain in order, with
+   their own context and status. Stop partway through another answer: its partial
+   text remains when the following question is submitted. Inspect the outgoing
+   request: it still contains only question/from/to/filters, never earlier exchanges.
+7. **Context used** starts collapsed. Open/close it and its nested **By provider /
+   model** disclosure with mouse and keyboard. Values are unchanged and no request
+   is sent. Check generated Markdown renders bold text, lists and inline code;
+   incomplete Markdown may reformat as more streamed text arrives. Do not insert
+   artificial typing delays. No model-generated images or links should load.
+8. Change applied period/filters or project: all retained exchanges disappear.
+   Close/reopen and logout also clear them. A same-selection refresh preserves them.
+
+Record the tested commit, mode, model, whether partial text appeared before `done`,
+Stop outcome and any unresolved batching. Automated frontend tests exercise bytes
+and UI behavior; they do not establish live Gemini cadence or proxy delivery.
 
 ### Dashboard exports — TSE-77 manual check
 

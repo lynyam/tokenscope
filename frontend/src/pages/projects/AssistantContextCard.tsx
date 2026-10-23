@@ -13,7 +13,9 @@ export function AssistantContextCard({ context }: { context: AssistantContext })
       aria-label="Context used"
       className="rounded-md border border-border bg-muted p-3 text-xs text-foreground"
     >
-      <p className="mb-1 font-semibold">Context used</p>
+      <details>
+        <summary className="cursor-pointer font-semibold">Context used</summary>
+        <div className="mt-2">
       <dl className="space-y-0.5 break-words">
         <div>
           <dt className="inline font-medium">Project: </dt>
@@ -54,6 +56,8 @@ export function AssistantContextCard({ context }: { context: AssistantContext })
         </details>
       )}
       <p className="mt-2 text-muted-foreground">{CONTEXT_NOTICE}</p>
+        </div>
+      </details>
     </section>
   );
 }

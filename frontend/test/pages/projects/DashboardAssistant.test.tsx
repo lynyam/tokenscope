@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DashboardAssistant } from '../../../src/pages/projects/DashboardAssistant';
@@ -58,7 +58,7 @@ function liveAnswer() {
       while (queue.length > 0) {
         const event = queue.shift()!;
         yield event;
-        if (event.type === 'done') return;
+        if (event.type === 'done' || event.type === 'error') return;
       }
       await new Promise<void>(resolve => { wake = resolve; });
     }
@@ -166,13 +166,13 @@ describe('DashboardAssistant', () => {
 
     expect(signals[0].aborted).toBe(true);
     // Shown in the panel and repeated in the screen-reader live region.
-    expect(screen.getAllByText('Stopped — answer incomplete')).toHaveLength(2);
+    expect(screen.getAllByText('Stopped before an answer was received.')).toHaveLength(2);
     expect(screen.queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument();
 
     // The server keeps talking after Stop: nothing may appear.
     await act(async () => { answer.release(); });
     expect(screen.queryByText('Late text')).not.toBeInTheDocument();
-    expect(screen.getAllByText('Stopped — answer incomplete')).toHaveLength(2);
+    expect(screen.getAllByText('Stopped before an answer was received.')).toHaveLength(2);
   });
 
   it('can ask again after Stop', async () => {
@@ -382,7 +382,7 @@ it('can Stop before headers and never display a late response', async () => {
     stream: { body, isSessionCurrent: () => true, invalidateSession: vi.fn() },
     events: (async function* () { throw new Error('Late stream must not be read'); })(),
   }));
-  expect(screen.getAllByText('Stopped — answer incomplete')).toHaveLength(2);
+  expect(screen.getAllByText('Stopped before an answer was received.')).toHaveLength(2);
 });
 
 it('shows controlled fragments before completion and treats output limits separately', async () => {
@@ -430,7 +430,7 @@ it.each([403, 503])('handles initial %s without invalidating the session', async
   await user.click(screen.getByRole('button', { name: 'Ask' }));
   await screen.findAllByText(status === 403 ? 'You no longer have access to this project.' : 'The assistant is currently unavailable.');
   expect(getAccessToken()).toBe('session-a');
-  expect(screen.getByLabelText('Your question')).toHaveValue(status === 403 ? '' : 'My question');
+  expect(screen.getByLabelText('Your question')).toHaveValue('');
   expect(screen.queryByText('<unsafe internal>')).not.toBeInTheDocument();
 });
 
@@ -627,8 +627,8 @@ describe('sending with the keyboard', () => {
 
     expect(askAssistant).toHaveBeenCalledTimes(1);
     expect(vi.mocked(askAssistant).mock.calls[0][0]).toMatchObject({ question: 'What did it cost?' });
-    expect(field()).toHaveValue('');
     expect(await screen.findByText('The answer')).toBeInTheDocument();
+    expect(field()).toHaveValue('');
   });
 
   it('shows the sent question in the conversation, not in the field', async () => {
@@ -692,14 +692,19 @@ describe('sending with the keyboard', () => {
     await waitFor(() => expect(askAssistant).toHaveBeenCalledTimes(2));
   });
 
-  it('puts the question back in the field when the request fails, so it can be retried', async () => {
+  it('keeps a failed question in its bubble and only Reuse question restores the draft', async () => {
     vi.mocked(askAssistant).mockRejectedValue(new ApiError(503, 'LLM_UNAVAILABLE', 'down'));
     await openPanel();
     type('My question');
     fireEvent.keyDown(field(), { key: 'Enter' });
 
     await screen.findAllByText('The assistant is currently unavailable.');
+    expect(field()).toHaveValue('');
+    expect(screen.getByText('My question')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Reuse question' }));
     expect(field()).toHaveValue('My question');
+    expect(field()).toHaveFocus();
+    expect(askAssistant).toHaveBeenCalledTimes(1);
   });
 
   it('explains the keys under the field', async () => {
@@ -826,3 +831,111 @@ describe('expanding the panel', () => {
     expect(dialog()).toHaveAttribute('data-expanded', 'true');
   });
 });
+
+it('moves the question into its bubble immediately, before any accepted start', async () => {
+  const { answer, user } = await startLiveQuestion();
+  const field = screen.getByLabelText('Your question');
+  expect(field).toHaveValue('');
+  expect(field).toHaveAttribute('readonly');
+  expect(screen.getByText('What did it cost?')).toBeInTheDocument();
+  expect(screen.getAllByText('Preparing answer…')).toHaveLength(2);
+
+  await answer.push(start);
+  await user.click(screen.getByRole('button', { name: 'Stop' }));
+  expect(field).toHaveValue('');
+  expect(screen.getByText('What did it cost?')).toBeInTheDocument();
+  expect(signals[0].aborted).toBe(true);
+  await user.click(screen.getByRole('button', { name: 'Reuse question' }));
+  expect(field).toHaveValue('What did it cost?');
+  expect(askAssistant).toHaveBeenCalledTimes(1);
+  await answer.push(done); // drain the cancelled test generator
+});
+
+it('Stop before start keeps an empty composer and ignores late output', async () => {
+  const { answer, user } = await startLiveQuestion();
+  await user.click(screen.getByRole('button', { name: 'Stop' }));
+  expect(screen.getByLabelText('Your question')).toHaveValue('');
+  expect(screen.getByText('What did it cost?')).toBeInTheDocument();
+  await answer.push(start);
+  expect(screen.getByLabelText('Your question')).toHaveValue('');
+  expect(screen.queryByText('Context used')).not.toBeInTheDocument();
+  expect(askAssistant).toHaveBeenCalledTimes(1);
+});
+
+it('keeps exchanges in order with their own snapshots and sends no history', async () => {
+  mockAnswer(async function* () { yield start; yield delta('First answer'); yield done; });
+  const { user } = await openPanel();
+  type('First question');
+  await user.click(screen.getByRole('button', { name: 'Ask' }));
+  await screen.findByText('First answer');
+  const later = { ...context, generatedAt: '2026-10-23T15:00:00.000Z' };
+  mockAnswer(async function* () {
+    yield { ...start, data: { ...start.data, context: later } };
+    yield delta('Second answer'); yield done;
+  });
+  type('Second question');
+  await user.click(screen.getByRole('button', { name: 'Ask' }));
+  await screen.findByText('Second answer');
+  const exchanges = screen.getAllByRole('article', { name: 'Assistant exchange' });
+  expect(exchanges).toHaveLength(2);
+  expect(within(exchanges[0]).getByText('First question')).toBeInTheDocument();
+  expect(within(exchanges[0]).getByText('First answer')).toBeInTheDocument();
+  expect(within(exchanges[0]).getByText(context.generatedAt)).toBeInTheDocument();
+  expect(within(exchanges[1]).getByText('Second answer')).toBeInTheDocument();
+  expect(within(exchanges[1]).getByText(later.generatedAt)).toBeInTheDocument();
+  expect(vi.mocked(askAssistant).mock.calls[1][0]).toEqual({
+    organizationId: props.organizationId, projectId: props.projectId,
+    question: 'Second question', selection, signal: expect.any(AbortSignal),
+  });
+  expect(screen.getByLabelText('Your question')).toHaveValue('');
+});
+
+it('retains a stopped partial exchange when the next question succeeds', async () => {
+  const { answer, user } = await startLiveQuestion();
+  await answer.push(start);
+  await answer.push(delta('Partial first answer'));
+  await user.click(screen.getByRole('button', { name: 'Stop' }));
+  expect(screen.getByLabelText('Your question')).toHaveValue('');
+  mockAnswer(async function* () { yield start; yield delta('New answer'); yield done; });
+  type('New question');
+  await user.click(screen.getByRole('button', { name: 'Ask' }));
+  await screen.findByText('New answer');
+  expect(screen.getByText('Partial first answer')).toBeInTheDocument();
+  expect(screen.getByText('Stopped — answer incomplete')).toBeInTheDocument();
+  await answer.push(delta('Late discarded fragment'));
+  expect(screen.queryByText(/Late discarded/)).not.toBeInTheDocument();
+});
+
+it.each(['project', 'period', 'filters', 'logout', 'close', 'access loss'] as const)(
+  'clears all exchanges on %s', async reason => {
+    mockAnswer(async function* () { yield start; yield delta('Protected first'); yield done; });
+    const { user, rerender } = await openPanel();
+    type('First question');
+    await user.click(screen.getByRole('button', { name: 'Ask' }));
+    await screen.findByText('Protected first');
+    mockAnswer(async function* () { yield start; yield delta('Protected second'); yield done; });
+    type('Second question');
+    await user.click(screen.getByRole('button', { name: 'Ask' }));
+    await screen.findByText('Protected second');
+    if (reason === 'project') rerender(<DashboardAssistant {...props} projectId="another-project" />);
+    if (reason === 'period') rerender(<DashboardAssistant {...props} selection={{ ...selection, to: '2026-10-03T00:00:00.000Z' }} />);
+    if (reason === 'filters') rerender(<DashboardAssistant {...props} selection={{ ...selection, filters: { status: 'ERROR' } }} />);
+    if (reason === 'logout') act(() => clearAuthSession());
+    if (reason === 'close') await user.click(screen.getByRole('button', { name: 'Close assistant' }));
+    if (reason === 'access loss') {
+      vi.mocked(askAssistant).mockRejectedValue(new ApiError(404, 'PROJECT_NOT_FOUND', 'gone'));
+      type('Third question');
+      await user.click(screen.getByRole('button', { name: 'Ask' }));
+      await screen.findAllByText('This project is no longer available.');
+    }
+    expect(screen.queryByText('Protected first')).not.toBeInTheDocument();
+    expect(screen.queryByText('Protected second')).not.toBeInTheDocument();
+    expect(screen.queryByText('First question')).not.toBeInTheDocument();
+    expect(screen.queryByText('Second question')).not.toBeInTheDocument();
+    expect(screen.queryAllByRole('region', { name: 'Context used' })).toHaveLength(0);
+    if (reason === 'close') {
+      await user.click(screen.getByRole('button', { name: 'Ask assistant' }));
+      expect(screen.queryAllByRole('article')).toHaveLength(0);
+    }
+  },
+);

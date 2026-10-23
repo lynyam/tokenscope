@@ -1,8 +1,10 @@
 import {
   expect,
   test,
+  type APIRequestContext,
   type BrowserContext,
   type Page,
+  type WebSocketRoute,
 } from "@playwright/test";
 
 import {
@@ -17,7 +19,7 @@ import {
 } from "./helpers";
 import {
   GOLDEN_FROM, GOLDEN_TO, createApiKey, deletePublic, fixtureBodies, goldenSearch, ingest, ingestAll,
-  requireCatalogue, tracesPath, visibleExternalIds, type Ingested, type TraceBody,
+  replacePublic, requireCatalogue, tracesPath, visibleExternalIds, type Ingested, type TraceBody,
 } from "./trace-helpers";
 
 // Real frontend + backend + PostgreSQL. The golden and pagination fixtures are ingested through the real
@@ -240,7 +242,7 @@ test("an invalid link is rejected visibly and another tenant never sees the proj
   await other.close();
 });
 test(
-  "ADMIN and MEMBER read traces; a parent archive clears rows on refresh without logout",
+  "ADMIN and MEMBER read traces; a parent archive clears rows without a manual refresh and without logout",
   async ({ browser, baseURL, request }) => {
     // Use a separate project so archiving it cannot break other scenarios.
     const projectId = await createProject(
@@ -342,10 +344,7 @@ test(
       expect(archived.status()).toBe(204);
 
       for (const { page, user } of clients) {
-        // Current integration discovers remote access loss on HTTP refresh.
-        await page
-          .getByRole("button", { name: "Refresh", exact: true })
-          .click();
+        // The realtime notice (access.revoked) clears the protected content: no manual Refresh.
 
         await expect(
           page.getByText("This project is not available."),
@@ -377,7 +376,7 @@ test(
     }
   },
 );
-// Mutates the pagination project: keep it last.
+// Last scenario that mutates the shared pagination project; later cases create their own projects.
 test("deleting the last row of the last page recovers to the previous page", async ({ page, request }) => {
   await open(page, paged.projectId, goldenSearch("&page=3"));
   await expect(summary(page)).toHaveText("51 traces · Page 3 of 3");
@@ -390,4 +389,363 @@ test("deleting the last row of the last page recovers to the previous page", asy
   await expect(page).toHaveURL(/page=2/);
   await expect(summary(page)).toHaveText("50 traces · Page 2 of 2");
   await expect(page.getByRole("link", { name: /^View trace / })).toHaveCount(25);
+});
+
+
+// ---- Realtime refresh of the real Explorer (TSE-87) ----
+// A receiving browser stays open on the real screen while a separate authorized client (the public API)
+// changes traces. Nothing below reloads, clicks Refresh or waits for a timer: the Explorer has no such trigger.
+
+const rtBody = (externalId: string, occurredAt: string): TraceBody =>
+  ({ ...fixtureBodies("traces-golden.json")[0], externalId, occurredAt });
+
+async function realtimeProject(request: APIRequestContext, name: string) {
+  const projectId = await createProject(request, owner, organizationId, name);
+  const key = await createApiKey(request, owner, organizationId, projectId);
+  return { projectId, key };
+}
+
+const LIST_READ = /\/projects\/[^/]+\/traces$/;
+const DETAIL_READ = /\/projects\/[^/]+\/traces\/[0-9a-f-]{36}$/;
+
+/** What a receiving page saw: realtime notices, HTTP reads of its own resource, WebSocket opens, full page loads. */
+function observeRealtime(page: Page, readPath: RegExp) {
+  const notices: number[] = [];
+  const subscriptions: number[] = [];
+  const noticeProjects = new Set<string>();
+  const reads: number[] = [];
+  const sockets: string[] = [];
+  let loads = 0;
+  let closes = 0;
+  const revoked: number[] = [];
+  const note = (text: string) => {
+    // Engine.IO polling can contain several packets; WebSocket carries one at a time.
+    // Observe the real Socket.IO acknowledgement instead of assuming it caused two HTTP reads.
+    for (const packet of text.split("\x1e")) {
+      const ack = /^43\/realtime,\d+(\[.*\])$/s.exec(packet);
+      if (ack) {
+        try {
+          const [result] = JSON.parse(ack[1]);
+          if (result?.ok === true && typeof result.projectId === "string") subscriptions.push(Date.now());
+        } catch { /* Not a subscription acknowledgement. */ }
+      }
+    }
+    if (text.includes("access.revoked")) revoked.push(Date.now());
+    if (!text.includes("traces.changed")) return;
+    notices.push(Date.now());
+    for (const match of text.matchAll(/"projectId":"([0-9a-f-]{36})"/g)) noticeProjects.add(match[1]);
+  };
+  page.on("load", () => { loads += 1; });
+  page.on("websocket", socket => {
+    sockets.push(socket.url());
+    socket.on("close", () => { closes += 1; });
+    socket.on("framereceived", frame => note(String(frame.payload)));
+  });
+  page.on("response", response => {
+    const url = response.url();
+    if (!url.includes("/socket.io/") || !url.includes("transport=polling")) return;
+    response.text().then(note, () => { /* the page closed before the body arrived */ });
+  });
+  page.on("request", request => {
+    if (request.method() === "GET" && readPath.test(new URL(request.url()).pathname)) reads.push(Date.now());
+  });
+  return { notices, subscriptions, noticeProjects, revoked, reads, sockets, loads: () => loads, closes: () => closes };
+}
+type Observed = ReturnType<typeof observeRealtime>;
+
+/** No new read for `quietMs`: longer than the 250 ms coalescing, so the read requested by the acknowledgement has run. */
+async function readsSettled(seen: Observed, quietMs = 500) {
+  let last = seen.reads.length;
+  let since = Date.now();
+  await expect.poll(() => {
+    if (seen.reads.length !== last) { last = seen.reads.length; since = Date.now(); }
+    return Date.now() - since;
+  }, { message: "reads have settled" }).toBeGreaterThanOrEqual(quietMs);
+}
+
+/** Initial loading and subscription reconciliation are allowed to share a single HTTP read. */
+async function subscribed(seen: Observed) {
+  await expect.poll(() => seen.subscriptions.length, { message: "realtime subscription acknowledged" }).toBeGreaterThan(0);
+  await readsSettled(seen);
+}
+
+/** The screen changed because a notice arrived and an HTTP read followed, never because of a reload. */
+function expectNoticeThenRead(seen: Observed, readsBefore: number) {
+  expect(seen.notices.length, "a traces.changed notice reached the page").toBeGreaterThan(0);
+  expect(seen.reads.length, "an HTTP read followed the notice").toBeGreaterThan(readsBefore);
+  expect(seen.loads(), "the page was never reloaded").toBe(1);
+}
+
+test("realtime: a matching ingestion updates the list, the count and the order without a reload", async ({ page, request }) => {
+  const { projectId, key } = await realtimeProject(request, "RT ingest");
+  await ingest(request, key, rtBody("rt-old", "2026-10-01T09:00:00.000Z"));
+  const seen = observeRealtime(page, LIST_READ);
+  await open(page, projectId);
+  await idsEqual(page, ["rt-old"]);
+  await expect(summary(page)).toHaveText("1 traces · Page 1 of 1");
+  await subscribed(seen);
+
+  const readsBefore = seen.reads.length;
+  await ingest(request, key, rtBody("rt-new", "2026-10-01T12:00:00.000Z"));
+  await idsEqual(page, ["rt-new", "rt-old"]); // server order: newest first
+  await expect(summary(page)).toHaveText("2 traces · Page 1 of 1");
+  expectNoticeThenRead(seen, readsBefore);
+  expect(seen.sockets.some(url => url.includes("/socket.io/")), "a WebSocket was opened").toBe(true);
+  await expect(page).toHaveURL(new RegExp(`from=${GOLDEN_FROM.replace(/:/g, "(:|%3A)")}`)); // applied period unchanged
+});
+
+test("realtime: a corrected trace updates the list row and an open detail", async ({ page, request }) => {
+  const { projectId, key } = await realtimeProject(request, "RT correct");
+  const created = await ingest(request, key, rtBody("rt-fix", "2026-10-01T10:00:00.000Z"));
+  const list = observeRealtime(page, LIST_READ);
+  await open(page, projectId);
+  await idsEqual(page, ["rt-fix"]);
+  await expect(page.getByText("$0.0018", { exact: true })).toBeVisible();
+
+  const detailPage = await page.context().newPage();
+  const detail = observeRealtime(detailPage, DETAIL_READ);
+  await detailPage.goto(`${tracesPath(organizationId, projectId)}/${created.id}`);
+  await expect(detailPage.getByText("$0.001800000000", { exact: true })).toBeVisible();
+  await subscribed(list);
+  await subscribed(detail);
+
+  const listBefore = list.reads.length;
+  const detailBefore = detail.reads.length;
+  await replacePublic(request, key, created, { ...rtBody("rt-fix", "2026-10-01T10:00:00.000Z"), inputTokens: 3000 });
+  await expect(page.getByText("$0.0038", { exact: true })).toBeVisible();
+  await expect(detailPage.getByText("$0.003800000000", { exact: true })).toBeVisible();
+  expectNoticeThenRead(list, listBefore);
+  expectNoticeThenRead(detail, detailBefore);
+});
+
+test("realtime: deleting the open trace clears the detail with a not-found state and keeps the session", async ({ page, request }) => {
+  const { projectId, key } = await realtimeProject(request, "RT delete open");
+  const created = await ingest(request, key, rtBody("rt-gone", "2026-10-01T10:00:00.000Z"));
+  const seen = observeRealtime(page, DETAIL_READ);
+  await signInPage(page, owner);
+  await page.goto(`${tracesPath(organizationId, projectId)}/${created.id}`);
+  await expect(page.getByText("Trace rt-gone")).toBeVisible();
+  await subscribed(seen);
+
+  const readsBefore = seen.reads.length;
+  await deletePublic(request, key, created);
+  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(page.getByText("Trace rt-gone")).toHaveCount(0);
+  await expect(page.getByTestId("trace-metadata")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "← Back to traces" })).toBeVisible();
+  expectNoticeThenRead(seen, readsBefore);
+  expect(await page.evaluate(() => Boolean(localStorage.getItem("tokenscope.accessToken")))).toBe(true);
+});
+
+
+test("realtime: a change in another project does not reach this Explorer", async ({ page, request }) => {
+  const mine = await realtimeProject(request, "RT mine");
+  const other = await realtimeProject(request, "RT other");
+  await ingest(request, mine.key, rtBody("mine-1", "2026-10-01T09:00:00.000Z"));
+  const seen = observeRealtime(page, LIST_READ);
+  await open(page, mine.projectId);
+  await idsEqual(page, ["mine-1"]);
+  await subscribed(seen);
+
+  await ingest(request, other.key, rtBody("other-1", "2026-10-01T10:00:00.000Z"));
+  // Positive control: a change of MY project still arrives, so the earlier silence is meaningful.
+  await ingest(request, mine.key, rtBody("mine-2", "2026-10-01T11:00:00.000Z"));
+  await idsEqual(page, ["mine-2", "mine-1"]);
+  expect([...seen.noticeProjects], "only notices of this project reached the page").toEqual([mine.projectId]);
+  expect(await visibleExternalIds(page)).not.toContain("other-1");
+});
+
+test("realtime: changes outside the applied filter and period stay excluded and the query is unchanged", async ({ page, request }) => {
+  const { projectId, key } = await realtimeProject(request, "RT excluded");
+  await ingest(request, key, { ...rtBody("f-err-1", "2026-10-01T10:00:00.000Z"), status: "ERROR" });
+  const seen = observeRealtime(page, LIST_READ);
+  await open(page, projectId, goldenSearch("&status=ERROR"));
+  await idsEqual(page, ["f-err-1"]);
+  await subscribed(seen);
+  const urlBefore = page.url();
+
+  const readsBefore = seen.reads.length;
+  await ingest(request, key, rtBody("f-ok", "2026-10-01T10:30:00.000Z")); // SUCCESS: excluded by the status filter
+  await ingest(request, key, { ...rtBody("f-late", "2026-10-05T10:00:00.000Z"), status: "ERROR" }); // outside the period
+  await ingest(request, key, { ...rtBody("f-err-2", "2026-10-01T11:00:00.000Z"), status: "ERROR" }); // positive control
+  await idsEqual(page, ["f-err-2", "f-err-1"]);
+  await expect(summary(page)).toHaveText("2 traces · Page 1 of 1");
+  expect(await visibleExternalIds(page)).not.toContain("f-ok");
+  expect(await visibleExternalIds(page)).not.toContain("f-late");
+  expect(page.url(), "the applied query is unchanged").toBe(urlBefore);
+  expectNoticeThenRead(seen, readsBefore);
+});
+
+test("realtime: switching projects while a notice is pending never shows the old project", async ({ page, request }) => {
+  const a = await realtimeProject(request, "RT switch A");
+  const b = await realtimeProject(request, "RT switch B");
+  await ingest(request, a.key, rtBody("a-1", "2026-10-01T09:00:00.000Z"));
+  await ingest(request, b.key, rtBody("b-1", "2026-10-01T09:30:00.000Z"));
+  const seen = observeRealtime(page, LIST_READ);
+  await open(page, a.projectId);
+  await idsEqual(page, ["a-1"]);
+  await subscribed(seen);
+
+  await ingest(request, a.key, rtBody("a-2", "2026-10-01T10:00:00.000Z")); // a notice for A is on its way...
+  await page.evaluate(path => { // ...and the person moves to B inside the app (no reload)
+    window.history.pushState({}, "", path);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, tracesPath(organizationId, b.projectId, goldenSearch()));
+  await idsEqual(page, ["b-1"]);
+
+  // Positive control in the new project: it is subscribed and refreshes, and nothing of A ever shows.
+  await ingest(request, b.key, rtBody("b-2", "2026-10-01T11:00:00.000Z"));
+  await idsEqual(page, ["b-2", "b-1"]);
+  await expect(page.getByText(/^a-[12]$/)).toHaveCount(0);
+  expect(seen.loads(), "the page was never reloaded").toBe(1);
+});
+
+
+test("realtime: changes made while the receiver is disconnected appear after the subscription recovers", async ({ page, request }) => {
+  const { projectId, key } = await realtimeProject(request, "RT reconnect");
+  await ingest(request, key, rtBody("rc-1", "2026-10-01T09:00:00.000Z"));
+
+  // Test-only network control: while `down`, the page can neither open nor keep a realtime connection.
+  let down = false;
+  const routes: WebSocketRoute[] = [];
+  await page.routeWebSocket(/\/socket\.io\//, ws => {
+    if (down) { void ws.close(); return; }
+    routes.push(ws, ws.connectToServer());
+  });
+  await page.route(/\/socket\.io\//, route => (down ? route.abort() : route.continue()));
+
+  const seen = observeRealtime(page, LIST_READ);
+  let upgraded = false; // engine.io: the client sends "5" once the WebSocket has replaced long-polling
+  page.on("websocket", socket => socket.on("framesent", frame => { if (String(frame.payload) === "5") upgraded = true; }));
+  await open(page, projectId);
+  await idsEqual(page, ["rc-1"]);
+  await subscribed(seen);
+  await expect.poll(() => upgraded, { message: "the connection upgraded from long-polling to WebSocket" }).toBe(true);
+  await readsSettled(seen); // the read requested by the acknowledgement must not land after the disconnection
+
+  const closesBefore = seen.closes();
+  down = true;
+  await Promise.all(routes.splice(0).map(ws => ws.close()));
+  await expect.poll(() => seen.closes(), { message: "the WebSocket is really closed" }).toBeGreaterThan(closesBefore);
+  const readsWhileDown = seen.reads.length;
+  await ingest(request, key, rtBody("rc-2", "2026-10-01T10:00:00.000Z")); // missed by the disconnected page
+  // The server coalesces for 150 ms and never replays: let that window pass while the page is still offline,
+  // so any notice received after reconnecting could only be a replay and the assertion below is meaningful.
+  await page.waitForTimeout(600);
+  expect(await visibleExternalIds(page)).toEqual(["rc-1"]);
+  expect(seen.reads.length, "no read while disconnected").toBe(readsWhileDown);
+
+  down = false; // the client reconnects on its own backoff, subscribes again and reads again
+  await expect.poll(() => visibleExternalIds(page), { timeout: 45_000 }).toEqual(["rc-2", "rc-1"]);
+  expect(seen.notices.length, "recovered by the subscription acknowledgement, not by a replayed notice").toBe(0);
+  expect(seen.loads(), "the page was never reloaded").toBe(1);
+});
+
+test("realtime: removing the receiving member clears the protected content and keeps the session", async ({ browser, baseURL, request }) => {
+  const { projectId, key } = await realtimeProject(request, "RT member removal");
+  await ingest(request, key, rtBody("rm-1", "2026-10-01T09:00:00.000Z"));
+  const member = await signUp(request, "explorer-removed");
+  await addMember(request, owner, organizationId, member, "MEMBER");
+  const context = await signedInContext(browser, baseURL, member);
+  try {
+    const page = await context.newPage();
+    const seen = observeRealtime(page, LIST_READ);
+    await page.goto(tracesPath(organizationId, projectId, goldenSearch()));
+    await idsEqual(page, ["rm-1"]);
+    await subscribed(seen);
+
+    // The user id is the subject of the (disposable) test user's token.
+    const userId = JSON.parse(atob(member.token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).sub as string;
+    const removed = await request.delete(`${API}/organizations/${organizationId}/members/${userId}`, {
+      headers: { Authorization: `Bearer ${owner.token}` },
+    });
+    expect(removed.status(), "remove member").toBeLessThan(300);
+
+    await expect(page.getByText("This project is not available.")).toBeVisible();
+    await expect(page.getByRole("link", { name: /^View trace / })).toHaveCount(0);
+    expect(await page.evaluate(() => Boolean(localStorage.getItem("tokenscope.accessToken")))).toBe(true);
+    expect(seen.revoked.length, "an access.revoked notice reached the page").toBeGreaterThan(0);
+    expect(seen.reads.filter(at => at > seen.revoked[0]), "no HTTP read after the revocation: the notice alone cleared the screen").toHaveLength(0);
+    expect((await apiGet(request, member, `${API}/organizations`)).status()).toBe(200);
+    expect(seen.loads(), "the page was never reloaded").toBe(1);
+  } finally {
+    await context.close();
+  }
+});
+
+test("realtime: archiving the organization clears the protected content and keeps the session", async ({ page, request }) => {
+  const auth = { Authorization: `Bearer ${owner.token}` };
+  const created = await request.post(`${API}/organizations`, { headers: auth, data: { name: `RT org archive ${Date.now()}` } });
+  expect(created.status(), "create organization").toBe(201);
+  const org = (await created.json()) as { id: string; slug: string };
+  const projectId = await createProject(request, owner, org.id, "RT org archive");
+  const key = await createApiKey(request, owner, org.id, projectId);
+  await ingest(request, key, rtBody("oa-1", "2026-10-01T09:00:00.000Z"));
+
+  const seen = observeRealtime(page, LIST_READ);
+  await signInPage(page, owner);
+  await page.goto(tracesPath(org.id, projectId, goldenSearch()));
+  await idsEqual(page, ["oa-1"]);
+  await subscribed(seen);
+
+  const archived = await request.delete(`${API}/organizations/${org.id}`, { headers: auth, data: { confirmSlug: org.slug } });
+  expect(archived.status(), "archive organization").toBe(204);
+
+  await expect(page.getByText("This project is not available.")).toBeVisible();
+  await expect(page.getByRole("link", { name: /^View trace / })).toHaveCount(0);
+  expect(await page.evaluate(() => Boolean(localStorage.getItem("tokenscope.accessToken")))).toBe(true);
+  expect((await apiGet(request, owner, `${API}/organizations`)).status()).toBe(200); // other organizations stay usable
+  expect(seen.loads(), "the page was never reloaded").toBe(1);
+});
+
+
+test("realtime: deleting the only row of the last page recovers to the last valid page and keeps the query", async ({ page, request }) => {
+  test.setTimeout(180_000); // 26 ingestions paced under the public API limit
+  const { projectId, key } = await realtimeProject(request, "RT last page");
+  const ingested = await ingestAll(request, key, fixtureBodies("traces-pagination.json").slice(0, 26));
+  const seen = observeRealtime(page, LIST_READ);
+  await open(page, projectId, goldenSearch("&page=2"));
+  await expect(summary(page)).toHaveText("26 traces · Page 2 of 2");
+  const onLastPage = await visibleExternalIds(page);
+  expect(onLastPage).toHaveLength(1);
+  await subscribed(seen);
+
+  const readsBefore = seen.reads.length;
+  await deletePublic(request, key, ingested.get(onLastPage[0])!);
+  await expect(summary(page)).toHaveText("25 traces · Page 1 of 1");
+  await expect(page).not.toHaveURL(/page=/); // back on the first page, recovered once
+  await expect(page).toHaveURL(new RegExp(`from=${GOLDEN_FROM.replace(/:/g, "(:|%3A)")}`)); // the applied period is kept
+  await expect(page.getByRole("link", { name: /^View trace / })).toHaveCount(25);
+  expectNoticeThenRead(seen, readsBefore);
+});
+
+test("realtime: logging out closes the realtime connection and later changes trigger no read", async ({ page, request }) => {
+  const { projectId, key } = await realtimeProject(request, "RT logout");
+  await ingest(request, key, rtBody("lo-1", "2026-10-01T09:00:00.000Z"));
+  const seen = observeRealtime(page, LIST_READ);
+  let upgraded = false; // engine.io: the client sends "5" once the WebSocket has replaced long-polling
+  page.on("websocket", socket => socket.on("framesent", frame => { if (String(frame.payload) === "5") upgraded = true; }));
+  await open(page, projectId);
+  await idsEqual(page, ["lo-1"]);
+  await subscribed(seen);
+  await expect.poll(() => upgraded, { message: "the connection upgraded from long-polling to WebSocket" }).toBe(true);
+  await readsSettled(seen);
+
+  const closesBefore = seen.closes();
+  const socketsBefore = seen.sockets.length;
+  // The user menu is the last button with this icon: the organization switcher comes first in the sidebar.
+  await page.locator("button:has(svg.lucide-chevrons-up-down)").last().click();
+  await page.getByRole("menuitem", { name: "Log out" }).click();
+  await expect(page).toHaveURL(/\/signin/);
+  expect(await page.evaluate(() => Boolean(localStorage.getItem("tokenscope.accessToken")))).toBe(false);
+  await expect.poll(() => seen.closes(), { message: "the WebSocket is closed by the logout" }).toBeGreaterThan(closesBefore);
+
+  const readsAfterLogout = seen.reads.length;
+  const noticesAfterLogout = seen.notices.length;
+  await ingest(request, key, rtBody("lo-2", "2026-10-01T10:00:00.000Z"));
+  await page.waitForTimeout(1000); // longer than the 150 ms server coalescing plus the 250 ms client coalescing
+  expect(seen.reads.length, "no read after logout").toBe(readsAfterLogout);
+  expect(seen.notices.length, "no notice after logout").toBe(noticesAfterLogout);
+  expect(seen.sockets.length, "no new WebSocket after logout").toBe(socketsBefore);
+  expect(seen.loads(), "the page was never reloaded").toBe(1);
 });
