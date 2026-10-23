@@ -86,6 +86,9 @@ export function DashboardAssistant({
   const messagesRef = useRef<HTMLDivElement>(null);
   const followRef = useRef(true);
   const lastTextLength = useRef(0);
+  // The question being answered: put back in the field if the request fails, so it can be retried.
+  const submittedRef = useRef("");
+  const hintId = useId();
 
   // Panel size chosen by the reader. null = default size. Kept when the panel is closed.
   const panelRef = useRef<HTMLElement>(null);
@@ -125,6 +128,7 @@ export function DashboardAssistant({
     setValidationError(null);
     setHasNewBelow(false);
     followRef.current = true;
+    submittedRef.current = "";
   }, [cancelActive]);
 
   // Clear before painting a different scope or login. A refresh of the same
@@ -204,6 +208,9 @@ export function DashboardAssistant({
     if (failure.clearContent) {
       setQuestion("");
       setSubmittedQuestion("");
+    } else {
+      // Nothing was answered: give the question back (unless the reader already typed another).
+      setQuestion(current => (current === "" ? submittedRef.current : current));
     }
     dispatch({ type: "fail", failure });
     if (failure.waitSeconds !== undefined) startCooldown(failure.waitSeconds);
@@ -242,6 +249,8 @@ export function DashboardAssistant({
 
     setValidationError(null);
     setSubmittedQuestion(question.trim());
+    submittedRef.current = question;
+    setQuestion(""); // the question now lives in the conversation, not in the field
     dispatch({ type: "submit" });
 
     let stream: ApiStreamResponse | null = null;
@@ -542,19 +551,24 @@ export function DashboardAssistant({
           readOnly={running}
           rows={3}
           aria-invalid={validationError ? true : undefined}
-          aria-describedby={validationError ? errorId : undefined}
+          aria-describedby={validationError ? hintId + " " + errorId : hintId}
           onChange={(event) => {
             setQuestion(event.target.value);
             if (validationError) setValidationError(null);
           }}
           onKeyDown={(event) => {
-            if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+            // Enter sends; Shift+Enter inserts a new line. Never send while an IME
+            // (Japanese, Chinese…) is still composing, since Enter then confirms the text.
+            if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
               event.preventDefault();
               void ask();
             }
           }}
           className="w-full resize-none rounded-md border border-input px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring read-only:bg-muted bg-background"
         />
+        <p id={hintId} className="text-xs text-muted-foreground">
+          Enter to send · Shift+Enter for a new line
+        </p>
         {validationError && (
           <p id={errorId} className="text-xs text-red-700">
             {validationError}

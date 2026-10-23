@@ -612,3 +612,98 @@ describe('resizing the panel', () => {
     expect(dialog.style.width).toBe('');
   });
 });
+
+describe('sending with the keyboard', () => {
+  const field = () => screen.getByLabelText('Your question') as HTMLTextAreaElement;
+  const quickAnswer = () => mockAnswer(async function* () { yield start; yield delta('The answer'); yield done; });
+
+  it('Enter sends the question and empties the field', async () => {
+    quickAnswer();
+    await openPanel();
+    type('What did it cost?');
+
+    // fireEvent returns false when the default action (a new line) was cancelled.
+    expect(fireEvent.keyDown(field(), { key: 'Enter' })).toBe(false);
+
+    expect(askAssistant).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(askAssistant).mock.calls[0][0]).toMatchObject({ question: 'What did it cost?' });
+    expect(field()).toHaveValue('');
+    expect(await screen.findByText('The answer')).toBeInTheDocument();
+  });
+
+  it('shows the sent question in the conversation, not in the field', async () => {
+    quickAnswer();
+    await openPanel();
+    type('What did it cost?');
+    fireEvent.keyDown(field(), { key: 'Enter' });
+
+    expect(await screen.findByText('What did it cost?')).toBeInTheDocument();
+    expect(field()).toHaveValue('');
+  });
+
+  it('Shift+Enter keeps its new line and sends nothing', async () => {
+    await openPanel();
+    type('First line');
+
+    expect(fireEvent.keyDown(field(), { key: 'Enter', shiftKey: true })).toBe(true);
+
+    expect(askAssistant).not.toHaveBeenCalled();
+    expect(field()).toHaveValue('First line');
+  });
+
+  it('does not send while an input method is composing', async () => {
+    await openPanel();
+    type('こんにちは');
+
+    expect(fireEvent.keyDown(field(), { key: 'Enter', isComposing: true })).toBe(true);
+
+    expect(askAssistant).not.toHaveBeenCalled();
+    expect(field()).toHaveValue('こんにちは');
+  });
+
+  it('Ctrl+Enter still sends', async () => {
+    quickAnswer();
+    await openPanel();
+    type('What did it cost?');
+    fireEvent.keyDown(field(), { key: 'Enter', ctrlKey: true });
+    expect(askAssistant).toHaveBeenCalledTimes(1);
+  });
+
+  it('Enter on an empty field shows the message and sends nothing', async () => {
+    await openPanel();
+    fireEvent.keyDown(field(), { key: 'Enter' });
+    expect(screen.getByText('Enter a question.')).toBeInTheDocument();
+    expect(askAssistant).not.toHaveBeenCalled();
+  });
+
+  it('the field is ready for the next question after an answer', async () => {
+    quickAnswer();
+    await openPanel();
+    type('First question');
+    fireEvent.keyDown(field(), { key: 'Enter' });
+    await screen.findByText('Answer complete.');
+
+    expect(field()).toHaveValue('');
+    expect(field()).not.toHaveAttribute('readonly');
+
+    quickAnswer();
+    type('Second question');
+    fireEvent.keyDown(field(), { key: 'Enter' });
+    await waitFor(() => expect(askAssistant).toHaveBeenCalledTimes(2));
+  });
+
+  it('puts the question back in the field when the request fails, so it can be retried', async () => {
+    vi.mocked(askAssistant).mockRejectedValue(new ApiError(503, 'LLM_UNAVAILABLE', 'down'));
+    await openPanel();
+    type('My question');
+    fireEvent.keyDown(field(), { key: 'Enter' });
+
+    await screen.findAllByText('The assistant is currently unavailable.');
+    expect(field()).toHaveValue('My question');
+  });
+
+  it('explains the keys under the field', async () => {
+    await openPanel();
+    expect(screen.getByText('Enter to send · Shift+Enter for a new line')).toBeInTheDocument();
+  });
+});
