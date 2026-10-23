@@ -1,0 +1,12 @@
+[
+  {
+    "provider": "gemini",
+    "model": "gemini-3.8-flash",
+    "effectiveFrom": "2026-10-17T00:00:00.000Z",
+    "inputUsdPerMillion": "0.750000",
+    "outputUsdPerMillion": "3.750000",
+    "currency": "USD",
+    "isSynthetic": false,
+    "sourceUrl": "https://ai.google.dev/gemini-api/docs/pricing"
+  }
+]
