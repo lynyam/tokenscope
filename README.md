@@ -6,11 +6,95 @@
 
 ## Description
 
-TokenScope helps teams understand the usage and estimated cost of the language models used by their applications. External applications submit execution traces containing provider/model identifiers, workflow, token counts, latency and outcome. TokenScope stores those traces within a project, applies historical catalogue prices, and exposes the data through authenticated workspace APIs and project analytics.
+### Overview
 
-Organizations group users and projects, with membership roles controlling access. The dashboard brings together usage and cost analytics, trace filtering, realtime updates, CSV/PDF exports, private project documents and a Gemini assistant.
+TokenScope helps teams understand how their applications use language models and what that usage is likely to cost. External applications submit execution traces that include the provider and model identifiers, workflow, token counts, latency and outcome. TokenScope stores these traces within a project, applies historical catalogue prices to estimate cost, and makes the data available through authenticated workspace APIs and project analytics.
 
-TokenScope records **estimates, not provider invoices**. A provider name in a stored trace does not itself cause a request to that provider. The dashboard assistant and the standalone external demo make explicit provider calls. Evaluation fixtures use clearly identified synthetic prices.
+### Goals
++ Visibility: give teams a clear, centralized view of language model usage across their applications.
++ Cost awareness: estimate spending from historical catalogue prices so teams can track and anticipate costs.
++ Performance insight: surface latency and outcome data to help teams assess how models behave in their workflows.
++ Controlled collaboration: let organizations share usage data with the right people through role-based access.
+
+### Key Features
++ Trace ingestion: external applications submit execution traces with provider/model identifiers, workflow, token counts, latency and outcome.
++ Historical cost estimation: catalogue prices are applied according to when each trace occurred.
++ Organizations and projects: users and projects are grouped into organizations, with membership roles controlling access.
++ Authenticated APIs: workspace APIs expose stored traces and analytics.
++ Analytics dashboard: usage and cost analytics, trace filtering and realtime updates.
++ Exports: usage data can be exported to CSV and PDF.
++ Project documents: private documents can be stored within each project.
++ Gemini assistant: a built-in assistant in the dashboard.
+
+### Scope and Limitations
++ TokenScope records estimates, not provider invoices.
++ A provider name in a stored trace does not trigger a request to that provider. Only the dashboard assistant and the standalone external demo make explicit provider calls.
++ Evaluation fixtures use clearly identified synthetic prices.
+
+## Instructions
+
+### Prerequisites
+
+On the host: Git, Docker with its daemon running, Docker Compose v2 with `--wait` support, Make, curl and OpenSSL. Containers use Node.js 24, PostgreSQL 16 and Caddy 2; host Node.js is unnecessary for container startup. **To complete:** tested host and Docker Compose versions.
+
+### Start the HTTPS evaluation application
+
+From your chosen parent directory on the host:
+
+```sh
+git clone --branch develop https://github.com/lynyam/tokenscope.git
+cd tokenscope
+make eval-up
+```
+
+`make eval-up` prepares `.env` from `.env.example` when absent, generates a missing JWT secret, builds the application, applies committed migrations and checks HTTPS readiness. It does not seed evaluation accounts or traces. Expected completion: `TokenScope is running: https://localhost:8443`.
+
+Local `.env` values are private. Replace the template database password for your environment and keep `DATABASE_URL` consistent. Never commit generated credentials, project keys or a demo password.
+
+Trust the exported local Caddy CA once. On macOS, from the repository root:
+
+```sh
+sudo security add-trusted-cert -d -r trustRoot \
+  -k /Library/Keychains/System.keychain \
+  .local/eval/caddy-root.crt
+```
+
+This changes the host trust store and requires administrator authorization. Restart the browser and open `https://localhost:8443` without bypassing a certificate warning. Other systems and browser-specific trust stores are covered in [Local Development](docs/LOCAL_DEVELOPMENT.md#trust-the-local-certificate).
+
+Verify database readiness from the host:
+
+```sh
+curl --fail --show-error --max-time 10 \
+  --cacert .local/eval/caddy-root.crt \
+  https://localhost:8443/api/v1/health/db
+```
+
+Expected: HTTP 200 with `{"status":"healthy"}`. Create an account through the signup page, or use the evaluation accounts configured with the evaluation dataset.
+
+### Evaluation data, provider setup and tests
+
+- **Evaluation data:** the [fixture documentation](fixtures/evaluation/README.md) describes the dataset and expected analytics. **To complete with the team:** the dataset setup command and instructions for supplying the evaluation-account password.
+- **Dashboard assistant:** configure Gemini credentials and the model on the backend. Provider credentials stay on the server. **To complete with the team:** the configuration instructions.
+- **External demo:** its separate backend uses Gemini credentials and two TokenScope project API keys: one for Demo Chat and one for Demo Translation.
+- **Tests:** see [Local Development](docs/LOCAL_DEVELOPMENT.md) for commands and [the evaluation guide](docs/DEMO.md) for demonstration steps and expected results.
+- **Shutdown:** run `make stop` from the repository root to stop the application while keeping its data. `make start` resumes it. `make clean` removes containers and the network while retaining volumes. `make fullclean` also deletes volumes, including the database and local certificate authority.
+
+## Resources
+
+- [React documentation](https://react.dev/learn) — component and state concepts.
+- [NestJS documentation](https://docs.nestjs.com/) — backend modules and request handling.
+- [Prisma documentation](https://www.prisma.io/docs) — schema, client and migrations.
+- [PostgreSQL documentation](https://www.postgresql.org/docs/) — relational database reference.
+- [Docker Compose documentation](https://docs.docker.com/compose/) — container application configuration.
+- [Gemini API documentation](https://ai.google.dev/gemini-api/docs) — provider requests, response handling and configuration.
+- **ft_transcendence subject v21.1** — project requirements, modules and README guidelines. **To add:** a shared link to the subject.
+- [TSE-83](https://linear.app/move2/issue/TSE-83) — documentation ticket (team access required).
+
+### AI Usage
+
+Fatin mainly used ChatGPT and occasionally Gemini. AI helped her understand tickets, learn unfamiliar concepts, interpret error messages and catch up with the team's existing work. For TSE-86, she used AI to help build the independent Chat/Translation demo, including the Gemini integration, shared `callWithTrace` wrapper, separate project credentials, usage normalization and trace-delivery feedback, as well as the setup and test documentation. AI also helped prepare the project documentation.
+
+**To complete — other teammates:** the AI tools they used, the tasks and features involved, and how they reviewed and tested the results.
 
 ## Team Information
 
@@ -51,31 +135,6 @@ Exact dependency versions are recorded in the frontend and backend `package-lock
 | Provider integration | Gemini | Context-aware dashboard answers and the independent Chat/Translation demo. |
 
 The application has a modular backend and a separate browser frontend. PostgreSQL supports the relationships between users, organizations and projects, as well as transactional trace writes. Prisma provides typed database access and migrations. **To complete with the team:** the reasons behind the main technology choices and any alternatives considered.
-
-## Architecture
-
-```mermaid
-flowchart LR
-    B[Browser / React] -->|HTTPS and user JWT| P[Caddy / application API]
-    X[External application] -->|HTTPS and project API key| P
-    P --> N[NestJS: validation and authorization]
-    N -->|Prisma| D[(PostgreSQL)]
-    N -->|Committed change notification| B
-    B -->|Refetch authoritative analytics| P
-    N -->|Assistant requests and streaming responses| G[Gemini]
-    N -->|Authorized document access| S[Private file storage]
-```
-
-The diagram shows the HTTPS evaluation setup. Development uses Vite's proxy.
-
-- **Browser to API:** shared HTTP helpers carry the user session. NestJS checks the user's current membership and permissions for each resource.
-- **External client to API:** a project API key scopes trace operations to its active project. Workspace routes use user authentication instead.
-- **Trace to dashboard:** the backend computes analytics and announces committed changes. The browser then fetches updated totals through the API, keeping charts and summaries consistent.
-- **Exports:** CSV and PDF files are generated in the browser from the displayed data snapshot, preserving the selected dates and filters.
-- **Assistant:** the browser sends a question with the selected dates and filters. The backend builds an authorized snapshot of the project's analytics and streams a Gemini answer. Each new request uses its own snapshot; uploaded documents are excluded from the context.
-- **Private documents:** authenticated project routes check access before returning files. Archiving a parent organization or project retains its data. Deleting an individual document removes its metadata and schedules file cleanup.
-
-Detailed boundaries: [Evaluation Architecture](docs/EVALUATION_ARCHITECTURE.md), [API](docs/API.md), [Security](docs/SECURITY.md).
 
 ## Database Schema
 
@@ -133,53 +192,6 @@ Our selected modules total **16 points**, above the subject's minimum of 14. The
 
 **To complete with the team:** contributors for each module.
 
-## Instructions
-
-### Prerequisites
-
-On the host: Git, Docker with its daemon running, Docker Compose v2 with `--wait` support, Make, curl and OpenSSL. Containers use Node.js 24, PostgreSQL 16 and Caddy 2; host Node.js is unnecessary for container startup. **To complete:** tested host and Docker Compose versions.
-
-### Start the HTTPS evaluation application
-
-From your chosen parent directory on the host:
-
-```sh
-git clone --branch develop https://github.com/lynyam/tokenscope.git
-cd tokenscope
-make eval-up
-```
-
-`make eval-up` prepares `.env` from `.env.example` when absent, generates a missing JWT secret, builds the application, applies committed migrations and checks HTTPS readiness. It does not seed evaluation accounts or traces. Expected completion: `TokenScope is running: https://localhost:8443`.
-
-Local `.env` values are private. Replace the template database password for your environment and keep `DATABASE_URL` consistent. Never commit generated credentials, project keys or a demo password.
-
-Trust the exported local Caddy CA once. On macOS, from the repository root:
-
-```sh
-sudo security add-trusted-cert -d -r trustRoot \
-  -k /Library/Keychains/System.keychain \
-  .local/eval/caddy-root.crt
-```
-
-This changes the host trust store and requires administrator authorization. Restart the browser and open `https://localhost:8443` without bypassing a certificate warning. Other systems and browser-specific trust stores are covered in [Local Development](docs/LOCAL_DEVELOPMENT.md#trust-the-local-certificate).
-
-Verify database readiness from the host:
-
-```sh
-curl --fail --show-error --max-time 10 \
-  --cacert .local/eval/caddy-root.crt \
-  https://localhost:8443/api/v1/health/db
-```
-
-Expected: HTTP 200 with `{"status":"healthy"}`. Create an account through the signup page, or use the evaluation accounts configured with the evaluation dataset.
-
-### Evaluation data, provider setup and tests
-
-- **Evaluation data:** the [fixture documentation](fixtures/evaluation/README.md) describes the dataset and expected analytics. **To complete with the team:** the dataset setup command and instructions for supplying the evaluation-account password.
-- **Dashboard assistant:** configure Gemini credentials and the model on the backend. Provider credentials stay on the server. **To complete with the team:** the configuration instructions.
-- **External demo:** its separate backend uses Gemini credentials and two TokenScope project API keys: one for Demo Chat and one for Demo Translation.
-- **Tests:** see [Local Development](docs/LOCAL_DEVELOPMENT.md) for commands and [the evaluation guide](docs/DEMO.md) for demonstration steps and expected results.
-- **Shutdown:** run `make stop` from the repository root to stop the application while keeping its data. `make start` resumes it. `make clean` removes containers and the network while retaining volumes. `make fullclean` also deletes volumes, including the database and local certificate authority.
 
 ## Individual Contributions
 
@@ -191,22 +203,33 @@ Expected: HTTP 200 with `{"status":"healthy"}`. Create an account through the si
 | Monica Francesca Camarena Pucuhuanca | To complete. | Authentication and assistant backend — to confirm. | To complete. | To complete. |
 | Fatin Alatrach | TSE-55, TSE-82, TSE-86, TSE-83 | Built the landing and legal pages, the external Chat/Translation demo with Gemini and trace reporting, and the project documentation. | Joined after the idea and architecture were established. Learned the codebase and earlier decisions with the team's support, then contributed through focused tickets. | React, Tailwind CSS, Node.js, Gemini API, Vitest/Jest, Markdown, Git/GitHub. |
 
-## Resources
 
-- [React documentation](https://react.dev/learn) — component and state concepts.
-- [NestJS documentation](https://docs.nestjs.com/) — backend modules and request handling.
-- [Prisma documentation](https://www.prisma.io/docs) — schema, client and migrations.
-- [PostgreSQL documentation](https://www.postgresql.org/docs/) — relational database reference.
-- [Docker Compose documentation](https://docs.docker.com/compose/) — container application configuration.
-- [Gemini API documentation](https://ai.google.dev/gemini-api/docs) — provider requests, response handling and configuration.
-- **ft_transcendence subject v21.1** — project requirements, modules and README guidelines. **To add:** a shared link to the subject.
-- [TSE-83](https://linear.app/move2/issue/TSE-83) — documentation ticket (team access required).
+## Architecture
 
-### AI Usage
+```mermaid
+flowchart LR
+    B[Browser / React] -->|HTTPS and user JWT| P[Caddy / application API]
+    X[External application] -->|HTTPS and project API key| P
+    P --> N[NestJS: validation and authorization]
+    N -->|Prisma| D[(PostgreSQL)]
+    N -->|Committed change notification| B
+    B -->|Refetch authoritative analytics| P
+    N -->|Assistant requests and streaming responses| G[Gemini]
+    N -->|Authorized document access| S[Private file storage]
+```
 
-Fatin mainly used ChatGPT and occasionally Gemini. AI helped her understand tickets, learn unfamiliar concepts, interpret error messages and catch up with the team's existing work. For TSE-86, she used AI to help build the independent Chat/Translation demo, including the Gemini integration, shared `callWithTrace` wrapper, separate project credentials, usage normalization and trace-delivery feedback, as well as the setup and test documentation. AI also helped prepare the project documentation.
+The diagram shows the HTTPS evaluation setup. Development uses Vite's proxy.
 
-**To complete — other teammates:** the AI tools they used, the tasks and features involved, and how they reviewed and tested the results.
+- **Browser to API:** shared HTTP helpers carry the user session. NestJS checks the user's current membership and permissions for each resource.
+- **External client to API:** a project API key scopes trace operations to its active project. Workspace routes use user authentication instead.
+- **Trace to dashboard:** the backend computes analytics and announces committed changes. The browser then fetches updated totals through the API, keeping charts and summaries consistent.
+- **Exports:** CSV and PDF files are generated in the browser from the displayed data snapshot, preserving the selected dates and filters.
+- **Assistant:** the browser sends a question with the selected dates and filters. The backend builds an authorized snapshot of the project's analytics and streams a Gemini answer. Each new request uses its own snapshot; uploaded documents are excluded from the context.
+- **Private documents:** authenticated project routes check access before returning files. Archiving a parent organization or project retains its data. Deleting an individual document removes its metadata and schedules file cleanup.
+
+Detailed boundaries: [Evaluation Architecture](docs/EVALUATION_ARCHITECTURE.md), [API](docs/API.md), [Security](docs/SECURITY.md).
+
+
 
 ## Product Scope and Limitations
 
