@@ -4,6 +4,10 @@ This document explains how to run TokenScope locally and how the development env
 
 Current architecture and feature ownership are defined in [EVALUATION_ARCHITECTURE.md](./EVALUATION_ARCHITECTURE.md).
 
+For a ready-to-use evaluation dataset, follow [EVALUATION_SEED.md](./EVALUATION_SEED.md).
+It supports direct `make eval-up SEED=1 CONFIRM_DATABASE=tokenscope` startup;
+development mode and the historical M1 seed are not prerequisites.
+
 Commands in this document describe implemented tooling unless explicitly marked as planned. Adding an architecture contract does not create its Make target, environment variable or test configuration.
 
 ## Requirements
@@ -877,7 +881,18 @@ The backend still validates its configuration.
 
 The backend runs `prisma migrate deploy` before starting NestJS.
 A migration failure prevents NestJS from starting.
-Startup does not generate migrations, reset the database or seed data.
+Ordinary startup does not generate migrations, reset the database or seed data.
+To explicitly prepare the demo after HTTPS readiness, configure `DEMO_PASSWORD`
+in the existing ignored `.env`, then run:
+
+```sh
+make eval-up SEED=1 CONFIRM_DATABASE=tokenscope
+```
+
+Use your actual local database name. For an already-running dev or eval stack,
+use `make eval-seed CONFIRM_DATABASE=tokenscope`; it does not switch modes.
+See [the seed guide](EVALUATION_SEED.md) for accounts, dates, safety checks,
+repeatability, expected analytics and tests.
 
 Service readiness waits, certificate availability and each HTTPS
 readiness check have a 120-second limit. Image downloads and builds
@@ -977,9 +992,11 @@ Catalogue loading is never automatic.
 
 For the development backend:
 
+```sh
 docker compose exec backend npm run build
 docker compose cp fixtures/evaluation/model-prices.json backend:/tmp/model-prices.json
 docker compose exec backend npm run pricing:load -- --file /tmp/model-prices.json
+```
 
 Repeating an identical catalogue is a no-op. Existing identities cannot
 be overwritten. Add a new effective date for a new price version.
@@ -988,7 +1005,11 @@ The complete catalogue is limited to 1,000 rows and input files to 1 MiB.
 Rates must be decimal strings. Non-synthetic entries require an HTTPS
 pricing source and an explicit effective date.
 
-Price catalogue loading never runs during normal application startup. The evaluation setup command loads the canonical synthetic catalogue before seeding traces. The standalone pricing:load command remains available for deliberate catalogue imports.(TSE-70 connects it to the evaluation setup)
+Price catalogue loading never runs during normal application startup. The
+explicit evaluation seed inserts its synthetic prices and traces in one
+transaction. Do not run the standalone catalogue loader as a prerequisite for
+that seed: fixture prices without a matching seed receipt cause a conflict.
+`pricing:load` remains available for deliberate independent catalogue imports.
 
 ### Troubleshooting
 
@@ -1002,6 +1023,7 @@ Price catalogue loading never runs during normal application startup. The evalua
 | frontend | Inspect Caddy startup and host-port availability. |
 | certificate | Inspect Caddy logs and its persistent data volume. |
 | readiness | Inspect service logs and retry the HTTPS health command above. |
+| seed | Check the seed error, preserve existing data and follow EVALUATION_SEED.md. |
 
 Use a separate checkout and a unique Compose project name for fresh-database
 and deliberate migration-failure tests. Never reset the working database

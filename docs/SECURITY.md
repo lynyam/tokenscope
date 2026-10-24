@@ -927,6 +927,30 @@ Realtime tests must use real connections. Browser tests must exercise the integr
 
 Logs and test artifacts must exclude credentials, file contents, questions, complete contexts and answers.
 
+## Explicit local evaluation seed — TSE-70
+
+The seed is not an HTTP endpoint and never runs as a normal application startup
+hook. The explicit Make command requires a database-name confirmation and sets
+`EVALUATION_SEED_ENABLED=true` for the seed process only. The CLI also requires
+an operator-supplied `DEMO_PASSWORD`, a local `APP_MODE` and the repository's
+Compose PostgreSQL host; it verifies `current_database()` before writing.
+Local compiled evaluation mode retains `NODE_ENV=production`. Remote database
+URLs, unknown deployment modes and URL query host overrides are refused.
+These guards prevent accidental targeting, not a malicious database operator.
+
+Authentication and seeding share the same auth-owned Argon2id helper. No
+password, hash, database URL, JWT or API key is printed. Unknown database errors
+are reduced to a fixed diagnostic. Only synthetic fixture metadata is accepted.
+No provider client or application background worker is started by the CLI.
+
+All fixture rows and one independent `EvaluationSeedReceipt` are committed in
+one serializable transaction. The receipt has no tenant foreign key and stores
+only version/anchor/fingerprints and creation time, so deleting a tenant does
+not authorize recreating its fixtures. Unchanged reruns do not rewrite hashes
+or timestamps; mutations and collisions fail. There is no destructive reset
+flag. See [EVALUATION_SEED.md](EVALUATION_SEED.md) for rehearsal isolation and
+credential-safe browser testing.
+
 ## Private documents — TSE-78
 
 - Authorization precedes body parsing. An outsider receives a scoped `404`, a member without the role receives `403`, and a document is only reachable through its own project.
