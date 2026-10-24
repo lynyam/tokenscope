@@ -10,10 +10,10 @@ export function AppLayout({ children }: { children: ReactNode }) {
         <Sidebar />
         <Toaster position="top-right" />
 
-        <main className="min-h-0 min-w-0 flex-1 overflow-y-auto p-3 sm:p-6">
-          {children}
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto p-3 sm:p-6">
+          <div className="flex-1">{children}</div>
 
-          <footer className="mt-10 border-t border-border pt-6 pb-2">
+          <footer className="mt-10 shrink-0 border-t border-border pt-6 pb-2">
             <LegalLinks />
           </footer>
         </main>
