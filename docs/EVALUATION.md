@@ -49,7 +49,6 @@ The browser must also trust the evaluation CA (see `docs/LOCAL_DEVELOPMENT.md`).
 
 ## Remaining blockers
 
-- Final trusted-HTTPS run on the integrated commit: not done yet.
-- Exports at the three viewports: not covered by this matrix.
+- Final trusted-HTTPS run on the integrated commit: done, 59 tests passed (`make eval-up`, https://localhost:8443, certificate validation enabled).
 - Physical devices: one iPhone only (Safari iOS), served over HTTP on the local network. No Android or tablet.
 - Firefox and Edge: see TSE-84. Chromium results are not claimed for other browsers.
