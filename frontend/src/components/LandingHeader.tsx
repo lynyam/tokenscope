@@ -63,7 +63,7 @@ export function LandingHeader({ isLoggedIn }: { isLoggedIn: boolean }) {
           <img
             src="/logo/logo.svg"
             alt=""
-            className="size-7 rounded bg-white p-1"
+            className="size-7 rounded bg-white p-1 dark:invert"
           />
           <span className="sr-only sm:not-sr-only">TokenScope</span>
         </Link>

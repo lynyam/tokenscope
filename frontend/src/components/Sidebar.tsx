@@ -39,7 +39,7 @@ export function Sidebar() {
 	const contents = (
 		<>
 			<div className="flex items-center gap-2">
-				<img src="/logo/logo.svg" alt="TokenScope logo" className="h-7 w-7" />
+				<img src="/logo/logo.svg" alt="TokenScope logo" className="h-7 w-7 dark:invert" />
 				<span className="text-lg font-semibold">TokenScope</span>
 			</div>
 			<Separator className="mt-2 mb-2" />

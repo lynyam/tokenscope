@@ -32,7 +32,7 @@ export function LegalLayout({ title, children }: LegalLayoutProps) {
             <img
               src="/logo/logo.svg"
               alt=""
-              className="size-7 rounded bg-white p-1"
+              className="size-7 dark:invert"
             />
             TokenScope
           </Link>
