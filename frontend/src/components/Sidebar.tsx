@@ -39,8 +39,8 @@ export function Sidebar() {
 	const contents = (
 		<>
 			<div className="flex items-center gap-2">
-				<img src="/logo/logo.svg" alt="TokenScope logo" className="h-7 w-7 dark:invert" />
-				<span className="text-lg font-semibold">TokenScope</span>
+				<img src="/logo/logo.svg" alt="tokenscope logo" className="h-7 w-7 dark:invert" />
+				<span className="text-lg font-semibold">tokenscope</span>
 			</div>
 			<Separator className="mt-2 mb-2" />
 			<nav aria-label="Workspace" className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto"

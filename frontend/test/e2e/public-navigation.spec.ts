@@ -23,7 +23,7 @@ for (const [path, title] of [["/privacy", "Privacy Policy"], ["/terms", "Terms o
     page.on("pageerror", error => errors.push(error.message));
     await page.goto(path);
     await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
-    await expect(page).toHaveTitle(`${title} — TokenScope`);
+    await expect(page).toHaveTitle(`${title} — tokenscope`);
     await page.reload();
     await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
     expect(apiCalls).toBe(0);

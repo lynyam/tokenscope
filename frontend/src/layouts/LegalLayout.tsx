@@ -14,7 +14,7 @@ const linkClasses =
 export function LegalLayout({ title, children }: LegalLayoutProps) {
   useEffect(() => {
     const previousTitle = document.title;
-    document.title = `${title} — TokenScope`;
+    document.title = `${title} — tokenscope`;
 
     return () => {
       document.title = previousTitle;
@@ -34,7 +34,7 @@ export function LegalLayout({ title, children }: LegalLayoutProps) {
               alt=""
               className="size-7 dark:invert"
             />
-            TokenScope
+            tokenscope
           </Link>
           <ThemeToggle />
         </div>

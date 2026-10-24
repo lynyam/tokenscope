@@ -11,19 +11,19 @@ const legalPages = [
   {
     path: "/privacy",
     heading: "Privacy Policy",
-    title: "Privacy Policy — TokenScope",
+    title: "Privacy Policy — tokenscope",
   },
   {
     path: "/terms",
     heading: "Terms of Service",
-    title: "Terms of Service — TokenScope",
+    title: "Terms of Service — tokenscope",
   },
 ];
 
 beforeEach(() => {
   vi.stubGlobal("scrollTo", vi.fn());
   window.history.replaceState({}, "", "/");
-  document.title = "TokenScope";
+  document.title = "tokenscope";
   localStorage.clear();
 
   fetchMock.mockReset();
