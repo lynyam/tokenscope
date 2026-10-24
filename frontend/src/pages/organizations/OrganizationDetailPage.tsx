@@ -256,7 +256,7 @@ function OrganizationDetail({ organizationId, }: {
 	}
 	return (
 		<div>
-			<h1 className="mb-6 text-2xl font-bold max-w-md mx-auto" >Detail of {organizationId}</h1>
+			<h1 className="mb-6 text-2xl font-bold max-w-md mx-auto" >Detail of {organization.name}</h1>
 			<Card className="mb-6 max-w-md mx-auto rounded-lg px-8">
 				<div className="flex flex-wrap items-start justify-between gap-3 py-2 border-b">
 					<span className="text-sm text-muted-foreground">Name</span>
