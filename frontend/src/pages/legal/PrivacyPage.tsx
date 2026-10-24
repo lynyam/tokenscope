@@ -47,7 +47,7 @@ export function PrivacyPage() {
       <section>
         <h2>About this policy</h2>
         <p>
-          TokenScope is an educational and evaluation project for observing LLM
+          tokenscope is an educational and evaluation project for observing LLM
           usage and estimated costs. It provides shared organizations and
           projects, trace ingestion, analytics, document storage and an assistant
           that explains selected project analytics.
@@ -62,13 +62,13 @@ export function PrivacyPage() {
       <section>
         <h2>Account and workspace information</h2>
         <p>
-          When you register, TokenScope receives your display name, email address
+          When you register, tokenscope receives your display name, email address
           and password. These fields are required to create an account. The
           application stores your account identifier, display name, email
           address, creation and update dates, and a hash of your password.
         </p>
         <p>
-          TokenScope also stores organization and project information, membership
+          tokenscope also stores organization and project information, membership
           relationships and roles. This information supports shared workspaces
           and determines which actions each member can perform.
         </p>
@@ -83,7 +83,7 @@ export function PrivacyPage() {
         <h2>Project keys and trace information</h2>
         <p>
           Project API keys allow applications to send and manage traces for a
-          specific project. TokenScope stores a hash of each key, a visible
+          specific project. tokenscope stores a hash of each key, a visible
           prefix, its name, its creator and relevant creation, use and revocation
           dates. The complete key is shown when it is created and is not
           available for later retrieval.
@@ -92,7 +92,7 @@ export function PrivacyPage() {
           A trace contains information supplied by the sending application,
           including an external identifier, provider and model names, workflow,
           input and output token counts, latency, status, occurrence time and
-          optional metadata. TokenScope also stores calculated cost estimates,
+          optional metadata. tokenscope also stores calculated cost estimates,
           the pricing information used and record-management information.
         </p>
         <p>
@@ -118,7 +118,7 @@ export function PrivacyPage() {
         <h2>Documents</h2>
         <p>
           Authorized users can upload PDF, text and Markdown documents to a
-          project. TokenScope stores the file contents and information needed to
+          project. tokenscope stores the file contents and information needed to
           manage them, including the filename, format, size, upload date,
           uploader and file-integrity information.
         </p>
@@ -136,7 +136,7 @@ export function PrivacyPage() {
       <section>
         <h2>Assistant requests and Gemini</h2>
         <p>
-          When you submit an assistant question, TokenScope sends Google’s Gemini
+          When you submit an assistant question, tokenscope sends Google’s Gemini
           API your question, the project name and description, and analytics for
           your selected UTC period and applied filters. The context includes
           totals, time series, provider/model breakdowns and whether pricing is
@@ -148,14 +148,14 @@ export function PrivacyPage() {
           descriptions or filter values that should not be sent to the provider.
         </p>
         <p>
-          TokenScope does not automatically add uploaded documents, individual
+          tokenscope does not automatically add uploaded documents, individual
           traces, arbitrary trace metadata, user identities, account email addresses
           or API credentials to the assistant’s prompt.
         </p>
         <p>
           Earlier questions and answers remain visible only in the open panel’s
           memory. They are not sent as conversation history to Gemini and are not
-          saved in TokenScope’s database. Closing or leaving the panel, changing
+          saved in tokenscope’s database. Closing or leaving the panel, changing
           the applied project, period or filters, changing session or losing access
           clears these exchanges.
         </p>
@@ -163,12 +163,12 @@ export function PrivacyPage() {
           Google’s processing and retention depend on the account, service tier
           and region. Under the unpaid-service terms, submitted content and
           responses may be used for product improvement and human review. The
-          terms include regional exceptions and service restrictions. TokenScope
+          terms include regional exceptions and service restrictions. tokenscope
           does not promise zero provider retention. See the{' '}
           <a href="https://ai.google.dev/gemini-api/terms">Gemini API terms</a>.
         </p>
         <p>
-          Stop aborts TokenScope’s request and stops consumption and forwarding
+          Stop aborts tokenscope’s request and stops consumption and forwarding
           of the response. It cannot recall transmitted information or guarantee
           that Google stops computation already in progress.
         </p>
@@ -177,7 +177,7 @@ export function PrivacyPage() {
       <section>
         <h2>Browser storage and live updates</h2>
         <p>
-          TokenScope stores an access token in your browser’s local storage so
+          tokenscope stores an access token in your browser’s local storage so
           that the session can be restored after a page reload. Signing out
           removes the application’s local session. Clearing the site’s browser
           storage also removes that stored token. The token uses the
@@ -190,7 +190,7 @@ export function PrivacyPage() {
           subject to the application’s access checks.
         </p>
         <p>
-          Live project updates use an authenticated connection to TokenScope.
+          Live project updates use an authenticated connection to tokenscope.
           Change notifications tell the browser to fetch updated project
           information. They do not automatically send project data to the
           assistant provider.
@@ -273,7 +273,7 @@ export function PrivacyPage() {
       <section id="your-information-and-requests">
         <h2>Your information and requests</h2>
         <p>
-          You can ask the operator of your TokenScope instance about access to,
+          You can ask the operator of your tokenscope instance about access to,
           correction of or deletion of your personal information.
         </p>
         <p>
@@ -293,7 +293,7 @@ export function PrivacyPage() {
         <p>
           General project questions and bug reports can be submitted through{" "}
           <a href="https://github.com/lynyam/tokenscope/issues">
-            TokenScope’s GitHub issues
+            tokenscope’s GitHub issues
           </a>
           . This is a public project contact channel.
         </p>

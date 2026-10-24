@@ -7,7 +7,7 @@ import type { DashboardExportInput } from "./export.types";
 // 1. MODÈLE — fonction pure, toute la logique est ici (facile à tester)
 // ============================================================================
 
-export const PDF_TITLE = "TokenScope report";
+export const PDF_TITLE = "tokenscope report";
 export const NO_FILTERS_TEXT = "No additional filters.";
 export const NO_OBSERVATIONS_TEXT = "No observations";
 export const NO_MODEL_DATA_TEXT = "No model data for this period.";

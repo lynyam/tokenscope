@@ -93,13 +93,13 @@ export function DashboardControls({
             </Button>
           ))}
         </div>
-        <form className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto]" aria-label="Custom period" onSubmit={applyCustom}>
-          <div className="space-y-1">
+        <form className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]" aria-label="Custom period" onSubmit={applyCustom}>
+          <div className="min-w-0 space-y-1">
             <Label htmlFor="dashboard-from">From (UTC)</Label>
             <Input id="dashboard-from" type="datetime-local" step={0.001} value={fromDraft}
               onChange={event => setFromDraft(event.target.value)} />
           </div>
-          <div className="space-y-1">
+          <div className="min-w-0 space-y-1">
             <Label htmlFor="dashboard-to">To (UTC)</Label>
             <Input id="dashboard-to" type="datetime-local" step={0.001} value={toDraft}
               onChange={event => setToDraft(event.target.value)} />
@@ -114,7 +114,7 @@ export function DashboardControls({
         </p>
       </div>
 
-      <div role="group" aria-label="Filters" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div role="group" aria-label="Filters" className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <div className="space-y-1">
           <Label htmlFor="dashboard-search">Search</Label>
           <Input id="dashboard-search" type="search" maxLength={LIMITS.q} value={qDraft}
@@ -151,7 +151,7 @@ export function DashboardControls({
             {models.map(model => <option key={model} value={model}>{model}</option>)}
           </select>
         </div>
-        <div className="flex items-end gap-2">
+        <div className="flex flex-wrap items-end gap-2">
           <Button type="button" variant="outline" onClick={onReset}>Reset</Button>
           <Button type="button" variant="outline" disabled={refreshing} onClick={onRefresh}>
             {refreshing ? "Refreshing…" : "Refresh"}
