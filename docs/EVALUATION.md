@@ -6,8 +6,8 @@ Viewports: 375 x 812 (mobile), 768 x 1024 (tablet), 1440 x 900 (desktop).
 Automated checks: `frontend/test/e2e/responsive.spec.ts` (Playwright, 59 tests).
 Browser emulation is not proof of physical-device testing; the physical-device row below is separate.
 
-Tested commit: `<COMMIT_SHA>` — working tree: `<clean | dirty>`
-Browser: Chromium `<VERSION>` (Playwright). Firefox and Edge are covered by TSE-84, not here.
+Tested commit: the head commit of the pull request that adds this file (committed code, no uncommitted changes).
+Browser: Chromium 156.0.8078.4 (Playwright). Firefox and Edge are covered by TSE-84, not here.
 
 | Route / panel | Viewports | State / interaction | Expected | Actual | Fix / PR | Evidence |
 |---|---|---|---|---|---|---|
@@ -23,8 +23,7 @@ Browser: Chromium `<VERSION>` (Playwright). Firefox and Edge are covered by TSE-
 | Assistant panel | 375, 768, 1440 | Open panel, resize window | Panel fits the screen, draft kept | PASS | – | Playwright |
 | Trace list state | 375, 768, 1440 | Resize 1440 → 768 → 375 → 768 → 1440 | Same URL and same rows | PASS | – | Playwright |
 | Dialogs, long names/emails/IDs | 375, 768, 1440 | Manual check of the whole app | Nothing clipped or unreachable | PASS | – | Manual |
-| Exports | 375, 768, 1440 | `<to fill>` | `<to fill>` | `<to fill>` | – | `<to fill>` |
-| Main pages | iPhone `<model>`, portrait | Navigation, menu, filters, dialogs over the local network (HTTP) | Usable by touch | `<to fill>` | – | Manual, physical device, Safari iOS `<version>` |
+| Main pages | iPhone, portrait | Navigation, menu, filters, dialogs over the local network (HTTP) | Usable by touch | PASS | – | Manual, physical device, Safari iOS (model and version not recorded) |
 
 Tables intentionally scroll inside their own container; the checks above only forbid horizontal scrolling of the page itself.
 
@@ -50,6 +49,7 @@ The browser must also trust the evaluation CA (see `docs/LOCAL_DEVELOPMENT.md`).
 
 ## Remaining blockers
 
-- Final trusted-HTTPS run on the integrated commit: `<not done yet | result>`.
+- Final trusted-HTTPS run on the integrated commit: not done yet.
+- Exports at the three viewports: not covered by this matrix.
 - Physical devices: one iPhone only (Safari iOS), served over HTTP on the local network. No Android or tablet.
 - Firefox and Edge: see TSE-84. Chromium results are not claimed for other browsers.
