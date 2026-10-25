@@ -8,9 +8,9 @@ export function TermsPage() {
   return (
     <LegalLayout title="Terms of Service">
       <section>
-        <h2>About TokenScope</h2>
+        <h2>About tokenscope</h2>
         <p>
-          TokenScope is an educational and evaluation application for observing
+          tokenscope is an educational and evaluation application for observing
           LLM usage and estimated costs. It provides organization and project
           workspaces, trace ingestion and management, analytics, real-time
           updates, exports, document storage and an assistant for explaining
@@ -66,7 +66,7 @@ export function TermsPage() {
       <section>
         <h2>Cost estimates and exports</h2>
         <p>
-          TokenScope calculates estimated costs from submitted token counts and
+          tokenscope calculates estimated costs from submitted token counts and
           the pricing records applied to each trace.
         </p>
         <p>
@@ -83,7 +83,7 @@ export function TermsPage() {
           They do not necessarily contain every individual trace.
         </p>
         <p>
-          TokenScope does not guarantee a particular level of savings or the
+          tokenscope does not guarantee a particular level of savings or the
           accuracy of information supplied by an external application.
         </p>
       </section>
@@ -177,7 +177,7 @@ export function TermsPage() {
         <p>
           Use{" "}
           <a href="https://github.com/lynyam/tokenscope/issues">
-            TokenScope’s GitHub issues
+            tokenscope’s GitHub issues
           </a>{" "}
           for general project questions and bug reports. Do not include
           passwords, keys or private account and workspace information.

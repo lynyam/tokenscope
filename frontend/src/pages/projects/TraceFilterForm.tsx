@@ -154,18 +154,18 @@ export function TraceFilterForm({ query, choices, onChange, onReset, onRetryChoi
           />
         </div>
       )}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <div className="space-y-1">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="min-w-0 space-y-1">
           <Label htmlFor="trace-from">From (UTC)</Label>
           <Input id="trace-from" type="datetime-local" step={0.001} value={fromDraft}
             onChange={event => setFromDraft(event.target.value)} />
         </div>
-        <div className="space-y-1">
+        <div className="min-w-0 space-y-1">
           <Label htmlFor="trace-to">To (UTC)</Label>
           <Input id="trace-to" type="datetime-local" step={0.001} value={toDraft}
             onChange={event => setToDraft(event.target.value)} />
         </div>
-        <div className="flex items-end gap-2">
+        <div className="flex flex-wrap items-end gap-2">
           <Button type="submit">Apply period</Button>
           <Button type="button" variant="outline" onClick={reset}>Reset</Button>
         </div>

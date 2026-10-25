@@ -5,6 +5,9 @@ BACKEND := backend
 FRONTEND := frontend
 DATABASE := postgres
 
+# Non-secret seed options. DEMO_PASSWORD belongs in ignored .env or exported env.
+export SEED CONFIRM_DATABASE ANCHOR
+
 
 #APPS
 
@@ -123,6 +126,12 @@ test-backend:
 eval-up:
 	@sh scripts/eval-up.sh
 
+eval-seed:
+	@sh scripts/eval-seed.sh
+
+test-eval-startup:
+	@sh scripts/test-eval-startup.sh
+
 #HELP
 
 help:
@@ -140,6 +149,9 @@ help:
 	@echo "  make logs                          Follow service logs"
 	@echo "  make ps                            Show service status"
 	@echo "  make eval-up                       Build and start HTTPS evaluation mode"
+	@echo "  make eval-up SEED=1 CONFIRM_DATABASE=name  Start and explicitly seed the local demo"
+	@echo "  make eval-seed CONFIRM_DATABASE=name      Seed the running dev/eval backend"
+	@echo "  make test-eval-startup              Check startup/seed orchestration without Docker"
 	@echo "  make psa                            Show all service status"
 	@echo "  make shell                         Open backend shell"
 	@echo ""
@@ -163,7 +175,7 @@ help:
 	@echo ""
 
 .PHONY: \
-	up eval-up start stop restart logs ps shell \
+	up eval-up eval-seed test-eval-startup start stop restart logs ps shell \
 	db-shell db-generate db-migrate db-migration db-seed db-status db-studio db-setup \
 	clean fullclean help test-db test-db-clean test-db-fresh test-backend frontendtest \
 	frontende2e frontende2e-setup

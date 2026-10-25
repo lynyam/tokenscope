@@ -23,7 +23,7 @@ for (const [path, title] of [["/privacy", "Privacy Policy"], ["/terms", "Terms o
     page.on("pageerror", error => errors.push(error.message));
     await page.goto(path);
     await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
-    await expect(page).toHaveTitle(`${title} — TokenScope`);
+    await expect(page).toHaveTitle(`${title} — tokenscope`);
     await page.reload();
     await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
     expect(apiCalls).toBe(0);
@@ -58,6 +58,19 @@ test("a session failure can open legal pages and returning resumes authenticatio
   await expect(page.getByRole("heading", { name: "Unable to verify your session" })).toBeVisible();
   expect(checks).toBeGreaterThan(before);
 });
+
+for (const [colorScheme, fill] of [["light", "rgb(17, 24, 39)"], ["dark", "rgb(248, 250, 252)"]] as const) {
+  test(`the standalone SVG favicon adapts to ${colorScheme} browser chrome`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme });
+    await page.goto("/");
+    await expect(page.locator('link[rel="icon"][type="image/svg+xml"]'))
+      .toHaveAttribute("href", "/logo/favicon.svg");
+    // Inspect the standalone asset, not the page's <img> with dark:invert.
+    const response = await page.goto("/logo/favicon.svg");
+    expect(response?.ok()).toBe(true);
+    await expect(page.locator("svg g")).toHaveCSS("fill", fill);
+  });
+}
 
 test("theme toggles persist across public navigation and reload", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light" });

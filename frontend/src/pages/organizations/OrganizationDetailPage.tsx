@@ -67,6 +67,16 @@ function OrganizationDetail({ organizationId, }: {
 			})
 			.catch(failure => {
 				if (!controller.signal.aborted && !isAbortError(failure)) {
+					// 404 or invalid id: show the "Organization not found" screen instead of Retry.
+					if (
+						failure instanceof ApiError &&
+						(
+							failure.code === "ORGANIZATION_NOT_FOUND" ||
+							(failure.statusCode === 400 && failure.code === "VALIDATION_ERROR")
+						)
+					) {
+						return;
+					}
 					setError(
 						getApiErrorMessage(failure, "Failed to load organization."),
 					);
@@ -158,6 +168,8 @@ function OrganizationDetail({ organizationId, }: {
 			setOrganization(updated);
 			setNameDraft(updated.name);
 			setIsEditing(false);
+			// Tell the sidebar switcher to show the new name.
+			window.dispatchEvent(new Event("organization-renamed"));
 		} catch (failure) {
 			if (signal.aborted || isAbortError(failure)) return;
 			if (handleAccessFailure(failure)) return;
@@ -256,7 +268,7 @@ function OrganizationDetail({ organizationId, }: {
 	}
 	return (
 		<div>
-			<h1 className="mb-6 text-2xl font-bold max-w-md mx-auto" >Detail of {organizationId}</h1>
+			<h1 className="mx-auto mb-6 max-w-md text-2xl font-bold [overflow-wrap:anywhere]">Detail of {organization.name}</h1>
 			<Card className="mb-6 max-w-md mx-auto rounded-lg px-8">
 				<div className="flex flex-wrap items-start justify-between gap-3 py-2 border-b">
 					<span className="text-sm text-muted-foreground">Name</span>
@@ -317,8 +329,8 @@ function OrganizationDetail({ organizationId, }: {
 							)}
 						</form>
 					) : (
-						<span className="flex items-center gap-2 text-sm font-medium">
-							{organization.name}
+						<span className="flex min-w-0 max-w-full flex-wrap items-center gap-2 text-sm font-medium">
+							<span className="min-w-0 [overflow-wrap:anywhere]">{organization.name}</span>
 
 							{organization.currentUserRole === "OWNER" && (
 								<Button
@@ -339,9 +351,9 @@ function OrganizationDetail({ organizationId, }: {
 						</span>
 					)}
 				</div>
-				<div className="flex justify-between py-2 border-b">
+				<div className="flex flex-wrap justify-between gap-2 py-2 border-b">
 					<span className="text-sm text-muted-foreground">Slug</span>
-					<span className="text-sm font-medium">{organization.slug}</span>
+					<span className="min-w-0 text-sm font-medium [overflow-wrap:anywhere]">{organization.slug}</span>
 				</div>
 				<div className="flex justify-between py-2 border-b">
 					<span className="text-sm text-muted-foreground">Your role</span>
@@ -383,10 +395,10 @@ function OrganizationDetail({ organizationId, }: {
 								This organization and its contents will become inaccessible. Stored data
 								is retained. Restoration is not available in the application.
 							</DialogDescription>
-							<p className="text-sm">
+							<p className="text-sm [overflow-wrap:anywhere]">
 								Organization: <strong>{organization.name}</strong>
 							</p>
-							<p className="text-sm">
+							<p className="text-sm [overflow-wrap:anywhere]">
 								Type <strong>{organization.slug}</strong> to confirm.
 							</p>
 						</DialogHeader>

@@ -35,21 +35,25 @@
   ],
   "memberships": [
     {
+      "id": "60000000-0000-4000-8000-000000000001",
       "userId": "10000000-0000-4000-8000-000000000001",
       "organizationId": "20000000-0000-4000-8000-000000000001",
       "role": "OWNER"
     },
     {
+      "id": "60000000-0000-4000-8000-000000000002",
       "userId": "10000000-0000-4000-8000-000000000002",
       "organizationId": "20000000-0000-4000-8000-000000000001",
       "role": "ADMIN"
     },
     {
+      "id": "60000000-0000-4000-8000-000000000003",
       "userId": "10000000-0000-4000-8000-000000000003",
       "organizationId": "20000000-0000-4000-8000-000000000001",
       "role": "MEMBER"
     },
     {
+      "id": "60000000-0000-4000-8000-000000000004",
       "userId": "10000000-0000-4000-8000-000000000004",
       "organizationId": "20000000-0000-4000-8000-000000000002",
       "role": "OWNER"
@@ -61,7 +65,7 @@
       "organizationId": "20000000-0000-4000-8000-000000000001",
       "name": "Support Golden",
       "slug": "support-golden",
-      "description": "Synthetic evaluation fixture",
+      "description": "Synthetic support and batch workloads used to verify TokenScope analytics. Prices are evaluation fixtures, not provider quotes.",
       "archivedAt": null
     },
     {
