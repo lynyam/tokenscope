@@ -19,18 +19,17 @@ beforeEach(() => {
     archivedAt: null, createdAt: "2026-10-01T00:00:00Z", updatedAt: "2026-10-01T00:00:00Z",
   });
 });
-it.each(["OWNER", "ADMIN", "MEMBER"] as const)("%s keeps the existing project navigation and clears it on access loss", async role => {
+it.each(["OWNER", "ADMIN", "MEMBER"] as const)("%s clears the project on access loss", async role => {
   vi.mocked(getOrganization).mockResolvedValue({ id: "o", name: "Org", slug: "org", createdAt: "", updatedAt: "", currentUserRole: role });
   render(<MemoryRouter initialEntries={["/organizations/o/projects/p"]}>
     <Routes><Route path="/organizations/:organizationId/projects/:projectId" element={<ProjectDetailPage />} /></Routes>
   </MemoryRouter>);
   await screen.findByRole("heading", { name: "Support" });
-  expect(screen.getByRole("link", { name: "Traces" })).toBeInTheDocument();
-  expect(Boolean(screen.queryByRole("link", { name: "API keys" }))).toBe(role !== "MEMBER");
+  // Project navigation lives in the sidebar (see Sidebar.test.tsx), not in the page.
+  expect(screen.queryByRole("navigation", { name: "Project sections" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Simulate access loss" }));
   await waitFor(() => expect(screen.queryByRole("heading", { name: "Support" })).not.toBeInTheDocument());
   expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("link", { name: "API keys" })).not.toBeInTheDocument();
   expect(getAccessToken()).toBe("current");
   expect(vi.mocked(getOrganizationProject).mock.calls.at(-1)![2]?.aborted).toBe(true);
 });

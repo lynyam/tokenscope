@@ -234,35 +234,6 @@ function ProjectDetail({ organizationId, projectId }: { organizationId: string; 
           {archiveError && <p role="alert" className="text-sm text-destructive">{archiveError}</p>}
         </>
       )}
-      <nav
-        aria-label="Project sections"
-        className="flex flex-wrap gap-4 rounded-lg border p-4"
-      >
-        {canManage && (
-          <Link
-            className="underline"
-            to={
-              "/organizations/" + encodeURIComponent(organizationId)
-              + "/projects/" + encodeURIComponent(projectId)
-              + "/api-keys"
-            }
-          >
-            API keys
-          </Link>
-        )}
-
-        <Link
-          className="underline"
-          to={
-            "/organizations/" + encodeURIComponent(organizationId)
-            + "/projects/" + encodeURIComponent(projectId)
-            + "/traces"
-          }
-        >
-          Traces
-        </Link>
-        <Link className="underline" to={"/organizations/" + encodeURIComponent(organizationId) + "/projects/" + encodeURIComponent(projectId) + "/documents"}>Documents</Link>
-      </nav>
       <ProjectDashboard
         organizationId={organizationId}
         projectId={projectId}
