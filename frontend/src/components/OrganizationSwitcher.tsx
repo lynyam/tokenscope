@@ -47,6 +47,15 @@ export function OrganizationSwitcher() {
     return () => controller.abort();
   }, [organizationId, reload]);
 
+  // Reload the list after a rename so the new name is shown.
+  useEffect(() => {
+    function handleRename() {
+      setReload(value => value + 1);
+    }
+    window.addEventListener("organization-renamed", handleRename);
+    return () => window.removeEventListener("organization-renamed", handleRename);
+  }, []);
+
   const currentOrganization = organizations.find(
     organization => organization.id === organizationId,
   );

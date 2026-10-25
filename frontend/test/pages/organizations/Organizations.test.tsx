@@ -196,8 +196,9 @@ describe("organization screens with the real HTTP adapter", () => {
 
 		renderPage(`/organizations/${organization.id}`);
 
-		expect(await screen.findByRole("alert"))
-			.toHaveTextContent("Organization not found.");
+		expect(await screen.findByText("Organization not found")).toBeInTheDocument();
+		// Retry cannot help on a 404.
+		expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
 		expect(getAccessToken()).toBe("organization-ui-test-token");
 	});
 

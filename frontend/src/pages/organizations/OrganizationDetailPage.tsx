@@ -67,6 +67,10 @@ function OrganizationDetail({ organizationId, }: {
 			})
 			.catch(failure => {
 				if (!controller.signal.aborted && !isAbortError(failure)) {
+					// 404 or invalid id: show the "Organization not found" screen instead of Retry.
+					if (failure instanceof ApiError && (failure.code === "ORGANIZATION_NOT_FOUND" || failure.code === "VALIDATION_ERROR")) {
+						return;
+					}
 					setError(
 						getApiErrorMessage(failure, "Failed to load organization."),
 					);
@@ -158,6 +162,8 @@ function OrganizationDetail({ organizationId, }: {
 			setOrganization(updated);
 			setNameDraft(updated.name);
 			setIsEditing(false);
+			// Tell the sidebar switcher to show the new name.
+			window.dispatchEvent(new Event("organization-renamed"));
 		} catch (failure) {
 			if (signal.aborted || isAbortError(failure)) return;
 			if (handleAccessFailure(failure)) return;
