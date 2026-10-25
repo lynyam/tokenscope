@@ -848,6 +848,14 @@ Do not automatically retry creation after an uncertain network outcome. List met
 
 Implementation status: TSE-67 implements key management and the reusable public authentication foundation. Trace operations belong to TSE-68/69.
 
+Frontend behavior — TSE-74:
+
+- The management page is `/organizations/:organizationId/projects/:projectId/api-keys`. It is available to OWNER and ADMIN of an active project. The role comes from `GET /organizations/:organizationId` (`currentUserRole`), never from the URL, storage or token. A MEMBER sees a denied state and the key list is not requested.
+- The plaintext `key` exists only in the page's transient disclosure state. Closing the dialog, leaving the route, changing project or session, or detecting access loss discards it. It is never written to the list, the URL, browser storage or logs.
+- A creation whose outcome is uncertain (network failure) is never retried automatically. The page reloads the list and asks the user to check it.
+- `403 INSUFFICIENT_ORGANIZATION_ROLE` clears the list and any secret and re-reads the role. `404` on the project or organization clears the page content. `404 API_KEY_NOT_FOUND` on revocation closes the dialog and reloads the list. `429` uses the shared `ApiError.retryAfterSeconds` value to disable deliberate retries until its deadline. No mutation is retried automatically.
+- The browser calls these management routes with the user's JWT. The key created here is only for the `X-API-Key` header of public trace routes; see [Authentication and route ownership](#authentication-and-route-ownership).
+
 Public authentication uses exactly one X-API-Key header containing a canonical tsk_ secret. Query parameters, JSON fields, cookies and bearer JWTs are not alternative API-key locations.
 
 Missing, malformed, unknown, revoked and archived-parent credentials return 401 INVALID_API_KEY with the same message.
@@ -1039,8 +1047,8 @@ A rejected request returns `429 RATE_LIMITED` with `Retry-After` in seconds.
 This response does not invalidate the user's authentication session.
 
 Analytics (`GET P/analytics`) shares this same user/project budget.
-Switching between trace list, trace detail and analytics does not reset the allowance. Trace Explorer UI and WebSocket delivery remain separate
-implementation scopes.
+Switching between trace list, trace detail and analytics does not reset the allowance. Realtime refreshes in the Trace Explorer (TSE-87) are ordinary reads of this same allowance: the client coalesces
+them and respects `Retry-After`.
 
 ### Shared dates, filters and pagination
 
@@ -1283,13 +1291,19 @@ Membership removal or parent archive emits `access.revoked`; demotion to MEMBER 
 Origin policy is defined in SECURITY.md. Same-origin polling GETs may omit Origin;
 the documented Fetch Metadata + Referer exception is deliberate.
 
-TSE-76 must subscribe after every connection, refetch after every successful acknowledgement,
+The TSE-76 client subscribes after every connection, refetches after every successful acknowledgement,
 refetch on `traces.changed`, on visible focus and every 30 seconds while visible.
 Keep the applied dates/filters when refetching. Stop/re-subscribe when project changes.
 Treat revoked access as project unavailability; do not clear an otherwise valid login.
 Expired/invalid JWT requires the existing session-expiry behavior. A transport outage
 alone must preserve the session. Reconnect with bounded backoff; there is no event replay.
 Do not calculate totals from notifications, and do not change an in-flight assistant context.
+
+The Trace Explorer (TSE-87) list and detail follow this contract through the shared client and `RefreshScheduler`, with two
+documented differences: there is no periodic 30-second refresh, and a refresh is redone on visibility or network return only
+when one was skipped while the tab was hidden or the browser offline. Notices are coalesced (250 ms, at most 1 s), at most one
+follow-up read is queued, a `Retry-After` deadline is respected and a failed read is never retried automatically; the last
+data stays visible as stale, with a Retry action.
 
 ### Assistant — TSE-80 / TSE-81
 
@@ -1374,6 +1388,142 @@ Provider configuration/authentication failures are not user `401` responses.
 
 The answer context stays fixed. Project/date/filter changes cancel and clear the old answer; same-selection dashboard refreshes do not.
 
+### TSE-80 implementation status
+
+Implemented, relative to `/api/v1`:
+
+```http
+POST /organizations/:organizationId/projects/:projectId/assistant
+```
+
+JWT only (the global guard). OWNER, ADMIN and MEMBER of an active organization
+and project may ask. Project API keys are rejected with `401`.
+
+Request example (`fixtures/evaluation/assistant/request.json`):
+
+```json
+{
+  "question": "Which model contributes most to the estimated cost?",
+  "from": "2026-10-01T00:00:00.000Z",
+  "to": "2026-10-02T00:00:00.000Z",
+  "filters": {}
+}
+```
+
+Dates and filters use the same parser as `GET .../analytics` (TSE-69 / TSE-71):
+`from <= occurredAt < to`, at most 90 days, UTC instants ending in `Z`,
+hourly buckets up to 48 hours and daily buckets otherwise.
+`from`, `to` and `bucket` are not accepted inside `filters`.
+
+Order of checks:
+
+1. JWT, route UUIDs, `Content-Type: application/json`, 8 KiB of real body bytes, body validation.
+2. Current project access (a rejected request uses no rate-limit capacity).
+3. Provider configuration.
+4. One active answer per user, 5 accepted attempts per user and 30 per project in a rolling minute. Both rate budgets are admitted together.
+5. Context built in one Repeatable Read transaction, closed before Gemini is called.
+6. JWT expiry and project access checked again, then one provider request.
+
+Access reads have a five-second wait limit. Slow readers cannot retain an active
+slot after cancellation or a deadline: normal writes observe cancellation and
+terminal writes end the response with a five-second flush grace period. A client
+that cannot receive the final frame must treat the stream as interrupted.
+
+The SSE response starts when Gemini accepts the request (before the first text):
+
+```http
+200 OK
+Content-Type: text/event-stream; charset=utf-8
+Cache-Control: no-store
+X-Request-Id: <same value as start.requestId>
+```
+
+Each frame is `event: <name>\ndata: <json>\n\n`. Long text is split into
+several `delta` events (at most 4,000 characters each), so frames stay far
+below 64 KiB. Transcripts: `fixtures/evaluation/assistant/*.sse`; a unit test
+proves they are byte-for-byte what the backend writes.
+
+Errors:
+
+| Situation | Before the stream (JSON) | After the stream started (`error` event) |
+|---|---|---|
+| Missing / invalid / expired JWT | `401` existing codes | `ACCESS_TOKEN_EXPIRED` |
+| Invalid UUID, body, filter or dates | `400 VALIDATION_ERROR` | — |
+| Body over 8,192 bytes | `413 PAYLOAD_TOO_LARGE` | — |
+| Wrong content type | `415 UNSUPPORTED_MEDIA_TYPE` | — |
+| No access, archived organization/project | `404 PROJECT_NOT_FOUND` | `PROJECT_NOT_FOUND` |
+| No matching traces | `422 ASSISTANT_NO_DATA` | — |
+| Context over 32 KiB | `422 ASSISTANT_CONTEXT_TOO_LARGE` | — |
+| Refusal / safety block | `422 LLM_REFUSED` | `LLM_REFUSED` |
+| Answer already running for this user | `429 ASSISTANT_ALREADY_RUNNING` | — |
+| Local rate limit | `429 RATE_LIMITED` + `Retry-After: <seconds>` | — |
+| Key/model missing or rejected by Gemini | `503 LLM_UNAVAILABLE` | `LLM_UNAVAILABLE` |
+| Gemini quota or overload (`429`/`503`) | `503 LLM_PROVIDER_BUSY` | `LLM_PROVIDER_BUSY` |
+| Other provider failure, empty answer, cut stream | `502 LLM_PROVIDER_ERROR` | `LLM_PROVIDER_ERROR` |
+| 15 s without text / 60 s in total | `504 LLM_TIMEOUT` | `LLM_TIMEOUT` |
+| Server shutdown | — | `SERVICE_UNAVAILABLE` |
+| Database or unexpected failure | `500 INTERNAL_SERVER_ERROR` | `INTERNAL_SERVER_ERROR` |
+
+`retryable` is a hint for a deliberate user retry. It never means "retry automatically".
+
+`usage` mapping: `inputTokens = usageMetadata.promptTokenCount`,
+`outputTokens = usageMetadata.candidatesTokenCount` (thinking tokens are not
+included). `null` when Gemini does not report both. Usage is never estimated
+and never written to project traces.
+
+Handoff to TSE-81:
+
+- Types: `backend/src/assistant/assistant.types.ts` (`AssistantContext`) and the tables above.
+- Fixtures: `fixtures/evaluation/assistant/` (request, context, five SSE transcripts, chunk boundaries).
+- Fake-provider tests run with `make test-backend`; live checks are opt-in (see LOCAL_DEVELOPMENT.md).
+
+Ownership notes:
+
+- TSE-71: reused as is through `AnalyticsService.readSnapshotInTransaction()`; no change was needed.
+- TSE-76: the dashboard must send its applied, resolved selection (never "last7days").
+- TSE-81: owns the UI, Stop button, and the complete / truncated / stopped / interrupted / failed states.
+
+### TSE-81 frontend integration
+
+`ProjectDetailPage` mounts `DashboardAssistant` through `ProjectDashboard.renderExtras`.
+The existing applied selection supplies exact UTC dates and normalized filters;
+no new route, backend endpoint, provider call in the browser or trace-detail assistant is added.
+`apiPostStream` owns authenticated transport. The assistant validates SSE payloads
+and the returned project/date/filter scope before showing context, then retains
+that fixed context through same-selection dashboard refreshes.
+
+Stop, close, changed selection, session invalidation and unmount cancel consumption.
+Initial HTTP failures and streamed failures use the existing safe error conventions;
+only captured-session authentication failure signs out the user. Access loss clears
+protected content and delegates project unavailability to the existing dashboard.
+
+TSE-89 keeps one question per backend request. After local validation, submission
+immediately clears the composer and displays the question in its bubble, before
+waiting for HTTP headers or SSE `start`. Earlier exchanges remain visible in
+component memory for this open panel and scope; they are never sent to Gemini or
+saved to browser storage. This is display history, not provider conversation memory.
+Each answer retains its own returned snapshot and completion/error status.
+
+Stop keeps the question and partial answer in place. Before any text it displays
+"Stopped before an answer was received."; otherwise "Stopped — answer incomplete".
+Stop and ordinary failures do not automatically refill the composer. **Reuse
+question** copies a retained question into the composer and focuses it without a
+request; only an explicit Ask sends it. Enter submits; Shift+Enter adds a line,
+and Enter during IME composition does not submit. Existing cooldowns still apply.
+
+**Context used** is collapsed by default using native details/summary; expanding
+it reveals all existing facts, generation time and the provider/model disclosure.
+Answers render a restricted Markdown subset (paragraphs, emphasis, headings,
+lists, quotations and code) as text arrives. Raw HTML stays escaped; images and
+clickable links are not rendered. User questions remain escaped plain text.
+
+Expand/Collapse and resizing affect only presentation: they never remount the
+assistant, reset its fixed context or send another request. Incoming text follows
+the bottom only while the reader is already there; scrolling up pauses following.
+Close, applied project/date/filter changes, session changes and access loss clear
+all exchanges and their contexts, as well as cancelling any active request.
+No automatic retry, conversation persistence or document/RAG integration is added.
+
 ### Private documents — TSE-78 / TSE-79
 
 Upload accepts exactly one multipart file field named `file`, no extra fields, and 1–10,485,760 file bytes.
@@ -1410,6 +1560,38 @@ type DocumentSummary = {
 - Repeated delete returns `404 DOCUMENT_NOT_FOUND`.
 
 Never expose storage keys, private paths or cleanup jobs.
+
+#### Routes (implemented by TSE-78)
+
+`P` is `/api/v1/organizations/:organizationId/projects/:projectId`. All routes require a user JWT and send `Cache-Control: no-store`.
+
+| Route | Roles | Success |
+|---|---|---|
+| `POST P/documents` | OWNER, ADMIN | `201 DocumentSummary` |
+| `GET P/documents?page&pageSize` | any member | `200 Page<DocumentSummary>` |
+| `GET P/documents/:documentId/content?download=true\|false` | any member | `200` file bytes |
+| `DELETE P/documents/:documentId` | OWNER, ADMIN | `204` |
+
+Upload body: `multipart/form-data` with exactly one part named `file` and no other part. Any other shape is `400 VALIDATION_ERROR`. The file name is read as UTF-8. Names containing `/`, `\`, control characters, or equal to `.` or `..` are rejected. The extension (`.pdf`, `.txt`, `.md`, case-insensitive) selects the media type.
+
+Content route headers: `Content-Type` (stored media type), `Content-Length`, `Cache-Control: no-store`, `X-Content-Type-Options: nosniff` and `Content-Disposition` (`inline` by default, `attachment` with `download=true`) with an ASCII `filename` and a UTF-8 `filename*`. Any other `download` value, or a repeated one, is `400`.
+
+Errors:
+
+| Status | Code | When |
+|---|---|---|
+| 400 | `VALIDATION_ERROR` | Bad multipart shape, empty file, bad file name, bad query |
+| 403 | `INSUFFICIENT_ORGANIZATION_ROLE` | A member without OWNER/ADMIN uploads or deletes |
+| 404 | `PROJECT_NOT_FOUND` | Unknown, archived or inaccessible project or organization |
+| 404 | `DOCUMENT_NOT_FOUND` | Unknown document, document of another project, or already deleted |
+| 409 | `CONCURRENT_MODIFICATION` | Transaction conflict persisted after retries |
+| 413 | `PAYLOAD_TOO_LARGE` | File larger than 10,485,760 bytes |
+| 415 | `UNSUPPORTED_MEDIA_TYPE` | Extension is not `.pdf`, `.txt` or `.md` |
+| 422 | `INVALID_DOCUMENT_CONTENT` | Text that is not UTF-8 or contains NUL; PDF that is damaged, password-protected, permission-encrypted or not inspectable within 10 seconds |
+| 429 | `RATE_LIMITED` | More than 5 authorized upload attempts per rolling minute per user; `Retry-After` is set |
+| 503 | `STORAGE_UNAVAILABLE` | Bytes cannot be written or are missing |
+
+Order of checks for an upload: authentication, project access and role (before the body is read), quota, multipart parsing and size, file name, media type, content, then storage and a final access re-check in the same transaction as the insert. Denied requests do not consume quota.
 
 ### Dashboard exports — TSE-77
 
@@ -1467,3 +1649,16 @@ Evaluation contracts additionally use:
 Use explicit application codes. Do not assume the existing exception filter already supplies every new code.
 
 Only an authentication failure for the captured user session invalidates that session. Permission errors, missing resources, conflicts, rate limits, provider failures and network failures do not sign the user out.
+
+
+### Dashboard frontend handoff — TSE-76
+
+`AppliedSelection` contains organization/project IDs, exact UTC `from`/`to` and normalized
+`q`, `provider`, `model`, `workflow`, `status` filters. Dates are inclusive/exclusive as above.
+Analytics requests use the existing authenticated HTTP client and omit list sorting/pagination.
+Responses must match the requested project, period and filters before being displayed.
+Money and aggregate token counts remain strings; only chart coordinates use numbers.
+`ProjectDashboard.renderExtras` receives `{ selection, snapshot, status, selectionState, exportEnabled }`.
+The selection remains stable during background refreshes. A matching empty snapshot is exportable.
+Scope changes clear old figures; access loss clears the complete project Overview and its handoff.
+There are no new backend routes, export generation or assistant calls in TSE-76.

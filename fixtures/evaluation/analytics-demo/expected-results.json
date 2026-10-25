@@ -1,0 +1,290 @@
+{
+  "baseline": {
+    "traceCount": 840,
+    "inputTokens": "5516730",
+    "outputTokens": "760941",
+    "totalTokens": "6277671",
+    "estimatedCostUsd": "8.550480200000",
+    "errorCount": 49,
+    "errorRatePct": 5.83,
+    "averageLatencyMs": 1562.205
+  },
+  "byProvider": {
+    "demo-aurora": {
+      "traceCount": 331,
+      "inputTokens": "2008294",
+      "outputTokens": "269911",
+      "totalTokens": "2278205",
+      "estimatedCostUsd": "2.207433300000",
+      "errorCount": 20,
+      "errorRatePct": 6.04,
+      "averageLatencyMs": 1574.514
+    },
+    "demo-boreal": {
+      "traceCount": 216,
+      "inputTokens": "1611084",
+      "outputTokens": "214392",
+      "totalTokens": "1825476",
+      "estimatedCostUsd": "3.942999100000",
+      "errorCount": 15,
+      "errorRatePct": 6.94,
+      "averageLatencyMs": 1733.894
+    },
+    "demo-cascade": {
+      "traceCount": 207,
+      "inputTokens": "1214943",
+      "outputTokens": "188052",
+      "totalTokens": "1402995",
+      "estimatedCostUsd": "0.962702000000",
+      "errorCount": 8,
+      "errorRatePct": 3.86,
+      "averageLatencyMs": 1335.266
+    },
+    "demo-delta": {
+      "traceCount": 86,
+      "inputTokens": "682409",
+      "outputTokens": "88586",
+      "totalTokens": "770995",
+      "estimatedCostUsd": "1.437345800000",
+      "errorCount": 6,
+      "errorRatePct": 6.98,
+      "averageLatencyMs": 1629.849
+    }
+  },
+  "byModel": {
+    "demo-aurora/aurora-mini": {
+      "traceCount": 199,
+      "inputTokens": "1217798",
+      "outputTokens": "164462",
+      "totalTokens": "1382260",
+      "estimatedCostUsd": "0.281346900000",
+      "errorCount": 16,
+      "errorRatePct": 8.04,
+      "averageLatencyMs": 1401.92
+    },
+    "demo-aurora/aurora-pro": {
+      "traceCount": 37,
+      "inputTokens": "165133",
+      "outputTokens": "33424",
+      "totalTokens": "198557",
+      "estimatedCostUsd": "1.195316000000",
+      "errorCount": 2,
+      "errorRatePct": 5.41,
+      "averageLatencyMs": 2340.514
+    },
+    "demo-aurora/aurora-standard": {
+      "traceCount": 95,
+      "inputTokens": "625363",
+      "outputTokens": "72025",
+      "totalTokens": "697388",
+      "estimatedCostUsd": "0.730770400000",
+      "errorCount": 2,
+      "errorRatePct": 2.11,
+      "averageLatencyMs": 1637.716
+    },
+    "demo-boreal/boreal-mini": {
+      "traceCount": 124,
+      "inputTokens": "854254",
+      "outputTokens": "126174",
+      "totalTokens": "980428",
+      "estimatedCostUsd": "0.339737500000",
+      "errorCount": 10,
+      "errorRatePct": 8.06,
+      "averageLatencyMs": 1457.315
+    },
+    "demo-boreal/boreal-pro": {
+      "traceCount": 38,
+      "inputTokens": "338750",
+      "outputTokens": "33626",
+      "totalTokens": "372376",
+      "estimatedCostUsd": "2.839524000000",
+      "errorCount": 0,
+      "errorRatePct": 0,
+      "averageLatencyMs": 2060.158
+    },
+    "demo-boreal/boreal-standard": {
+      "traceCount": 54,
+      "inputTokens": "418080",
+      "outputTokens": "54592",
+      "totalTokens": "472672",
+      "estimatedCostUsd": "0.763737600000",
+      "errorCount": 5,
+      "errorRatePct": 9.26,
+      "averageLatencyMs": 2139.407
+    },
+    "demo-cascade/cascade-mini": {
+      "traceCount": 123,
+      "inputTokens": "776094",
+      "outputTokens": "114218",
+      "totalTokens": "890312",
+      "estimatedCostUsd": "0.123296600000",
+      "errorCount": 4,
+      "errorRatePct": 3.25,
+      "averageLatencyMs": 1060.667
+    },
+    "demo-cascade/cascade-pro": {
+      "traceCount": 19,
+      "inputTokens": "104658",
+      "outputTokens": "15387",
+      "totalTokens": "120045",
+      "estimatedCostUsd": "0.498618000000",
+      "errorCount": 1,
+      "errorRatePct": 5.26,
+      "averageLatencyMs": 2131.158
+    },
+    "demo-cascade/cascade-standard": {
+      "traceCount": 65,
+      "inputTokens": "334191",
+      "outputTokens": "58447",
+      "totalTokens": "392638",
+      "estimatedCostUsd": "0.340787400000",
+      "errorCount": 3,
+      "errorRatePct": 4.62,
+      "averageLatencyMs": 1622.246
+    },
+    "demo-delta/delta-mini": {
+      "traceCount": 52,
+      "inputTokens": "362319",
+      "outputTokens": "55175",
+      "totalTokens": "417494",
+      "estimatedCostUsd": "0.116603800000",
+      "errorCount": 3,
+      "errorRatePct": 5.77,
+      "averageLatencyMs": 1269.25
+    },
+    "demo-delta/delta-pro": {
+      "traceCount": 14,
+      "inputTokens": "129656",
+      "outputTokens": "21774",
+      "totalTokens": "151430",
+      "estimatedCostUsd": "1.083760000000",
+      "errorCount": 1,
+      "errorRatePct": 7.14,
+      "averageLatencyMs": 2651.357
+    },
+    "demo-delta/delta-standard": {
+      "traceCount": 20,
+      "inputTokens": "190434",
+      "outputTokens": "11637",
+      "totalTokens": "202071",
+      "estimatedCostUsd": "0.236982000000",
+      "errorCount": 2,
+      "errorRatePct": 10,
+      "averageLatencyMs": 1852.35
+    }
+  },
+  "byWorkflow": {
+    "classification": {
+      "traceCount": 108,
+      "inputTokens": "118415",
+      "outputTokens": "9123",
+      "totalTokens": "127538",
+      "estimatedCostUsd": "0.129935250000",
+      "errorCount": 3,
+      "errorRatePct": 2.78,
+      "averageLatencyMs": 1057.954
+    },
+    "report-generation": {
+      "traceCount": 128,
+      "inputTokens": "588266",
+      "outputTokens": "453565",
+      "totalTokens": "1041831",
+      "estimatedCostUsd": "2.428321500000",
+      "errorCount": 9,
+      "errorRatePct": 7.03,
+      "averageLatencyMs": 2454.688
+    },
+    "summarization": {
+      "traceCount": 245,
+      "inputTokens": "4125855",
+      "outputTokens": "133068",
+      "totalTokens": "4258923",
+      "estimatedCostUsd": "4.809114250000",
+      "errorCount": 10,
+      "errorRatePct": 4.08,
+      "averageLatencyMs": 1373.808
+    },
+    "support": {
+      "traceCount": 359,
+      "inputTokens": "684194",
+      "outputTokens": "165185",
+      "totalTokens": "849379",
+      "estimatedCostUsd": "1.183109200000",
+      "errorCount": 27,
+      "errorRatePct": 7.52,
+      "averageLatencyMs": 1524.262
+    }
+  },
+  "byRollingDay": {
+    "1": {
+      "traceCount": 60,
+      "inputTokens": "365897",
+      "outputTokens": "42344",
+      "totalTokens": "408241",
+      "estimatedCostUsd": "0.724618000000",
+      "errorCount": 3,
+      "errorRatePct": 5,
+      "averageLatencyMs": 1366.867
+    },
+    "2": {
+      "traceCount": 90,
+      "inputTokens": "560869",
+      "outputTokens": "49944",
+      "totalTokens": "610813",
+      "estimatedCostUsd": "0.820811400000",
+      "errorCount": 4,
+      "errorRatePct": 4.44,
+      "averageLatencyMs": 1402.4
+    },
+    "3": {
+      "traceCount": 120,
+      "inputTokens": "794266",
+      "outputTokens": "79972",
+      "totalTokens": "874238",
+      "estimatedCostUsd": "1.012910450000",
+      "errorCount": 7,
+      "errorRatePct": 5.83,
+      "averageLatencyMs": 1442.35
+    },
+    "4": {
+      "traceCount": 210,
+      "inputTokens": "1164656",
+      "outputTokens": "342470",
+      "totalTokens": "1507126",
+      "estimatedCostUsd": "2.403306400000",
+      "errorCount": 16,
+      "errorRatePct": 7.62,
+      "averageLatencyMs": 1869.09
+    },
+    "5": {
+      "traceCount": 165,
+      "inputTokens": "1297677",
+      "outputTokens": "103214",
+      "totalTokens": "1400891",
+      "estimatedCostUsd": "1.642731050000",
+      "errorCount": 8,
+      "errorRatePct": 4.85,
+      "averageLatencyMs": 1482.388
+    },
+    "6": {
+      "traceCount": 105,
+      "inputTokens": "826619",
+      "outputTokens": "84164",
+      "totalTokens": "910783",
+      "estimatedCostUsd": "1.214229350000",
+      "errorCount": 6,
+      "errorRatePct": 5.71,
+      "averageLatencyMs": 1507.019
+    },
+    "7": {
+      "traceCount": 90,
+      "inputTokens": "506746",
+      "outputTokens": "58833",
+      "totalTokens": "565579",
+      "estimatedCostUsd": "0.731873550000",
+      "errorCount": 5,
+      "errorRatePct": 5.56,
+      "averageLatencyMs": 1506.689
+    }
+  }
+}

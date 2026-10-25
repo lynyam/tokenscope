@@ -798,8 +798,8 @@ JWT verification and current project access remain mandatory. Never place creden
 
 TokenService returns verified `{ sub, exp }`; exp is Unix seconds. Realtime converts it
 to milliseconds, schedules disconnection and rechecks it before join and notification delivery.
-The HTTP guard continues to attach only `{ id }` to request.user; assistant HTTP expiry
-metadata remains TSE-80's responsibility.
+The HTTP guard keeps `request.user` limited to `{ id }` and attaches the verified
+expiry separately as `request.accessTokenExpiresAt` (milliseconds) for assistant HTTP streams.
 
 Post-commit access events use AccessChangesModule, which has no dependency on realtime
 or the assistant. Its listener errors are logged safely and cannot reverse a committed mutation.
@@ -832,6 +832,79 @@ Cancellation, expiry, access loss, timeout and disconnect must release provider 
 
 Keep provider credentials backend-only. Verify the actual account/model configuration and disclose applicable provider processing accurately. Do not promise zero retention or unlimited free use without evidence.
 
+#### TSE-80 implementation status
+
+Authorization:
+
+- The global JWT guard reuses the existing `TokenService.verifyAccessToken()`
+  result `{ sub, exp }`; the guard stores expiry as `request.accessTokenExpiresAt`
+  (milliseconds). The token is never decoded without verification, roles are not
+  added to it, and public auth responses are unchanged.
+- `ProjectAccessService.assertProjectAccess()` runs before any limit, inside the
+  analytics transaction (TSE-71), right before the provider call, and every
+  5 seconds while streaming. A lost membership or an archived organization/project
+  stops the stream with `PROJECT_NOT_FOUND`; a re-check that cannot complete stops
+  it with `INTERNAL_SERVER_ERROR`. Each access read has a five-second wait limit.
+  Re-checks never overlap (chained timers). A timed-out database operation may
+  still finish internally; its late result cannot resume output.
+- The stream also stops when the verified JWT expires (`ACCESS_TOKEN_EXPIRED`).
+
+Data sent to Gemini (`backend/src/assistant/assistant-prompt.ts`), built from an
+explicit allowlist:
+
+- the question;
+- project name and description;
+- window, applied filters, summary, time series, per-model breakdown and the
+  synthetic-pricing flag.
+
+Never sent: JWTs, API keys, user identities or emails, trace metadata, trace
+prompts, documents, snapshot/project/request IDs. Data is JSON-encoded inside
+`<analytics>` / `<question>` blocks with `<` and `>` escaped, and the fixed
+instructions say that this content is data, not instructions.
+
+Provider boundary: only `gemini-assistant.provider.ts` imports `@google/genai`.
+One attempt (`httpOptions.retryOptions.attempts: 1`, proven against the installed
+SDK by `test/assistant/gemini-sdk-retry.unit.spec.ts`), one candidate,
+600 output tokens, no tools, `automaticContinuation: false`. Provider errors are
+mapped to safe codes; raw SDK messages never reach clients or logs. A provider
+authentication failure is `503 LLM_UNAVAILABLE`, never a user `401`.
+
+Cancellation is client-side: on Stop, disconnect, deadline, expiry, access loss
+or shutdown, TokenScope aborts the SDK request, stops reading and writing, clears
+its timers and frees the user's slot. It cannot guarantee that Google stops
+computing an answer already in progress.
+
+Limits are in memory (`RateLimitService` plus a per-user active set). They are
+correct for the single backend instance of this MVP; several instances would
+each keep their own counters. Assistant quotas use a rolling 60-second window;
+user and project budgets are charged together only after both allow admission.
+Existing public/browser quotas retain their fixed-window behavior.
+
+Logging: one `assistant_answer` line per admitted answer with `requestId`,
+outcome code and duration only. Rejections before admission are logged by the
+existing `request_failed` filter line. Questions, descriptions, contexts,
+answers and raw provider errors are never logged.
+
+Gemini data handling depends on the account and region. Under the unpaid-service
+terms, submitted content and responses may be used for product improvement and
+human review. For the EEA, Switzerland and UK, the paid-service data-use terms
+also apply to unpaid quota. The terms separately restrict making API clients
+available in those regions to Paid Services. Confirm the actual account and
+intended audience; do not automatically enable billing.
+
+Reference: https://ai.google.dev/gemini-api/terms
+TokenScope discloses the question, project name/description and selected analytics
+sent to Gemini and makes no zero-retention claim.
+Record the verified model, account tier, region, quota, date and tested commit
+after the explicit live check. Until then, live-provider validation is pending.
+
+TSE-89 retains earlier assistant exchanges only in the mounted panel's memory.
+They are not persisted or sent as model history. Close, applied scope/session
+changes and access loss clear every retained answer/context. Model answers use a
+restricted `react-markdown` element allowlist: HTML remains escaped, and links,
+images and executable elements are not created. Do not add `rehype-raw` or render
+model output with `dangerouslySetInnerHTML`. Questions remain escaped plain text.
+
 ### Private files
 
 Authorize before accepting upload bytes and again before committing metadata.
@@ -853,3 +926,67 @@ Real PostgreSQL tests must cover tenant isolation, current roles, archived paren
 Realtime tests must use real connections. Browser tests must exercise the integrated UI. Provider stubs must remain separate from deliberate live-provider evidence.
 
 Logs and test artifacts must exclude credentials, file contents, questions, complete contexts and answers.
+
+## Explicit local evaluation seed — TSE-70
+
+The seed is not an HTTP endpoint and never runs as a normal application startup
+hook. The explicit Make command requires a database-name confirmation and sets
+`EVALUATION_SEED_ENABLED=true` for the seed process only. The CLI also requires
+an operator-supplied `DEMO_PASSWORD`, a local `APP_MODE` and the repository's
+Compose PostgreSQL host; it verifies `current_database()` before writing.
+Local compiled evaluation mode retains `NODE_ENV=production`. Remote database
+URLs, unknown deployment modes and URL query host overrides are refused.
+These guards prevent accidental targeting, not a malicious database operator.
+
+Authentication and seeding share the same auth-owned Argon2id helper. No
+password, hash, database URL, JWT or API key is printed. Unknown database errors
+are reduced to a fixed diagnostic. Only synthetic fixture metadata is accepted.
+No provider client or application background worker is started by the CLI.
+
+All fixture rows and one independent `EvaluationSeedReceipt` are committed in
+one serializable transaction. The receipt has no tenant foreign key and stores
+only version/anchor/fingerprints, the optional analytics-window end and creation time, so deleting a tenant does
+not authorize recreating its fixtures. Unchanged reruns do not rewrite hashes
+or timestamps; mutations and collisions fail. There is no destructive reset
+flag. See [EVALUATION_SEED.md](EVALUATION_SEED.md) for rehearsal isolation and
+credential-safe browser testing.
+
+The rich dataset supports one additive 1.2 → 1.3 upgrade. It verifies the exact
+legacy receipt and stored state before inserting anything, rejects new reserved
+ID/provider/model collisions, preserves all old entity rows, and updates the
+receipt in the same transaction as the new project/prices/traces. It does not
+introduce a reset, repair, date refresh, provider connection or credential.
+The recorded analytics window is reused on reruns, not recomputed from today's
+date. Simulated trace ERROR statuses are data, not application console errors.
+
+## Private documents — TSE-78
+
+- Authorization precedes body parsing. An outsider receives a scoped `404`, a member without the role receives `403`, and a document is only reachable through its own project.
+- Uploads are limited to 10 MiB and to PDF, UTF-8 text and UTF-8 Markdown. Content is validated, not only the extension or client MIME type. Password-protected and permission-encrypted PDFs are rejected.
+- Client file names are display data only. They never form a filesystem path. Storage keys are server-generated UUIDs and are checked against a strict pattern before any file access.
+- Downloads send the stored media type with `nosniff`, `no-store` and a safe `Content-Disposition`. There is no public storage URL.
+- Files are stored with mode `0600` in a private directory that must not be served by any web server.
+- Upload quota is five authorized attempts per rolling minute per user, using the existing shared `RateLimitService.consumeRolling`. Denials include `Retry-After`; failed authorized attempts consume capacity. Counters are in memory and reset on restart. This remains a single-backend deployment.
+- PDF structural validation runs in a dedicated Node worker thread using `pdf-parse`. The worker is terminated after validation or the ten-second deadline, so CPU-bound parsing does not block the HTTP event loop. A worker thread is resource isolation, not a security sandbox or malware scanner. Parser diagnostics are not forwarded to application logs.
+- Validation checks format and structure. It is not a guarantee that a file is free of malware, and no antivirus scan is performed.
+- Documents are only stored for users. They are not sent to the assistant, indexed, or used for retrieval.
+- Uploads are received as `0600` temporary files in a private `0700` directory. Active temporary paths are protected from orphan cleanup. Validation reads up to 10 MiB per upload; PDF parsing also uses a worker copy and parser memory.
+- Caddy rejects request bodies above 11 MiB on `/api/*` before they reach the backend. Caddy answers `413` itself, so that response does not use the JSON error envelope.
+
+### Public legal pages
+
+`/privacy` and `/terms` do not mount `AuthProvider`, read the session or call
+workspace APIs. Visiting them preserves the stored token. Existing application
+routes still mount the provider and enforce their normal route guards.
+
+Legal content must describe the current Gemini analytics allowlist, client-side
+cancellation, browser-only assistant exchanges, inherited organization archive
+and retained document bytes. Older TSE-82 wording about OpenAI, a selected trace
+or physical organization deletion is superseded by the current implementation.
+
+Publication handoff remains required: confirm the instance operator, a private
+contact, applicable processing purposes/bases, hosting/recipients, retention and
+manual request handling, plus the actual Gemini account/region configuration.
+These facts cannot be inferred from source code. Do not substitute an example
+email or a public GitHub issue for a private personal-data contact. No claim of
+legal compliance is established by passing the navigation tests.

@@ -9,6 +9,18 @@ generator client {
   importFileExtension = ""
 }
 
+// One receipt for the explicit evaluation dataset, not a general seed framework.
+// No FK: deleting a fixture organization must not erase evidence of prior seeding.
+model EvaluationSeedReceipt {
+  id                 String   @id
+  fixtureVersion     String
+  anchor             String   @db.VarChar(10)
+  fixtureFingerprint String   @db.VarChar(64)
+  stateFingerprint   String   @db.VarChar(64)
+  analyticsWindowEnd DateTime? @db.Timestamptz(3)
+  createdAt          DateTime @default(now())
+}
+
 enum MembershipRole {
   OWNER
   ADMIN

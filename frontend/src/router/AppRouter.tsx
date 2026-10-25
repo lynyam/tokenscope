@@ -1,5 +1,5 @@
 // Browser Router, enables routing to the components inside it
-import { BrowserRouter, Routes, Route, Outlet } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Outlet, Link } from "react-router-dom";
 //import { BrowserRouter, Navigate, Routes, Route, Outlet} from "react-router-dom"
 //Pages
 import { SignInPage} from "../pages/auth/SignInPage";
@@ -16,7 +16,15 @@ import { OrganizationDetailPage } from "../pages/organizations/OrganizationDetai
 import { MembersPage } from "../pages/organizations/MembersPage";
 import { ProjectsPage } from "../pages/projects/ProjectsPage";
 import { ProjectDetailPage } from "../pages/projects/ProjectDetailPage";
+import { TracesPage } from "../pages/projects/TracesPage";
+import { ProjectDashboardPage } from "../pages/projects/ProjectDashboardPage";
+import { TraceDetailPage } from "../pages/projects/TraceDetailPage";
+import { DocumentsPage } from "../pages/documents/DocumentsPage";
 import { LandingPage } from "../pages/LandingPage";
+import { ApiKeysPage } from "../pages/projects/ApiKeysPage";
+import { AuthProvider } from "../context/AuthContext";
+import { PrivacyPage } from "../pages/legal/PrivacyPage";
+import { TermsPage } from "../pages/legal/TermsPage";
 
 //Root redirection
 // function RootRedirect() {
@@ -32,6 +40,9 @@ export function AppRouter()
     return(
         <BrowserRouter>
             <Routes>
+                <Route path="/privacy" element={<PrivacyPage />} />
+                <Route path="/terms" element={<TermsPage />} />
+                <Route element={<AuthProvider><Outlet /></AuthProvider>}>
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/signin"
                 element={<AnonymousRoute><AuthLayout><SignInPage /></AuthLayout></AnonymousRoute>} />
@@ -73,9 +84,40 @@ export function AppRouter()
                     path="/organizations/:organizationId/projects/:projectId"
                     element={<ProjectDetailPage />}
                     />
+
+                    <Route
+                    path="/organizations/:organizationId/projects/:projectId/documents"
+                    element={<DocumentsPage />}
+                    />
+
+                    <Route
+                    path="/organizations/:organizationId/projects/:projectId/dashboard"
+                    element={<ProjectDashboardPage />}
+                    />
+
+                    <Route
+                    path="/organizations/:organizationId/projects/:projectId/traces"
+                    element={<TracesPage />}
+                    />
+
+                    <Route
+                    path="/organizations/:organizationId/projects/:projectId/traces/:traceId"
+                    element={<TraceDetailPage />}
+                    />
+                    <Route
+                        path="/organizations/:organizationId/projects/:projectId/api-keys"
+                        element={<ApiKeysPage />}
+                    />
                 </Route>
 
-                <Route path="*" element={<h1>404 Not Found</h1>} />
+                <Route path="*" element={
+                    <section className="flex min-h-screen flex-col items-center justify-center gap-3">
+                        <h1 className="text-2xl font-bold">404 Not Found</h1>
+                        <p>This page does not exist.</p>
+                        <Link to="/" className="underline">Back to home</Link>
+                    </section>
+                } />
+                </Route>
             </Routes>
         </BrowserRouter>
     );
