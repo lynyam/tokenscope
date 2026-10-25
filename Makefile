@@ -133,6 +133,28 @@ eval-seed:
 test-eval-startup:
 	@sh scripts/test-eval-startup.sh
 
+# Optional external application; never a dependency of eval-up or up.
+demo-build:
+	@sh scripts/demo.sh build
+
+demo-config:
+	@bash scripts/demo-config.sh
+
+demo-up:
+	@sh scripts/demo.sh up
+
+demo-down:
+	@sh scripts/demo.sh down
+
+demo-logs:
+	@sh scripts/demo.sh logs
+
+demo-test:
+	@sh scripts/demo.sh test
+
+test-demo-startup:
+	@sh scripts/test-demo-startup.sh
+
 #HELP
 
 help:
@@ -155,6 +177,17 @@ help:
 	@echo "  make test-eval-startup              Check startup/seed orchestration without Docker"
 	@echo "  make psa                            Show all service status"
 	@echo "  make shell                         Open backend shell"
+	@echo ""
+	@echo "Optional external demo (Ubuntu Docker Engine):"
+	@echo "  make demo-build                    Prepare the demo image without credentials"
+	@echo "  make demo-config                   Configure Gemini and project keys privately"
+	@echo "  make demo-up                       Start only the demo; requires eval-up first"
+	@echo "  make demo-down                     Stop/remove only this checkout's demo container"
+	@echo "  make demo-logs                     Follow demo container logs"
+	@echo "  make demo-test                     Run demo application tests in Docker"
+	@echo "  make test-demo-startup             Check demo lifecycle orchestration"
+	@echo "  Evaluation prices load automatically during make eval-up."
+	@echo "  Guide: docs/EXTERNAL_DEMO-eval.md"
 	@echo ""
 	@echo "Database:"
 	@echo "  make db-shell                      Open PostgreSQL shell"
@@ -179,4 +212,5 @@ help:
 	up eval-up eval-seed test-eval-startup start stop restart logs ps shell \
 	db-shell db-generate db-migrate db-migration db-seed db-status db-studio db-setup \
 	clean fullclean help test-db test-db-clean test-db-fresh test-backend frontendtest \
-	frontende2e frontende2e-setup
+	frontende2e frontende2e-setup \
+	demo-build demo-config demo-up demo-down demo-logs demo-test test-demo-startup

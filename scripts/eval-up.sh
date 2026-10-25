@@ -200,6 +200,25 @@ check_url \
 
 check_url "frontend" "$BASE_URL/" html
 
+# Reference pricing is needed by real ingestion even without synthetic demo data.
+# Use the reviewed, committed catalogue; never fetch provider prices at startup.
+stage pricing "Loading the external demo's verified model-price catalogue"
+
+price_catalogue="examples/external-demo/config/model-prices.json"
+container_catalogue="/tmp/tokenscope-external-demo-model-prices.json"
+
+[ -f "$price_catalogue" ] && [ -s "$price_catalogue" ] \
+  || fail pricing "the committed external-demo price catalogue is missing or empty"
+
+compose cp "$price_catalogue" "backend:$container_catalogue" \
+  || fail pricing "could not copy the external-demo price catalogue into the backend"
+
+# The existing loader inserts missing versions, leaves identical versions alone,
+# and rejects conflicting versions without overwriting historical prices.
+compose exec -T -w /opt/tokenscope/backend backend \
+  npm run pricing:load -- --file "$container_catalogue" \
+  || fail pricing "application started, but model-price loading failed; startup is incomplete"
+
 if [ "${SEED:-0}" = "1" ]; then
   stage seed "Preparing the explicitly requested evaluation dataset"
   sh ./scripts/eval-seed.sh \
