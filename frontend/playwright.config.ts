@@ -21,7 +21,11 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: 0,
-  reporter: [["list"], ["html", { open: "never" }]],
+  // The seeded suite uses an operator password; do not persist action arguments
+  // (including fill values) in an HTML report for this explicit run.
+  reporter: process.env.E2E_EVALUATION_SEED === "1"
+    ? [["line"]]
+    : [["list"], ["html", { open: "never" }]],
   use: {
     baseURL,
     // The evaluation Caddy uses a local CA that browsers do not trust by default.

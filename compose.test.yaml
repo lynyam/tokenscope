@@ -23,6 +23,7 @@ services:
 
     environment:
       NODE_ENV: test
+      APP_MODE: test
       BACKEND_PORT: "3000"
       DATABASE_URL: postgresql://tokenscope_test:tokenscope_test@postgres-test:5432/tokenscope_test
       JWT_SECRET: test-only-not-for-production-1234567890

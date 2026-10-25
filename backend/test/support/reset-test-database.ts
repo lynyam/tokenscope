@@ -9,6 +9,7 @@ import type {
 export async function resetTestDatabase(
   db: Prisma.TransactionClient,
 ): Promise<void> {
+  await db.evaluationSeedReceipt.deleteMany();
   await db.trace.deleteMany();
   await db.apiKey.deleteMany();
   await db.projectDocument.deleteMany();

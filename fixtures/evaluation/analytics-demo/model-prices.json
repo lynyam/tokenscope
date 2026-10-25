@@ -1,0 +1,134 @@
+[
+  {
+    "id": "40000000-0000-4000-8000-000000001001",
+    "provider": "demo-aurora",
+    "model": "aurora-mini",
+    "effectiveFrom": "2026-10-01T00:00:00.000Z",
+    "inputUsdPerMillion": "0.150000",
+    "outputUsdPerMillion": "0.600000",
+    "currency": "USD",
+    "isSynthetic": true,
+    "sourceUrl": null
+  },
+  {
+    "id": "40000000-0000-4000-8000-000000001002",
+    "provider": "demo-aurora",
+    "model": "aurora-standard",
+    "effectiveFrom": "2026-10-01T00:00:00.000Z",
+    "inputUsdPerMillion": "0.800000",
+    "outputUsdPerMillion": "3.200000",
+    "currency": "USD",
+    "isSynthetic": true,
+    "sourceUrl": null
+  },
+  {
+    "id": "40000000-0000-4000-8000-000000001003",
+    "provider": "demo-aurora",
+    "model": "aurora-pro",
+    "effectiveFrom": "2026-10-01T00:00:00.000Z",
+    "inputUsdPerMillion": "4.000000",
+    "outputUsdPerMillion": "16.000000",
+    "currency": "USD",
+    "isSynthetic": true,
+    "sourceUrl": null
+  },
+  {
+    "id": "40000000-0000-4000-8000-000000001004",
+    "provider": "demo-boreal",
+    "model": "boreal-mini",
+    "effectiveFrom": "2026-10-01T00:00:00.000Z",
+    "inputUsdPerMillion": "0.250000",
+    "outputUsdPerMillion": "1.000000",
+    "currency": "USD",
+    "isSynthetic": true,
+    "sourceUrl": null
+  },
+  {
+    "id": "40000000-0000-4000-8000-000000001005",
+    "provider": "demo-boreal",
+    "model": "boreal-standard",
+    "effectiveFrom": "2026-10-01T00:00:00.000Z",
+    "inputUsdPerMillion": "1.200000",
+    "outputUsdPerMillion": "4.800000",
+    "currency": "USD",
+    "isSynthetic": true,
+    "sourceUrl": null
+  },
+  {
+    "id": "40000000-0000-4000-8000-000000001006",
+    "provider": "demo-boreal",
+    "model": "boreal-pro",
+    "effectiveFrom": "2026-10-01T00:00:00.000Z",
+    "inputUsdPerMillion": "6.000000",
+    "outputUsdPerMillion": "24.000000",
+    "currency": "USD",
+    "isSynthetic": true,
+    "sourceUrl": null
+  },
+  {
+    "id": "40000000-0000-4000-8000-000000001007",
+    "provider": "demo-cascade",
+    "model": "cascade-mini",
+    "effectiveFrom": "2026-10-01T00:00:00.000Z",
+    "inputUsdPerMillion": "0.100000",
+    "outputUsdPerMillion": "0.400000",
+    "currency": "USD",
+    "isSynthetic": true,
+    "sourceUrl": null
+  },
+  {
+    "id": "40000000-0000-4000-8000-000000001008",
+    "provider": "demo-cascade",
+    "model": "cascade-standard",
+    "effectiveFrom": "2026-10-01T00:00:00.000Z",
+    "inputUsdPerMillion": "0.600000",
+    "outputUsdPerMillion": "2.400000",
+    "currency": "USD",
+    "isSynthetic": true,
+    "sourceUrl": null
+  },
+  {
+    "id": "40000000-0000-4000-8000-000000001009",
+    "provider": "demo-cascade",
+    "model": "cascade-pro",
+    "effectiveFrom": "2026-10-01T00:00:00.000Z",
+    "inputUsdPerMillion": "3.000000",
+    "outputUsdPerMillion": "12.000000",
+    "currency": "USD",
+    "isSynthetic": true,
+    "sourceUrl": null
+  },
+  {
+    "id": "40000000-0000-4000-8000-000000001010",
+    "provider": "demo-delta",
+    "model": "delta-mini",
+    "effectiveFrom": "2026-10-01T00:00:00.000Z",
+    "inputUsdPerMillion": "0.200000",
+    "outputUsdPerMillion": "0.800000",
+    "currency": "USD",
+    "isSynthetic": true,
+    "sourceUrl": null
+  },
+  {
+    "id": "40000000-0000-4000-8000-000000001011",
+    "provider": "demo-delta",
+    "model": "delta-standard",
+    "effectiveFrom": "2026-10-01T00:00:00.000Z",
+    "inputUsdPerMillion": "1.000000",
+    "outputUsdPerMillion": "4.000000",
+    "currency": "USD",
+    "isSynthetic": true,
+    "sourceUrl": null
+  },
+  {
+    "id": "40000000-0000-4000-8000-000000001012",
+    "provider": "demo-delta",
+    "model": "delta-pro",
+    "effectiveFrom": "2026-10-01T00:00:00.000Z",
+    "inputUsdPerMillion": "5.000000",
+    "outputUsdPerMillion": "20.000000",
+    "currency": "USD",
+    "isSynthetic": true,
+    "sourceUrl": null
+  }
+]
