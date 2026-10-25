@@ -115,6 +115,9 @@ export function Sidebar() {
 										{(role === "OWNER" || role === "ADMIN") && (
 											<NavLink to={`${projectBase}/api-keys`} className={projectLinkClass}>API keys</NavLink>
 										)}
+										{(role === "OWNER" || role === "ADMIN") && (
+											<NavLink to={`${projectBase}/settings`} className={projectLinkClass}>Settings</NavLink>
+										)}
 									</div>
 								</div>
 							)}

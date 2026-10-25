@@ -11,6 +11,7 @@ import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, expect, it, vi } from "vitest";
 import { ProjectsPage } from "@/pages/projects/ProjectsPage";
 import { ProjectDetailPage } from "@/pages/projects/ProjectDetailPage";
+import { ProjectSettingsPage } from "@/pages/projects/ProjectSettingsPage";
 import { useOrganizationProjects } from "@/hooks/useOrganizationProjects";
 import {
 	archiveProject,
@@ -47,6 +48,8 @@ const other = {
 
 const listPath = "/organizations/" + org + "/projects";
 const detailPath = listPath + "/" + project.id;
+// Edit and archive live on the project settings page.
+const settingsPath = detailPath + "/settings";
 const otherPath =
 	"/organizations/" + otherOrg + "/projects/" + other.id;
 
@@ -77,6 +80,10 @@ function view(path = listPath) {
 				<Route
 					path="/organizations/:organizationId/projects/:projectId"
 					element={<ProjectDetailPage />}
+				/>
+				<Route
+					path="/organizations/:organizationId/projects/:projectId/settings"
+					element={<ProjectSettingsPage />}
 				/>
 			</Routes>
 		</MemoryRouter>,
@@ -255,7 +262,7 @@ it.each(["OWNER", "ADMIN"] as const)(
 		write = () => new Promise(resolve => { finish = resolve; });
 
 		const user = userEvent.setup();
-		view(detailPath);
+		view(settingsPath);
 
 		await user.click(await screen.findByRole("button", { name: "Edit" }));
 		const input = screen.getByLabelText("Name");
@@ -299,7 +306,7 @@ it("rejects an unchanged edit, resets cancelled drafts and sends null to clear d
 	write = async () => json({ ...project, description: null });
 
 	const user = userEvent.setup();
-	view(detailPath);
+	view(settingsPath);
 
 	await user.click(await screen.findByRole("button", { name: "Edit" }));
 	await user.click(screen.getByRole("button", { name: "Save" }));
@@ -341,7 +348,7 @@ it.each([400, 403, 404, 503])(
 		}, status);
 
 		const user = userEvent.setup();
-		view(detailPath);
+		view(settingsPath);
 
 		await user.click(await screen.findByRole("button", { name: "Edit" }));
 		fireEvent.change(screen.getByLabelText("Name"), {
@@ -373,7 +380,7 @@ it.each(["OWNER", "ADMIN"] as const)(
 		};
 
 		const user = userEvent.setup();
-		view(detailPath);
+		view(settingsPath);
 
 		await user.click(
 			await screen.findByRole("button", { name: "Archive project" }),
@@ -402,7 +409,7 @@ it.each([403, 404, 503])(
 		}, status);
 
 		const user = userEvent.setup();
-		view(detailPath);
+		view(settingsPath);
 
 		await user.click(
 			await screen.findByRole("button", { name: "Archive project" }),
@@ -515,7 +522,7 @@ it.each(["update", "archive"] as const)(
 		vi.spyOn(window, "confirm").mockReturnValue(true);
 
 		const user = userEvent.setup();
-		view(detailPath);
+		view(settingsPath);
 
 		if (operation === "update") {
 			await user.click(
@@ -660,7 +667,7 @@ it("clears the project detail after an update returns PROJECT_NOT_FOUND", async 
 	}, 404);
 
 	const user = userEvent.setup();
-	view(detailPath);
+	view(settingsPath);
 
 	await user.click(await screen.findByRole("button", { name: "Edit" }));
 	const input = screen.getByLabelText("Name");
@@ -689,7 +696,7 @@ it("clears the project detail after an archive returns PROJECT_NOT_FOUND", async
 		}, 404);
 
 		const user = userEvent.setup();
-		view(detailPath);
+		view(settingsPath);
 
 		await user.click(await screen.findByRole("button", { name: "Archive project" }));
 
