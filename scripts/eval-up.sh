@@ -109,7 +109,7 @@ fi
 
 # Copy into the temporary directory first. A failed copy must not replace
 # the previously exported certificate.
-if ! compose cp "frontend:$CA_PATH" "$work_dir/root.crt"; then
+if ! compose exec -T frontend cat "$CA_PATH" > "$work_dir/root.crt"; then
   fail certificate "could not copy Caddy's public CA to the host"
 fi
 

@@ -36,6 +36,50 @@ podman exec -w /app tokenscope_backend_1 \
 These commands assume the backend container is named
 `tokenscope_backend_1`; check with `podman ps`.
 
+
+
+## Automated setup at 42
+
+Requires Linux with Podman and a running TokenScope instance.
+Create separate Chat and Translation projects and API keys first.
+
+For the HTTP development stack:
+
+```bash
+make demo-setup-42
+make demo-up-42
+```
+
+When prompted for the TokenScope URL, enter `http://localhost:5173`.
+
+For the HTTPS evaluation stack, started separately with `make eval-up`:
+
+```bash
+make demo-setup-eval-42
+make demo-up-eval-42
+```
+
+Use `https://localhost:8443` for the default evaluation URL.
+The HTTPS launcher expects `.local/eval/caddy-root.crt` in this checkout.
+
+Setup prompts for credentials only when the demo `.env` does not exist.
+It preserves existing configuration, installs dependencies, and loads pricing.
+When switching environments, update the existing demo `.env` manually with
+the correct URL and project keys.
+
+The default backend container name is `tokenscope_backend_1`.
+Override it if necessary:
+
+```bash
+make demo-setup-eval-42 DEMO_BACKEND_CONTAINER=your_backend_container
+```
+
+Open http://127.0.0.1:8080 and keep the demo terminal running.
+
+Verified: HTTP setup, Chat and Translation trace delivery, and first-time
+configuration file creation. HTTPS launch has only been dry-run checked;
+live evaluation-stack verification remains required.
+
 ### Each demo session
 
 With TokenScope running, start the demo from the repository root:

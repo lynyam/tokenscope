@@ -122,6 +122,9 @@ DEMO_IMAGE := docker.io/library/node:24-alpine
 DEMO_RUNTIME ?= docker
 DEMO_USER_FLAGS ?= --user "$$(id -u):$$(id -g)"
 DEMO_VOLUME_SUFFIX ?=
+DEMO_CA_FILE ?=
+DEMO_BACKEND_CONTAINER ?= tokenscope_backend_1
+DEMO_BACKEND_DIR ?= /app
 
 demo-install:
 	$(DEMO_RUNTIME) run --rm \
@@ -134,8 +137,18 @@ demo-install:
 demo-up:
 	@test -f "$(DEMO_DIR)/.env" || \
 		(echo "Configure examples/external-demo/.env first." && exit 1)
+	@set -eu; \
+	set --; \
+	if [ -n "$(DEMO_CA_FILE)" ]; then \
+		test -s "$(DEMO_CA_FILE)" || \
+			{ echo "Certificate file not found: $(DEMO_CA_FILE)"; exit 1; }; \
+		set -- \
+			-e NODE_EXTRA_CA_CERTS=/certs/caddy-root.crt \
+			-v "$(abspath $(DEMO_CA_FILE)):/certs/caddy-root.crt:ro$(DEMO_VOLUME_SUFFIX)"; \
+	fi; \
 	$(DEMO_RUNTIME) run --rm --init --network host \
 		$(DEMO_USER_FLAGS) \
+		"$$@" \
 		-v "$(DEMO_DIR):/app:ro$(DEMO_VOLUME_SUFFIX)" \
 		-w /app \
 		$(DEMO_IMAGE) npm start
@@ -148,8 +161,25 @@ demo-install-42:
 	$(MAKE) demo-install DEMO_RUNTIME=podman \
 		DEMO_USER_FLAGS=--userns=keep-id DEMO_VOLUME_SUFFIX=,z
 
-.PHONY: demo-install demo-install-42 demo-up demo-up-42
+demo-pricing-42:
+	podman cp "$(DEMO_DIR)/config/model-prices.json" \
+		"$(DEMO_BACKEND_CONTAINER):/tmp/external-demo-prices.json"
+	podman exec -w "$(DEMO_BACKEND_DIR)" "$(DEMO_BACKEND_CONTAINER)" \
+		npm run pricing:load -- --file /tmp/external-demo-prices.json
 
+demo-setup-42:
+	bash scripts/demo-config.sh
+	$(MAKE) demo-install-42
+	$(MAKE) demo-pricing-42
+
+demo-setup-eval-42:
+	$(MAKE) demo-setup-42 DEMO_BACKEND_DIR=/opt/tokenscope/backend
+
+demo-up-eval-42:
+	$(MAKE) demo-up-42 DEMO_CA_FILE="$(CURDIR)/.local/eval/caddy-root.crt"
+
+
+.PHONY: demo-install demo-install-42 demo-up demo-up-42 demo-pricing-42 demo-setup-42 demo-setup-eval-42 demo-up-eval-42
 #HELP
 
 help:
