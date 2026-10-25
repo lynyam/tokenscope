@@ -68,7 +68,13 @@ function OrganizationDetail({ organizationId, }: {
 			.catch(failure => {
 				if (!controller.signal.aborted && !isAbortError(failure)) {
 					// 404 or invalid id: show the "Organization not found" screen instead of Retry.
-					if (failure instanceof ApiError && (failure.code === "ORGANIZATION_NOT_FOUND" || failure.code === "VALIDATION_ERROR")) {
+					if (
+						failure instanceof ApiError &&
+						(
+							failure.code === "ORGANIZATION_NOT_FOUND" ||
+							(failure.statusCode === 400 && failure.code === "VALIDATION_ERROR")
+						)
+					) {
 						return;
 					}
 					setError(

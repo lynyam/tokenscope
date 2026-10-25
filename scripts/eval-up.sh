@@ -13,6 +13,18 @@ CA_PATH="/data/caddy/pki/authorities/local/root.crt"
 WAIT=120
 INTERVAL=2
 
+# Optional, deliberate preparation; never an implicit startup side effect.
+case "${SEED:-0}" in
+  0|'') ;;
+  1)
+    if [ -z "${CONFIRM_DATABASE:-}" ]; then
+      printf '%s\n' 'SEED=1 requires CONFIRM_DATABASE=<your local database name>.' >&2
+      exit 1
+    fi
+    ;;
+  *) printf '%s\n' 'SEED must be 0 or 1.' >&2; exit 1 ;;
+esac
+
 stage() {
   printf '\n==> [%s] %s\n' "$1" "$2"
 }
@@ -187,6 +199,12 @@ check_url \
   '{"status":"healthy"}'
 
 check_url "frontend" "$BASE_URL/" html
+
+if [ "${SEED:-0}" = "1" ]; then
+  stage seed "Preparing the explicitly requested evaluation dataset"
+  sh ./scripts/eval-seed.sh \
+    || fail seed "application started, but demo data preparation failed; no demo-ready claim"
+fi
 
 printf '\nTokenScope is running: %s\n' "$BASE_URL"
 printf 'Trust the public CA once: %s\n' "$CERT_FILE"

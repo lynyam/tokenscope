@@ -65,7 +65,13 @@ function ProjectDetail({ organizationId, projectId }: { organizationId: string; 
         if (controller.signal.aborted || isAbortError(failure)) return;
         // 404 or invalid id: show the "Project not found" screen instead of Retry.
         // Do not reveal whether an inaccessible project exists.
-        if (failure instanceof ApiError && (failure.statusCode === 404 || failure.statusCode === 400)) {
+        if (
+          failure instanceof ApiError &&
+          (
+            failure.statusCode === 404 ||
+            (failure.statusCode === 400 && failure.code === "VALIDATION_ERROR")
+          )
+        ) {
           return;
         }
         setLoadError(getApiErrorMessage(failure, "Failed to load project."));

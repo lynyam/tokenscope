@@ -1,5 +1,11 @@
 # M1 demo and acceptance runbook
 
+For the **current evaluation demo**, start with
+[Evaluation demo data — TSE-70](EVALUATION_SEED.md): accounts, one-command HTTPS
+startup with explicit seeding, exact analytics, independent mutation scenarios
+and tests. Do not use the historical M1 reset procedure below to prepare a
+shared working database.
+
 > This runbook’s existing numbered procedure verifies the Sprint 1 identity/workspace baseline.
 >
 > References to M2 placeholders and excluded features apply to that historical baseline. They do not prohibit the evaluation extensions defined in [EVALUATION_ARCHITECTURE.md](./EVALUATION_ARCHITECTURE.md).
@@ -188,7 +194,7 @@ ALICE_ORGANIZATION_JSON=$(
     }'
 )
 
-ALICE_ORGANIZATION_ID=$(
+ALICE_ORGANIZATION_ID=$(x
   printf '%s' "$ALICE_ORGANIZATION_JSON" | jq -r '.id'
 )
 
@@ -686,7 +692,7 @@ Keep the 51-row pagination dataset, cross-tenant data and mutation demonstration
 
 - Fixtures do not automatically populate the application.
 - Evaluation seeding is explicit and uses an operator-supplied password.
-- Normal startup must not reset or seed user data.
+- Normal startup must not reset or seed user data; `SEED=1` explicitly requests demo preparation.
 - Mocked HTTP tests do not prove database authorization.
 - Simulated streams do not prove a working Gemini account.
 - A Chromium run does not prove Firefox or actual Edge compatibility.
@@ -727,9 +733,13 @@ The golden period is 2026-10-01T00:00:00.000Z inclusive through
 The six golden traces total 0.015350000000 USD in synthetic
 estimated cost.
 
-TSE-70 owns loading usable evaluation data. Fixture presence alone
-does not demonstrate implemented feature endpoints or live Gemini
-integration.
+Load the complete dataset with
+`make eval-up SEED=1 CONFIRM_DATABASE=tokenscope` after setting your own
+`DEMO_PASSWORD` in the existing ignored `.env`. Use
+`make eval-seed CONFIRM_DATABASE=tokenscope` against an already-running dev or
+eval backend. See [EVALUATION_SEED.md](EVALUATION_SEED.md) for safety checks and
+the required actual test runs. Fixture presence or a successful seed alone does
+not demonstrate every feature endpoint, uploads or live Gemini integration.
 
 ## Private documents — TSE-78 manual check
 
