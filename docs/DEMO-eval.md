@@ -1,10 +1,12 @@
 # TokenScope demonstration and evaluation guide
 
+> Evaluation preparation copy. Keep the existing `DEMO.md` unchanged. This guide describes the integrated develop features and the current seed; pending features and missing execution evidence are identified explicitly. The selected evaluation commit, not a moving branch name, determines what is actually demonstrated.
+
 ## Purpose
 
-Use this guide to prepare and run the TokenScope evaluation. It gives the team and evaluators an ordered feature walkthrough, expected results, and detailed API/browser checks. Setup details are in [Local Development](LOCAL_DEVELOPMENT.md); contracts are in [API](API.md), [Data Model](DATA_MODEL.md) and [Security](SECURITY.md).
+Use this guide to prepare and run the TokenScope evaluation. It gives the team and evaluators an ordered feature walkthrough, expected results, and detailed API/browser checks. Setup details are in [Local Development](LOCAL_DEVELOPMENT-eval.md); contracts are in [API](API.md), [Data Model](DATA_MODEL.md) and [Security](SECURITY.md).
 
-Follow the ordered walkthrough for the demonstration and use the detailed Alice/Bob procedures for permission and isolation checks. Record the results in [Evaluation evidence](#evaluation-evidence).
+Follow the ordered walkthrough for the demonstration and use the detailed Alice/Bob procedures for permission and isolation checks. Record this guide's rehearsal results in [Evaluation evidence](#evaluation-evidence), and link existing feature evidence from [EVALUATION.md](EVALUATION.md) without replacing it or relabelling historical runs as current passes.
 
 ## 1. Prepare the evaluation environment
 
@@ -16,26 +18,28 @@ All shell examples run **on the host**, in **Bash**, from the **rehearsal reposi
 
 ### Isolated checkout and startup
 
-Use a new directory and an unused Compose project name so rehearsal does not reset your working database. Replace `EVALUATION_COMMIT` with the team's selected commit before running the checkout command.
+Use a new directory and an unused Compose project name so rehearsal does not reset your working database. Replace `EVALUATION_COMMIT` with the full SHA selected from integrated `develop` before running the checkout command. Use the same candidate as the evaluation README and setup guide.
 
 ```bash
-git clone git@github.com:lynyam/tokenscope.git tokenscope-evaluation
+git clone --branch develop https://github.com/lynyam/tokenscope.git tokenscope-evaluation
 cd tokenscope-evaluation
 git checkout --detach "EVALUATION_COMMIT"
 git rev-parse HEAD
 export COMPOSE_PROJECT_NAME=tokenscope-rehearsal
 export EVAL_HTTPS_PORT=9443
 export REALTIME_ALLOWED_ORIGINS=https://localhost:9443
-cp .env.example .env
+test -e .env || cp .env.example .env
 ```
 
-Set a private local database password in `.env`, keeping `DATABASE_URL` consistent. These steps require no running application services. Do not reuse an existing rehearsal project name containing data you need. The example uses port 9443; choose another unused port and update both settings if necessary.
+Set a private local database password in `.env`, keeping `DATABASE_URL` consistent. Set `DEMO_PASSWORD` to a private 8–128-character evaluation-only password; the four demo accounts share it. Keep `EVALUATION_SEED_ENABLED=false`: the explicit command enables only its seed child process. Leave `GEMINI_API_KEY` empty for the initial no-provider check. Do not put credentials in Make arguments, reports or shell tracing. These steps require no running application services. Do not reuse an existing rehearsal project name containing data you need. The example uses port 9443; choose another unused port and update both settings if necessary.
 
 ```bash
-make eval-up
+make eval-up SEED=1 CONFIRM_DATABASE=tokenscope
 ```
 
-Expected: builds complete, committed migrations apply, the database becomes healthy, Caddy's public CA is exported to `.local/eval/caddy-root.crt`, and the final line gives `https://localhost:9443`. The script creates a missing JWT secret, using the existing Compose stack. It does not load evaluation accounts or traces.
+Use the actual database name if it is not `tokenscope`. No preceding `make up`, `make db-setup`, `make db-seed` or manual catalogue import is required.
+
+Expected: builds complete, committed migrations apply, the database becomes healthy, Caddy's public CA is exported to `.local/eval/caddy-root.crt`, and the final line gives `https://localhost:9443`. The script creates a missing JWT secret, using the existing Compose stack. With `SEED=1`, it then prepares the evaluation dataset before printing the final ready message. A seed failure exits unsuccessfully without claiming demo readiness; the application can remain healthy, but the seed transaction commits all of its records or none.
 
 Trust that public CA in the browser/OS. On macOS, this host command requires administrator authorization:
 
@@ -45,7 +49,7 @@ sudo security add-trusted-cert -d -r trustRoot \
   .local/eval/caddy-root.crt
 ```
 
-For other systems and Firefox's certificate store, use [certificate trust instructions](LOCAL_DEVELOPMENT.md#trust-the-local-certificate). Restart the browser and open the HTTPS origin without bypassing certificate errors.
+For other systems and Firefox's certificate store, use [certificate trust instructions](LOCAL_DEVELOPMENT-eval.md#trust-the-local-certificate). Restart the browser and open the HTTPS origin without bypassing certificate errors.
 
 Set up the shell helpers used throughout this guide:
 
@@ -65,7 +69,7 @@ With the stack running, both health calls should return HTTP 200 and `{"status":
 
 ### Evaluation accounts, data and optional provider
 
-The [fixture manifest](../fixtures/evaluation/manifest.json) and [identity definitions](../fixtures/evaluation/identities.json) define these accounts and resources:
+The [seed guide](EVALUATION_SEED.md) is the authoritative setup and repeatability reference. Seed version **1.3** preserves the canonical [1.2 fixture manifest](../fixtures/evaluation/manifest.json) and [identities](../fixtures/evaluation/identities.json), and adds the [Analytics Demo](ANALYTICS_DEMO.md). It creates these working sign-in accounts with independently salted password hashes:
 
 | Account | Role / organization | Use |
 |---|---|---|
@@ -74,22 +78,43 @@ The [fixture manifest](../fixtures/evaluation/manifest.json) and [identity defin
 | `member@demo.tokenscope.test` | MEMBER, Acme Demo | Read access and denied mutations |
 | `outsider@demo.tokenscope.test` | OWNER, Other Tenant | Cross-organization isolation |
 
-Use **Support Golden** for known totals, **Empty Project** for empty states, and **Pagination Project** for its 51 rows. Use a separate disposable project for mutations and uploads, and a separate disposable organization for archive. Never archive Acme Demo or Support Golden.
+Use **Analytics Demo** for the main varied dashboard, **Support Golden** for exact numerical verification, **Empty Project** for empty states, and **Pagination Project** for its 51 rows. Create a separate disposable organization and projects for membership changes, mutations, uploads and archive. Leave the seeded organizations, memberships, projects and traces unchanged; extra resources inside Acme Demo can also make a later seed verification refuse. Never archive Acme Demo or Support Golden.
 
-**To complete — TSE-70:** the explicit dataset-loading command, password input through `DEMO_PASSWORD`, and the command's printed effective period. Loading must create usable hashed passwords and populate the documented prices/traces. The development `make db-seed` contains placeholder hashes and is not the evaluation loader. Fixture files alone do not populate the database.
+The successful JSON summary reports `outcome` as `inserted`, `upgraded` (verified unchanged 1.2 installation to 1.3) or `already-present`. Expect 4 users, 2 organizations, 4 memberships, 6 projects, 15 synthetic price versions and 899 traces; one receipt records the installation. The seed creates no API key, JWT, upload or live LLM request.
 
-For the standalone realtime check, the existing price-only loader can prepare synthetic prices in the running evaluation backend:
+Use your configured `DEMO_PASSWORD` to sign in. Save only the non-secret summary, especially `dashboardRange`, `analyticsDemo.range` and `analyticsDemo.dashboardPath`. On a current, already-running dev or eval backend, the explicit command is:
 
 ```bash
-docker compose cp fixtures/evaluation/model-prices.json backend:/tmp/model-prices.json
-docker compose exec -T backend npm run pricing:load -- --file /tmp/model-prices.json
+make eval-seed CONFIRM_DATABASE=tokenscope
 ```
 
-Expected: exit 0 and a successful catalogue-load summary. This loads prices only, not users or traces. The command runs through the host into the evaluation backend's `/opt/tokenscope/backend` working directory.
+This does not start or switch modes. If you changed `.env`, recreate the backend with `make eval-up` first so its environment is current, or follow the seed guide's private exported-password procedure. Keep the same password and golden anchor between reruns.
 
-**To complete — assistant owner:** backend configuration for `GEMINI_API_KEY` and `LLM_MODEL`, the account/model actually verified, and private-storage configuration from the delivered document feature. Keep provider secrets server-side. The configuration must reach typed backend validation as well as Compose. A model name in a fixture is not a deployable model choice.
+An unchanged rerun is a no-op; it does not refresh the analytics window. Changed/deleted fixtures or collisions produce `SEED_CONFLICT` instead of repair. Use a new, unused Compose project for a fresh rehearsal, not `fullclean`, deletion of the receipt or manual database edits. After mutation demonstrations, ordinary `make eval-up` starts the application without reseeding.
+
+The seed already loads its prices. **Do not pre-import the fixture catalogue before a first evaluation seed:** even identical reserved prices without its receipt conflict. A separate price-only import is an alternative solely for a disposable test database that will not subsequently receive this seed; see [setup guidance](LOCAL_DEVELOPMENT-eval.md#explicit-price-catalogue-loading).
+
+Gemini setup is implemented: set backend-only `GEMINI_API_KEY` and an account-supported `LLM_MODEL` in the root ignored `.env`, then rebuild with `make eval-up`. See [assistant configuration](LOCAL_DEVELOPMENT-eval.md#configure-the-gemini-assistant) and [private storage](LOCAL_DEVELOPMENT-eval.md#private-document-storage). Remaining live evidence must identify the actual model, account tier, commit and results; a synthetic fixture model is not a deployable provider choice.
 
 Run the main application both without Gemini configuration and with a configured test account. Without it, non-assistant features should work and assistant requests should return the documented unavailable response. With it, step 8 includes a deliberate live request. Record provider-model/account-tier details and the error code in the evidence section; do not publish keys or assume universal model availability.
+
+## Analytics Demo checkpoint
+
+Sign in as an Acme member and open the printed `analyticsDemo.dashboardPath` on this rehearsal's HTTPS origin. Its query selects the exact full `analyticsDemo.range`; do not assume the moving “Last 7 days” preset includes all data on a later rehearsal.
+
+| Metric | Expected, full unfiltered Analytics Demo |
+|---|---:|
+| Traces | 840 |
+| Providers / models | 4 fictional providers / 12 models |
+| Input / output tokens | 5,516,730 / 760,941 |
+| Total tokens | 6,277,671 |
+| Estimated synthetic USD | 8.550480200000 |
+| ERROR traces / error rate | 49 / 5.83% |
+| Average latency | 1562.205 ms |
+
+Inspect unequal daily usage, provider/model groups, workflows, token variation and latency outliers. Apply provider/model/workflow filters, then clear them to restore the full checkpoint. The simulated ERROR traces are analytics data, not application or console failures.
+
+The first enriched install captures the last completed UTC hour and the preceding seven days. Its receipt freezes that period on reruns. `ANCHOR` shifts only the original golden fixtures, not the analytics window. UTC calendar-day grouping may show eight buckets when the seven-day interval ends outside midnight. See [Analytics Demo](ANALYTICS_DEMO.md) for exact dates, per-provider expectations and safe upgrades.
 
 ## Golden checkpoint
 
@@ -100,7 +125,7 @@ from = 2026-10-01T00:00:00.000Z
 to   = 2026-10-02T00:00:00.000Z
 ```
 
-If the explicit seed anchor changes, shift fixture dates and examples consistently. Never rely on old fixture records remaining inside “Last 7 days.”
+For a fresh seed with a custom `ANCHOR`, use its printed `dashboardRange` instead; the loader shifts the canonical fixture times consistently. Do not edit fixture JSON or re-anchor an existing installation. Never rely on old golden records remaining inside “Last 7 days.”
 
 Expected golden results:
 
@@ -130,7 +155,7 @@ Each row specifies the actor, starting screen, action, expected result and recov
 |---|---|---|---|
 | 1 — OWNER | HTTPS landing page: sign in, open Acme Demo and Support Golden, then reload the protected page directly. | Session and authorized project access survive reload; frameworks and organizations. | Sign out before switching accounts in the same profile. |
 | 2 — OWNER, ADMIN, MEMBER, outsider | Members/project screens: verify each role; use a disposable member for role changes/removal. Rename a disposable organization; reject demotion/removal of its last owner. Attempt outsider access by URL and API. | OWNER manages memberships; ADMIN manages projects but not memberships; MEMBER reads; outsider gets concealed 404s. Current membership governs already-issued JWTs. Organization module. | Re-add the disposable member and restore roles. Leave golden memberships unchanged. Detailed API checks follow below. |
-| 3 — any Acme member | Support Golden dashboard: select the golden interval, no filters. Compare every summary value and inspect charts. Repeat with `provider=fixture-a`, then Empty Project. | Golden checkpoint matches; fixture-a has 3 traces and USD `0.007150000000`; empty state has zero counts/cost and null rate/latency. Analytics. | Clear filters and return to Support Golden. No mutation. |
+| 3 — any Acme member | Open Analytics Demo using its printed exact path; show varied daily/provider/model usage and filters. Then open Support Golden with its printed golden interval, no filters; repeat with `provider=fixture-a`, then Empty Project. | Analytics Demo and golden checkpoints match. Golden fixture-a has 3 traces and USD `0.007150000000`; empty state has zero counts/cost and null rate/latency. Analytics. | Clear filters and explicitly restore the intended project's interval. No mutation. |
 | 4 — any Acme member | Trace Explorer: combine provider/model/workflow/status and text filters, sort, open detail and return. In Pagination Project set page size 25 and visit pages 1–3. | Filter intersection, retained selection and stable ordering; 25/25/1 rows for 51 records. Advanced search. | Clear filters and return to the intended project; no data changes. |
 | 5 — OWNER/ADMIN | Disposable project's key screen: create a named key; call public POST, list GET, detail GET, PUT and DELETE. Show identical replay, stale version, invalid/revoked credentials and quota handling. | Secret displayed once; five operations are project-scoped. New POST 201, replay 200; current ETag required for mutations; stale version 412; revoked key 401; quota 429 with Retry-After. Public API. | Use fresh external IDs; retain the key for step 6, then revoke it. Wait the advertised Retry-After before other checks. |
 | 6 — two authorized users | Same disposable dashboard in two browsers: insert the realtime fixture, correct and delete it; disconnect/reconnect one browser. Remove a disposable viewer's membership. | Committed changes trigger notifications and HTTP refetch; charts update. Replay/no-op does not create another change. Reconnect repairs the view; removed viewer loses access. Realtime. | Restore the disposable membership; revoke test keys; leave Support Golden untouched. See detailed realtime procedure. |
@@ -160,11 +185,13 @@ Use the files and expected statuses in [uploads-manifest.json](../fixtures/evalu
 
 For the assistant, inspect the selected dates/filters and returned context as well as the answer. A later trace change affects a subsequent answer, not the context already streaming. Stop ends TokenScope's output; it does not guarantee provider-side computation stops. Uploaded files, saved conversation history and automatic actions are outside this assistant's scope. Test unavailable configuration, provider failures, timeout, rate limits and access loss using the feature owner's supported test setup.
 
-### External Chat and Translation example
+### External Chat and Translation example — pending PR #48
 
-Use the standalone demo to submit one Chat request and one Translation request to Gemini. Verify actual token usage reaches **Demo Chat** and **Demo Translation** respectively, each through its own project key and the shared `callWithTrace` wrapper. Revoke one project's key: its answer should remain available while trace delivery reports failure, and the other project's delivery should remain unaffected. Restore access with a new key and remove test resources afterward.
+**BLOCKED pending integration:** [PR #48 / TSE-86](https://github.com/lynyam/tokenscope/pull/48) is not merged into the reviewed develop snapshot. Its `examples/external-demo/` files are not available here. Skip this optional section until the implementation is merged and verified on the selected candidate; it is not a prerequisite for seed loading or the dashboard assistant.
 
-**To complete — TSE-86:** the setup/report path and tested application/demo commits for the evaluation candidate. This example demonstrates an external client integration; the streamed dashboard assistant is demonstrated separately in step 8.
+After integration, use the standalone demo to submit one Chat request and one Translation request to Gemini. Verify actual token usage reaches **Demo Chat** and **Demo Translation** respectively, each through its own project key and the shared `callWithTrace` wrapper. Revoke one project's key: its answer should remain available while trace delivery reports failure, and the other project's delivery should remain unaffected. Restore access with a new key and remove test resources afterward.
+
+**To complete after TSE-86 integration:** verify its setup/report paths and record the tested application/demo commits for the evaluation candidate. Do not mark its branch-only results as integrated evidence. This example demonstrates an external client integration; the streamed dashboard assistant is demonstrated separately in step 8.
 
 ## Detailed API acceptance flow
 
@@ -595,7 +622,7 @@ npm run build
 cd ..
 ```
 
-Expected: each command exits 0. In development mode, `make frontendcheck` and `make frontendtest` provide container alternatives. Do not use those targets in HTTPS evaluation mode: its frontend container runs Caddy, not Node/npm. Browser tests require a running application and the setup in [Local Development](LOCAL_DEVELOPMENT.md); the committed Playwright configuration runs Chromium and does not establish Firefox or Edge compatibility.
+Expected: each command exits 0. In development mode, `make frontendcheck` and `make frontendtest` provide container alternatives. Do not use those targets in HTTPS evaluation mode: its frontend container runs Caddy, not Node/npm. Browser tests require a running application and the setup in [Local Development](LOCAL_DEVELOPMENT-eval.md); the committed Playwright configuration runs Chromium and does not establish Firefox or Edge compatibility.
 
 Record actual outputs with commit and environment. Check browser consoles and backend logs for unexpected errors, and verify responses exclude password hashes. Database integration tests establish persistence/authorization separately from mocked HTTP tests; live Gemini behaviour needs separate provider evidence.
 
@@ -624,11 +651,10 @@ Record actual outputs with commit and environment. Check browser consoles and ba
 
 ## Detailed realtime demonstration
 
-1. Load the documented synthetic price catalogue and use a disposable organization/project.
+1. Use the catalogue already installed by the evaluation seed and a separate disposable organization/project. Do not load the catalogue again as a seed prerequisite.
 2. Open two authorized dashboard sessions on the same project. Both must subscribe
    successfully to the same project. Confirm another project does not receive its notifications.
-3. Select `[2026-10-01T00:00:00.000Z, 2026-10-02T00:00:00.000Z)` for the supplied
-   `fixtures/evaluation/realtime/live-trace-request.json`; its timestamp is historical.
+3. Select the seed's printed `dashboardRange` (by default `[2026-10-01T00:00:00.000Z, 2026-10-02T00:00:00.000Z)`). Generate the live request with the same original `ANCHOR` below; its timestamp belongs to that golden interval, not the recent Analytics Demo window.
 4. Send that body to `POST /api/v1/public/traces` with a valid project `X-API-Key`.
    Use a fresh externalId for each demonstration; identical POST replay produces no notification.
 5. Confirm one minimal `traces.changed` reaches each authorized viewer, then the dashboard
@@ -640,15 +666,16 @@ Record actual outputs with commit and environment. Check browser consoles and ba
    stop receiving data. Demotion to MEMBER keeps read access. Expired JWT disconnects.
 8. Disconnect/reconnect a browser: it must re-subscribe and refetch; no missed-event replay is promised.
 
-The transport regression test is [realtime.spec.ts](../frontend/test/e2e/realtime.spec.ts). Follow [Local Development](LOCAL_DEVELOPMENT.md) for its execution environment. Observe actual chart updates in addition to WebSocket messages.
+The transport regression test is [realtime.spec.ts](../frontend/test/e2e/realtime.spec.ts). Follow [Local Development](LOCAL_DEVELOPMENT-eval.md) for its execution environment. Observe actual chart updates in addition to WebSocket messages.
 
-For a disposable evaluation project, create an API key as OWNER/ADMIN. Enter it without saving it in shell history, generate a fresh external ID, and send the fixture from the repository root on the host:
+For a disposable evaluation project, create an API key as OWNER/ADMIN. If you used a custom seed anchor, export that same non-secret `ANCHOR` in this shell first. Stop if request generation fails. Enter it without saving it in shell history, generate a fresh external ID, and send the fixture from the repository root on the host:
 
 ```bash
 read -r -s -p 'Disposable project API key: ' TOKENSCOPE_KEY
 printf '\n'
-DEMO_TRACE_BODY=$(jq --arg id "rehearsal-$(date +%s)" '.externalId = $id' \
-  fixtures/evaluation/realtime/live-trace-request.json)
+set -o pipefail
+DEMO_TRACE_BODY=$(docker compose exec -T backend npm run --silent eval:request -- live "${ANCHOR:-2026-10-01}" | \
+  jq --arg id "rehearsal-$(date +%s)" '.externalId = $id')
 demo_curl --fail-with-body -D /tmp/tokenscope-trace-headers.txt \
   -H "X-API-Key: $TOKENSCOPE_KEY" \
   -H 'Content-Type: application/json' \
@@ -666,19 +693,19 @@ For each evaluation run, record the application commit, date, environment, actio
 
 ### Module evidence map
 
-The selected modules total 16 planned points. Subject references use v21.1. Implementation references identify where to inspect the behaviour; the result column records the evaluation run.
+The selected modules total 16 planned points, not awarded points. Subject references use v21.1. Implementation references identify where to inspect the behaviour; the result column records the evaluation run.
 
 | Module / subject section | Points | Implementation / test reference | Walkthrough | Result and report |
 |---|---:|---|---|---|
 | Frontend/backend frameworks — IV.1 | 2 | [React router](../frontend/src/router/AppRouter.tsx), [NestJS application](../backend/src/app.module.ts), frontend/backend package scripts | Startup, 1, 11 | NOT RUN — add candidate report. |
 | ORM — IV.1 | 1 | [Prisma schema](../backend/prisma/schema.prisma), [migrations](../backend/prisma/migrations), [database suites](../backend/test/database) | Startup, persistence, API checks | NOT RUN — add candidate report. |
 | Organization system — IV.3 | 2 | [Organizations](../backend/src/organizations), [memberships](../backend/src/memberships), [projects](../backend/src/projects), database suites | 1, 2, 10; detailed API/browser flows | NOT RUN — add candidate report. |
-| Public API — IV.1 | 2 | [Public trace controller](../backend/src/traces/public-traces.controller.ts), [keys](../backend/src/api-keys), [API documentation](PUBLIC_API.md) | 5; external demo | NOT RUN — add candidate report. |
+| Public API — IV.1 | 2 | [Public trace controller](../backend/src/traces/public-traces.controller.ts), [keys](../backend/src/api-keys), [API documentation](PUBLIC_API.md) | 5; external demo only after PR #48 integration | NOT RUN — add candidate report. |
 | Realtime — IV.1 | 2 | [Realtime module](../backend/src/realtime), [browser regression](../frontend/test/e2e/realtime.spec.ts) | 6; detailed realtime flow | NOT RUN — add dashboard-refresh evidence. |
-| Analytics dashboard — IV.8 | 2 | [Analytics backend](../backend/src/analytics), [expected results](../fixtures/evaluation/expected-results.json); to complete: dashboard/export files and test report | 3, 6, 7 | NOT RUN — add candidate report. |
-| LLM system interface — IV.4 | 2 | [Assistant contract](API.md#assistant--tse-80--tse-81); to complete: delivered backend/UI files and live-provider report | 8 | NOT RUN — separate live and controlled-provider results. |
-| File upload — IV.1 | 1 | [Document contract](API.md#private-documents--tse-78--tse-79), [upload fixtures](../fixtures/evaluation/uploads-manifest.json); to complete: delivered implementation/test paths | 9 | NOT RUN — include access, progress and cleanup checks. |
-| Advanced search — IV.1 | 1 | [Trace query](../backend/src/traces/dto/trace-query.dto.ts), [read service](../backend/src/traces/trace-reads.service.ts); to complete: Trace Explorer test report | 4 | NOT RUN — add candidate report. |
+| Analytics dashboard — IV.8 | 2 | [Analytics backend](../backend/src/analytics), [expected results](../fixtures/evaluation/expected-results.json), [dashboard](../frontend/src/pages/projects/ProjectDashboard.tsx), [exports](../frontend/src/features/analytics), [browser dashboard spec](../frontend/test/e2e/project-dashboard.spec.ts), [export spec](../frontend/test/e2e/dashboard-export.spec.ts) | 3, 6, 7 | NOT RUN — add candidate report. |
+| LLM system interface — IV.4 | 2 | [Assistant contract](API.md#assistant--tse-80--tse-81), [backend](../backend/src/assistant), [UI](../frontend/src/pages/projects/DashboardAssistant.tsx), [browser spec](../frontend/test/e2e/assistant.spec.ts) | 8 | NOT RUN — separate live and controlled-provider results. |
+| File upload — IV.1 | 1 | [Document contract](API.md#private-documents--tse-78--tse-79), [upload fixtures](../fixtures/evaluation/uploads-manifest.json), [backend](../backend/src/documents), [UI](../frontend/src/pages/documents/DocumentsPage.tsx), [database tests](../backend/test/database/documents.integration.spec.ts), [browser spec](../frontend/test/e2e/documents.spec.ts) | 9 | NOT RUN — include access, progress and cleanup checks. |
+| Advanced search — IV.1 | 1 | [Trace query](../backend/src/traces/dto/trace-query.dto.ts), [read service](../backend/src/traces/trace-reads.service.ts), [Trace Explorer](../frontend/src/pages/projects/TracesPage.tsx), [browser spec](../frontend/test/e2e/trace-explorer.spec.ts) | 4 | NOT RUN — add candidate report. |
 | Additional browsers — IV.2 | 1 | TSE-84 browser matrix below | 11 | NOT RUN — add versions and results. |
 
 ### Mandatory requirements
@@ -713,6 +740,8 @@ Test the complete walkthrough, including search, realtime, exports, assistant, d
 | Microsoft Edge | To complete. | To complete. | NOT RUN |
 
 ### Reused feature evidence
+
+Preserve [EVALUATION.md](EVALUATION.md), including its TSE-88 historical-author report, candidate checks and NOT RUN statuses. Link reports with their original SHA and environment; do not copy an older PASS into this candidate's result column. This guide's run record supplements that evidence, not a replacement evidence ledger. The presence of a test file above does not prove its tests passed.
 
 Link the feature owners' test reports with their tested commits, environments, commands, results and related walkthrough steps. Keep these reports separate from the results of the full evaluation rehearsal.
 

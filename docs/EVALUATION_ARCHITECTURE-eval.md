@@ -1,10 +1,12 @@
 # TokenScope evaluation architecture
 
+> Evaluation preparation copy. Preserve the existing `EVALUATION_ARCHITECTURE.md` and all other develop documents. This explanation links the evaluation copies while reusing the current API, data-model, security, seed and evidence references.
+
 ## Purpose
 
 This document explains the architecture for the evaluation scope coordinated by [TSE-63](https://linear.app/move2/issue/TSE-63).
 
-It describes the main request flows, feature responsibilities and shared decisions. Setup instructions are in [LOCAL_DEVELOPMENT.md](./LOCAL_DEVELOPMENT.md); demonstration steps, tested commits, environments and results are in [DEMO.md](./DEMO.md#evaluation-run-record).
+It describes the main request flows, feature responsibilities and shared decisions. Setup instructions are in [LOCAL_DEVELOPMENT-eval.md](./LOCAL_DEVELOPMENT-eval.md); demonstration steps, tested commits, environments and results are in [DEMO-eval.md](./DEMO-eval.md#evaluation-run-record).
 
 ## Architecture at a glance
 
@@ -31,6 +33,7 @@ The shared persistence foundation includes:
 - Transaction-aware project access.
 - Active-parent filtering in existing workspace access paths.
 - Canonical fixtures under fixtures/evaluation/.
+- EvaluationSeedReceipt for the verified 1.3 dataset, golden anchor and frozen analytics-window end.
 
 TSE-66 reuses the organization archive field and shared access checks. It owns the archive endpoint, confirmation flow and UI.
 
@@ -38,23 +41,25 @@ Feature modules use these models through their own validated and authorized endp
 
 Downstream consumers use the existing generated Prisma client under backend/src/generated/prisma/client.
 
-The evaluation plan targets 16 points against the subject’s 14-point minimum. The module breakdown and mandatory requirements are documented in [README.md](../README.md) and [DEMO.md](./DEMO.md).
+The evaluation plan targets 16 points against the subject’s 14-point minimum. The module breakdown and mandatory requirements are documented in [README-eval.md](../README-eval.md) and [DEMO-eval.md](./DEMO-eval.md). Points are planned, not awarded; retain existing reports and their limitations in [EVALUATION.md](EVALUATION.md).
 
 ## Documentation ownership
 
 | Document | Responsibility |
 |---|---|
-| `EVALUATION_ARCHITECTURE.md` | Current architecture, ownership and shared decisions |
+| `EVALUATION_ARCHITECTURE-eval.md` | Current architecture, ownership and shared decisions |
 | `API.md` | HTTP, realtime and streaming contracts |
 | `DATA_MODEL.md` | Persistent models, constraints and lifecycle |
 | `SECURITY.md` | Authentication, authorization, privacy and access boundaries |
-| `LOCAL_DEVELOPMENT.md` | Commands, configuration and environment setup |
-| `DEMO.md` | Reproducible verification and recorded evidence |
+| `LOCAL_DEVELOPMENT-eval.md` | Commands, configuration and environment setup |
+| `DEMO-eval.md` | Ordered walkthrough and candidate-specific rehearsal record |
+| `EVALUATION.md` | Existing feature evidence, retained with its original SHA, environment and limitations |
+| `EVALUATION_SEED.md` / `ANALYTICS_DEMO.md` | Authoritative seed operation, synthetic datasets and exact periods |
 | `SPRINT_1_ARCHITECTURE.md` | Historical Sprint 1 architecture and existing foundation |
 | `ONBOARDING.md` | Historical product plan, team context and learning material |
 | Linear issues | Implementation steps, acceptance criteria, ownership and progress |
 
-Keep API, data-model and security contracts aligned when changing a shared flow. Record evaluation results in `DEMO.md` rather than duplicating them here.
+Keep API, data-model and security contracts aligned when changing a shared flow. Record new rehearsal results in `DEMO-eval.md`, linking existing `EVALUATION.md` reports without rewriting their outcomes; do not duplicate them here.
 
 ## Product scope
 
@@ -172,7 +177,7 @@ Existing bodyless DELETE callers keep their current signatures.
 Frontend screens/adapters remain responsible for discarding results after
 navigation, a selection change or a superseded session.
 
-Transport tests use controlled Fetch responses and XHR events. Browser upload, proxy streaming and cancellation are covered by separate integration demonstrations recorded in [DEMO.md](./DEMO.md).
+Transport tests use controlled Fetch responses and XHR events. Browser upload, proxy streaming and cancellation are covered by separate integration demonstrations recorded in [DEMO-eval.md](./DEMO-eval.md).
 
 ## Feature ownership
 
@@ -249,7 +254,17 @@ Reads and analytics sum stored costs. Adding a new price does not rewrite histor
 
 Costs are estimates, not provider invoices. Synthetic evaluation prices are labelled separately from prices sourced from provider catalogues. Recording a provider/model in a trace does not itself call that provider.
 
-The dashboard assistant calls Gemini to answer analytics questions. The independent Chat/Translation demo also calls Gemini, then submits usage through its shared `callWithTrace` wrapper to separate TokenScope projects. Its Gemini credentials and TokenScope project API keys serve different purposes.
+The dashboard assistant calls Gemini to answer analytics questions. The independent Chat/Translation demo is pending [PR #48 / TSE-86](https://github.com/lynyam/tokenscope/pull/48) integration, not a feature available in this reviewed develop snapshot. Its proposed `callWithTrace` wrapper and separate project keys must be documented and verified after integration; they are not required for the dashboard assistant or evaluation seed.
+
+## Repeatable evaluation data — TSE-70
+
+`make eval-up SEED=1 CONFIRM_DATABASE=tokenscope` explicitly prepares the dataset after trusted-HTTPS readiness. An operator-supplied `DEMO_PASSWORD` lives in the ignored `.env`; normal startup without `SEED=1` does not seed. No development-mode prerequisite or separate price import is needed.
+
+The loader reuses password hashing, trace normalization and historical cost rules. Its 1.3 dataset contains 899 traces: 59 original verification/isolation records plus the 840-trace Analytics Demo across four fictional providers and twelve models. Prices are synthetic; seeding does not call Gemini or create API keys or uploads.
+
+One database transaction and a receipt protect repeatability. Unchanged reruns write nothing; the supported unchanged 1.2-to-1.3 upgrade adds the analytics dataset. Changed/deleted fixtures or collisions cause refusal rather than repair. The receipt preserves the analytics window, so reruns do not refresh historical dates. The golden `ANCHOR` and the analytics seven-day window are separate.
+
+See [EVALUATION_SEED.md](EVALUATION_SEED.md) and [ANALYTICS_DEMO.md](ANALYTICS_DEMO.md) for authoritative commands, migration/upgrade requirements, printed dashboard paths and exact totals. Use separate disposable organizations for mutating demonstrations, and keep [existing evaluation evidence](EVALUATION.md) intact.
 
 ## Selection and analytics
 
@@ -454,4 +469,4 @@ Keep feature verification proportional to changed behavior:
 - Real browser journeys under `frontend/test/e2e/`.
 - Separate, deliberate live-provider verification.
 
-Record automated tests, browser checks and live Gemini checks separately in [DEMO.md](./DEMO.md#evaluation-run-record), with the tested commit, environment, commands and PASS, FAIL, BLOCKED or NOT RUN result. The browser matrix records Chrome, Firefox and Edge results. Update the relevant contract documents when behavior changes.
+Record automated tests, browser checks and live Gemini checks separately in [DEMO-eval.md](./DEMO-eval.md#evaluation-run-record), with the tested commit, environment, commands and PASS, FAIL, BLOCKED or NOT RUN result. The browser matrix records Chrome, Firefox and Edge results. Update the relevant contract documents when behavior changes.

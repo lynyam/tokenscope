@@ -1,10 +1,12 @@
-# Local Development
+# Local Development and Evaluation Setup
+
+> Evaluation preparation copy. The existing `LOCAL_DEVELOPMENT.md` remains unchanged. For evaluation, go directly to [Evaluation mode (HTTPS)](#evaluation-mode-https) and [Prepare the evaluation dataset](#prepare-the-evaluation-dataset), or follow the isolated candidate checkout below. The development instructions are an alternative workflow, not a prerequisite for evaluation.
 
 This document explains how to run TokenScope locally and how the development environment is structured.
 
-Current architecture and feature ownership are defined in [EVALUATION_ARCHITECTURE.md](./EVALUATION_ARCHITECTURE.md).
+Current architecture and feature ownership are defined in [EVALUATION_ARCHITECTURE-eval.md](./EVALUATION_ARCHITECTURE-eval.md).
 
-For the ordered evaluation walkthrough and results, see [DEMO.md](./DEMO.md).
+For the ordered evaluation walkthrough and results, see [DEMO-eval.md](./DEMO-eval.md).
 
 ## Requirements
 
@@ -25,17 +27,19 @@ Unless a section says otherwise, run commands on the host from the repository ro
 
 ## First setup
 
+This section starts development mode only. Do not run the development seed before preparing the evaluation dataset; its reserved records can conflict with the evaluation loader. For HTTPS evaluation, follow [Clean-checkout rehearsal](#clean-checkout-rehearsal) instead.
+
 Clone the repository:
 
 ```bash
-git clone --branch main git@github.com:lynyam/tokenscope.git
+git clone --branch develop https://github.com/lynyam/tokenscope.git
 cd tokenscope
 ```
 
 Create the local environment file if it does not already exist (keep your existing settings when returning to the project):
 
 ```bash
-cp .env.example .env
+test -e .env || cp .env.example .env
 ```
 Generate a local JWT signing secret:
 
@@ -254,8 +258,12 @@ Real secrets must never be committed.
 | `EVAL_HTTPS_PORT` | Host-shell setting; default `8443` | HTTPS port override | No |
 | `COMPOSE_PROJECT_NAME` | Optional unique name; retain it for follow-up commands | Isolated rehearsal | No |
 | `DOCUMENT_STORAGE_ROOT` | Compose: `/var/lib/tokenscope/documents`; absolute writable path | Backend with private documents | No; private server path |
-| `GEMINI_API_KEY`, `LLM_MODEL` | No fallback; supply an authorized key and model ID | Assistant requests | Key: yes; model: no |
-| `DEMO_PASSWORD` | No committed default; loader setup below | Evaluation accounts | Yes |
+| `GEMINI_API_KEY`, `LLM_MODEL` | Key empty in template; template model is `gemini-3.5-flash-lite`. The runtime has no model fallback; choose a model available to your account. | Assistant requests | Key: yes; model: no |
+| `DEMO_PASSWORD` | Operator-supplied 8–128-character password; no committed default | Evaluation accounts only | Yes |
+| `EVALUATION_SEED_ENABLED` | Keep `false` in `.env`; explicit Make command enables its child process only | Seed safety opt-in | No |
+| `SEED` | Make invocation: `1` explicitly seeds after HTTPS readiness; omitted means no seed | Optional demo preparation | No |
+| `CONFIRM_DATABASE` | Make invocation: actual local DB name, template `tokenscope` | Explicit seed confirmation | No |
+| `ANCHOR` | Optional Make argument: completed UTC day; default `2026-10-01` | Original golden fixtures only, not Analytics Demo | No |
 
 Change `REALTIME_ALLOWED_ORIGINS` when changing the application port. The evaluation hostname is `localhost`; the public certificate is exported to `.local/eval/caddy-root.crt`.
 
@@ -417,7 +425,7 @@ membership adapter, and page tests (including the organization deletion dialog) 
 Testing Library to exercise React interactions. These are development-only
 dependencies: Vitest runs assertions, jsdom supplies browser APIs, and Testing
 Library exercises controls and accessible output. They do not replace the
-real backend/two-browser acceptance flow in `DEMO.md`.
+real backend/two-browser acceptance flow in `DEMO-eval.md`.
 
 The frontend suite covers the shared HTTP client, authentication adapter and
 context, authentication forms, organization adapter and screens, and
@@ -448,7 +456,7 @@ TSE-72 extends transport for multipart uploads, private binary responses and ass
 
 Returned API-key plaintext must remain only in transient UI memory.
 
-See `EVALUATION_ARCHITECTURE.md` for current integration boundaries and `SPRINT_1_ARCHITECTURE.md` for the existing client/session design.
+See `EVALUATION_ARCHITECTURE-eval.md` for current integration boundaries and `SPRINT_1_ARCHITECTURE.md` for the existing client/session design.
 
 ### Browser end-to-end tests
 
@@ -575,7 +583,8 @@ Swagger UI and its specification are accessible without credentials.
 Executing trace operations through the UI requires a project API key and
 uses real endpoints and quotas. Use a disposable project and key.
 
-Before executing fixture requests, follow
+Before executing fixture requests, use the evaluation seed's existing prices or,
+only for a separate test-only database, follow
 [Explicit price catalogue loading](#explicit-price-catalogue-loading).
 Use explicit fixture dates for list queries; historical examples may fall
 outside the default last-seven-days window.
@@ -631,7 +640,7 @@ docs/ONBOARDING.md
 ```
 
 For the current architecture, see
-[Evaluation Architecture](./EVALUATION_ARCHITECTURE.md).
+[Evaluation Architecture](./EVALUATION_ARCHITECTURE-eval.md).
 
 ## Evaluation setup and feature ownership
 
@@ -728,7 +737,7 @@ The backend still validates its configuration.
 
 The backend runs `prisma migrate deploy` before starting NestJS.
 A migration failure prevents NestJS from starting.
-Startup does not generate migrations, reset the database or seed data.
+Startup never generates migrations or resets the database. Ordinary `make eval-up` does not seed; `make eval-up SEED=1 CONFIRM_DATABASE=tokenscope` explicitly prepares the complete dataset after HTTPS readiness. Configure `DEMO_PASSWORD` first and see [Prepare the evaluation dataset](#prepare-the-evaluation-dataset). A failed seed makes startup exit nonzero without a demo-ready claim.
 
 Service readiness waits, certificate availability and each HTTPS
 readiness check have a 120-second limit. Image downloads and builds
@@ -824,7 +833,9 @@ and the Caddy CA. A newly generated CA must be trusted again.
 
 ### Explicit price catalogue loading
 
-Catalogue loading is never automatic.
+Ordinary startup without `SEED=1` does not load prices. The explicit evaluation seed loads its own complete synthetic catalogue atomically; do not import prices separately before a first seed, and skip this section on an already-seeded database.
+
+Use the following standalone import only for a disposable API/browser-test database that will not subsequently receive the evaluation seed. It imports prices, not users or traces.
 
 With the backend and PostgreSQL running, compile the loader in development mode:
 
@@ -848,7 +859,7 @@ The complete catalogue is limited to 1,000 rows and input files to 1 MiB.
 Rates must be decimal strings. Non-synthetic entries require an HTTPS
 pricing source and an explicit effective date.
 
-Price catalogue loading never runs during normal application startup. Load the catalogue before submitting the fixture traces. This command imports prices only; it does not create evaluation accounts or traces.
+For this standalone test-database workflow, load the catalogue before submitting fixture traces. For the full evaluation demo use the seed instead; it already owns both prices and traces. Pre-imported fixture prices without a seed receipt cause `SEED_CONFLICT` on the first full seed.
 
 ### Troubleshooting
 
@@ -889,7 +900,7 @@ Browser proxy verification uses the test-only Socket.IO bundle installed under b
 Run `npm ci` in backend and frontend on the host, then `npx playwright install chromium`
 in frontend. No production frontend dependency is added by TSE-73.
 
-Load the synthetic catalogue explicitly before running browser QA. In development mode, first run `docker compose exec backend npm run build` as described in [Explicit price catalogue loading](#explicit-price-catalogue-loading):
+An evaluation-seeded database already has the synthetic catalogue: skip the following import there. Only for a disposable browser-test database that will not receive the evaluation seed, import prices explicitly. In development mode, first run `docker compose exec backend npm run build` as described in [Explicit price catalogue loading](#explicit-price-catalogue-loading):
 
 ```sh
 docker compose cp fixtures/evaluation/model-prices.json backend:/tmp/model-prices.json
@@ -918,13 +929,53 @@ This verifies transport and notifications, not the dashboard chart refresh owned
 
 ## Prepare the evaluation dataset
 
-The evaluation dataset supplies known accounts, traces and expected totals for the demonstration. It is not needed to start the application. Load it into a disposable rehearsal environment. HTTPS startup applies committed migrations without seeding or resetting data. The development `make db-setup` command runs its own development seed; it does not load this evaluation dataset. Evaluation accounts require an operator-supplied password rather than a committed default.
+TSE-70's loader is implemented in both dev and eval modes. Use [EVALUATION_SEED.md](EVALUATION_SEED.md) for its complete contract and [ANALYTICS_DEMO.md](ANALYTICS_DEMO.md) for the varied dashboard. No development-mode launch, separate Compose file, second environment file or provider account is required.
 
-**To complete with TSE-70:** the evaluation loader command, how to supply `DEMO_PASSWORD`, required services, password hashing, safe repeat/reset behaviour and the printed success output/effective period. The fixture files and standalone price loader do not create the evaluation accounts or load the full dataset.
+On the host, in the chosen local rehearsal checkout:
 
-Use [the fixture manifest](../fixtures/evaluation/manifest.json), [identities](../fixtures/evaluation/identities.json) and [expected results](../fixtures/evaluation/expected-results.json). The golden interval is `2026-10-01T00:00:00.000Z` inclusive to `2026-10-02T00:00:00.000Z` exclusive. If the loader prints a different anchor, use its effective period consistently.
+1. If absent, copy `.env.example` to `.env`; preserve existing configuration.
+2. Set your own evaluation-only `DEMO_PASSWORD` (8–128 characters) in the ignored `.env`. All four demo accounts share it, with independently salted password hashes. Do not put it in Make arguments or reports.
+3. Keep `EVALUATION_SEED_ENABLED=false`; the explicit command sets it only for the seed process.
+4. Confirm the name in `POSTGRES_DB` and `DATABASE_URL`. For the template database:
 
-The expected loaded dataset contains working accounts and six golden traces totalling 6,000 input tokens, 1,200 output tokens and USD `0.015350000000` in synthetic estimated cost. Keep pagination and destructive demonstrations in separate projects. See [DEMO.md](DEMO.md#golden-checkpoint) for the full checkpoint.
+```bash
+make eval-up SEED=1 CONFIRM_DATABASE=tokenscope
+```
+
+This builds the current images, applies committed migrations, verifies HTTPS readiness, then seeds in a transaction. Expect JSON with `outcome`, `fixtureVersion`, counts, account emails, `dashboardRange` and `analyticsDemo.range/dashboardPath`, followed by the startup ready message. Passwords and keys are not printed. A seed error exits nonzero and does not claim demo readiness; the healthy application can remain running.
+
+For a current, already-running backend with migrations applied:
+
+```bash
+make eval-seed CONFIRM_DATABASE=tokenscope
+```
+
+This command does not start or switch modes. Editing `.env` does not update an existing container: run `make eval-up` to recreate it, or use the seed guide's private exported-password procedure before `make eval-seed`. Evaluation runs the compiled loader; development uses the existing TSX runner.
+
+### Dataset and verification
+
+The current 1.3 seed has 4 users, 2 organizations, 4 memberships, 6 projects, 15 synthetic price versions, 899 traces and one receipt. It preserves the canonical 1.2 contract fixtures and adds Analytics Demo.
+
+- **Support Golden:** six traces with 6,000 input tokens, 1,200 output tokens and synthetic USD `0.015350000000`; default interval `2026-10-01T00:00:00.000Z` inclusive to `2026-10-02T00:00:00.000Z` exclusive. Use the printed `dashboardRange` if you deliberately selected another `ANCHOR` on a fresh seed.
+- **Analytics Demo:** 840 traces, four fictional providers, twelve models and a frozen seven-day interval. Open the printed `analyticsDemo.dashboardPath` on your HTTPS origin. Full-window totals: 6,277,671 tokens, synthetic USD `8.550480200000`, 49 ERROR records (5.83%). These ERROR records are simulated upstream data, not runtime or console errors.
+- **Other fixtures:** Empty Project, 51-row Pagination Project, an archived project and an isolated tenant support empty-state, pagination and access checks.
+
+No API key, JWT, upload or LLM request is created by the seed. All prices are synthetic, not provider quotes. The seed installs the complete catalogue: do not run the old development seed or a standalone price import first.
+
+### Repeats, upgrades and isolation
+
+| Installed state | Expected outcome |
+|---|---|
+| No seed/fixture collisions | `inserted`: complete 1.3 dataset, atomically |
+| Unchanged 1.2 seed, same password and golden anchor | `upgraded`: append Analytics Demo after verifying the old state |
+| Unchanged 1.3 seed | `already-present`: no writes |
+| Changed/deleted fixture rows, collisions, changed password/anchor or unsupported version | Refuse; do not overwrite or reset |
+
+The receipt freezes the analytics period at the first enriched seed or upgrade. Reruns do not move old dates forward; `ANCHOR` affects only the original golden fixtures. Use the printed exact path after records age out of “Last 7 days.”
+
+Leave seeded organizations and their memberships/projects/traces unchanged. Use separate disposable organizations for mutation demos. If a demonstration has altered the dataset, keep that database and prepare a new unused Compose project and free HTTPS port via [Clean-checkout rehearsal](#clean-checkout-rehearsal). Do not delete the receipt or volumes to force a rerun.
+
+Ordinary `make eval-up` remains available after mutations without reseeding. Verify known totals in [the evaluation walkthrough](DEMO-eval.md#golden-checkpoint), and retain the non-secret seed outcome/period with your evidence.
 
 ## Configure the Gemini assistant
 
@@ -935,7 +986,7 @@ GEMINI_API_KEY=<your Gemini API key>
 LLM_MODEL=<model ID available to your account>
 ```
 
-Replace both placeholders before starting the assistant. Neither setting has a fallback value. Compose passes them to the backend, where typed configuration makes them available to the assistant. They must never use a frontend `VITE_` prefix. The standalone Chat/Translation demo has its own configuration file; setting that file does not configure the dashboard assistant.
+Replace both placeholders before starting the assistant. The current `.env.example` supplies `LLM_MODEL=gemini-3.5-flash-lite`, but the runtime has no fallback when the value is empty. That template value is not proof of model availability or account quota; use a model actually supported by your account. Compose passes them to the backend, where typed configuration makes them available to the assistant. They must never use a frontend `VITE_` prefix. The standalone Chat/Translation demo has its own configuration file; setting that file does not configure the dashboard assistant.
 
 If either setting is missing, the application and non-assistant features remain available. An authorized assistant request returns HTTP `503` with application code `LLM_UNAVAILABLE`. Startup and health checks do not call Gemini.
 
@@ -961,11 +1012,11 @@ Expected: `Assistant configuration is present` and exit status 0. This confirms 
 
 ### Check the assistant
 
-With the complete stack healthy, sign in to a project you can access, select the intended dashboard dates and filters, and ask a short question about its analytics. Expect progressively displayed text. Check Stop and a subsequent request using the walkthrough in [DEMO.md](DEMO.md). The assistant sends authorized project metadata and analytics to Gemini; uploaded documents are excluded.
+With the complete stack healthy, sign in to a project you can access, select the intended dashboard dates and filters, and ask a short question about its analytics. Expect progressively displayed text. Check Stop and a subsequent request using the walkthrough in [DEMO-eval.md](DEMO-eval.md). The assistant sends authorized project metadata and analytics to Gemini; uploaded documents are excluded.
 
-The backend gate (`make test-backend`, from the host repository root) uses a fake provider for automated assistant tests. Live provider checks use real quota and are separate. Record the actual model, account tier, commit, environment and live results in [the evaluation run record](DEMO.md#evaluation-run-record). Use a model available to the configured account, not a synthetic fixture model label.
+The backend gate (`make test-backend`, from the host repository root) uses a fake provider for automated assistant tests. Live provider checks use real quota and are separate. Record the actual model, account tier, commit, environment and live results in [the evaluation run record](DEMO-eval.md#evaluation-run-record). Use a model available to the configured account, not a synthetic fixture model label.
 
-For the scripted streaming and Stop checks, use Linux with Bash, jq, curl and GNU coreutils (`timeout` and `date` with millisecond formatting). The proxy script is not directly portable to the default macOS command-line tools; on macOS, use the browser walkthrough above or run the script in a Linux environment that can reach the application. Use a disposable project with known analytics. The assistant's manual scripts live in `backend/test/manual/`. Load the [synthetic price catalogue](#explicit-price-catalogue-loading) first, then sign in, create a disposable organization/project and create its project API key.
+For the scripted streaming and Stop checks, use Linux with Bash, jq, curl and GNU coreutils (`timeout` and `date` with millisecond formatting). The proxy script is not directly portable to the default macOS command-line tools; on macOS, use the browser walkthrough above or run the script in a Linux environment that can reach the application. Use a disposable project with known analytics. The assistant's manual scripts live in `backend/test/manual/`. An evaluation-seeded database already contains the synthetic prices. Only in a separate test-only database, follow the [standalone catalogue alternative](#explicit-price-catalogue-loading). Then sign in, create a disposable organization/project outside the seeded organizations and create its project API key.
 
 From the host repository root, in Bash, read the project key without displaying it and load the six golden traces:
 
@@ -977,7 +1028,7 @@ BASE_URL=http://localhost:5173 backend/test/manual/load-assistant-fixture.sh
 unset API_KEY
 ```
 
-For evaluation, set `BASE_URL=https://localhost:8443` and prefix the script command with `CURL_CA_BUNDLE="$PWD/.local/eval/caddy-root.crt"` so curl verifies the exported CA. Check that each printed HTTP status is `201` for creation or `200` for an identical replay; the script’s final “Done” message alone does not establish success. Successful ingestion should produce the [golden totals](DEMO.md#golden-checkpoint) for the fixed fixture dates.
+For evaluation, set `BASE_URL=https://localhost:8443` and prefix the script command with `CURL_CA_BUNDLE="$PWD/.local/eval/caddy-root.crt"` so curl verifies the exported CA. Check that each printed HTTP status is `201` for creation or `200` for an identical replay; the script’s final “Done” message alone does not establish success. Successful ingestion should produce the [golden totals](DEMO-eval.md#golden-checkpoint) for the fixed fixture dates.
 
 The live proxy check makes three provider requests. In the same Bash shell, supply the signed-in user's token privately and replace the organization/project identifiers:
 
@@ -1017,25 +1068,38 @@ The encrypted PDF fixtures must be rejected. Backend document tests use temporar
 
 ## Clean-checkout rehearsal
 
-Use a separate checkout of `main` and an unused Compose project name. From that checkout's root, with `.env` prepared, select an available port and matching realtime origin:
+Use a fresh checkout of the same full evaluation SHA selected from integrated `develop` in [README-eval.md](../README-eval.md) and [DEMO-eval.md](DEMO-eval.md). Replace `EVALUATION_COMMIT`; do not switch a dirty working checkout. Starting from your chosen parent directory:
 
 ```bash
+git clone --branch develop https://github.com/lynyam/tokenscope.git tokenscope-evaluation
+cd tokenscope-evaluation
+git checkout --detach EVALUATION_COMMIT
 git rev-parse HEAD
+test -e .env || cp .env.example .env
 export COMPOSE_PROJECT_NAME=tokenscope-rehearsal
 export EVAL_HTTPS_PORT=9443
 export REALTIME_ALLOWED_ORIGINS=https://localhost:9443
-make eval-up
 ```
+
+Before starting, configure private local database credentials and `DEMO_PASSWORD` in `.env`, keeping `DATABASE_URL` consistent and `EVALUATION_SEED_ENABLED=false`. Leave `GEMINI_API_KEY` empty for the initial no-provider check. Confirm that the chosen Compose project name is unused and the port is free; reusing a project name does not create a fresh database.
+
+```bash
+make eval-up SEED=1 CONFIRM_DATABASE=tokenscope
+```
+
+Use your actual database name. The command starts evaluation directly; do not run the development setup or import prices first.
 
 Expected: a separate application database/volumes and successful readiness at `https://localhost:9443`. Trust this checkout's exported certificate. Keep these settings in the same host shell for follow-up commands; set them again if reopening the terminal. Use the same application Compose file, not a second evaluation stack.
 
-Record the tested commit, OS/tool versions, exact commands and results in [DEMO.md](DEMO.md#evaluation-run-record). Verify startup without Gemini first, then explicit data loading, optional provider/storage configuration and persistence across `make stop` / `make start`. Complete the browser matrix with Chrome, Firefox and Edge results. Keep setup failures and remaining issues with the affected result.
+Record the tested commit, OS/tool versions, exact commands and results in [DEMO-eval.md](DEMO-eval.md#evaluation-run-record). Preserve and reference existing feature evidence in [EVALUATION.md](EVALUATION.md); this guide does not turn its NOT RUN checks into passes. Verify startup without Gemini first, then explicit data loading, optional provider/storage configuration and persistence across `make stop` / `make start`. Complete the browser matrix with Chrome, Firefox and Edge results. Keep setup failures and remaining issues with the affected result.
 
 ### Command outcomes
 
 | Command group | Expected result |
 |---|---|
 | `make up`, `make eval-up` | Containers start; the database health endpoint returns HTTP 200. HTTPS startup also reports successful readiness checks. |
+| `make eval-up SEED=1 CONFIRM_DATABASE=name` | HTTPS readiness, seed outcome/counts/periods, then final ready message; a seed error exits nonzero. |
+| `make eval-seed CONFIRM_DATABASE=name` | Existing backend stays in its current mode; JSON outcome is inserted, upgraded or already-present, or a safe refusal. |
 | Prisma generate/migrate/status | Client generation and migrations finish without errors; status reports applied migrations. |
 | Type checks, builds and documentation checks | Exit status 0; builds produce their output files. |
 | Unit, integration and browser tests | A passing test summary; retain failures in the run record. |
@@ -1043,4 +1107,4 @@ Record the tested commit, OS/tool versions, exact commands and results in [DEMO.
 | `make stop`, `make start` | Containers stop or resume; after resuming, health checks pass again. |
 | `make clean` | Containers and network are removed; named volumes remain. |
 
-`make test-backend` creates its own test services and uses the fixed Compose project `tokenscope-test`; do not run multiple copies concurrently. Host-only type checks and builds do not require the application stack. Browser tests require all application services. Record actual commands, versions and results in the [evaluation run record](DEMO.md#evaluation-run-record), using PASS, FAIL, BLOCKED or NOT RUN.
+`make test-backend` creates its own test services and uses the fixed Compose project `tokenscope-test`; do not run multiple copies concurrently. Host-only type checks and builds do not require the application stack. Browser tests require all application services. Record actual commands, versions and results in the [evaluation run record](DEMO-eval.md#evaluation-run-record), using PASS, FAIL, BLOCKED or NOT RUN.
