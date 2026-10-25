@@ -50,6 +50,16 @@ export function SignUpPage() {
       navigate("/organizations", { replace: true });
     } catch (failure) {
       if (isAbortError(failure)) return;
+
+      // The email field already shows this message, so do not show it twice.
+      if (failure instanceof ApiError && failure.code === "EMAIL_ALREADY_EXISTS") {
+        setError("email", {
+          type: "server",
+          message: failure.message,
+        });
+        return;
+      }
+
       setAuthError(
         getApiErrorMessage(
           failure,
@@ -69,14 +79,6 @@ export function SignUpPage() {
               message: detail.messages.join(" "),
             });
           }
-        }
-
-        // API.md defines this conflict specifically for duplicate registration.
-        if (failure.code === "EMAIL_ALREADY_EXISTS") {
-          setError("email", {
-            type: "server",
-            message: failure.message,
-          });
         }
       }
     } finally {

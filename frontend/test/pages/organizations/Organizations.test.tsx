@@ -243,6 +243,42 @@ describe("organization screens with the real HTTP adapter", () => {
 		},
 	);
 
+	it("shows the not-found screen for an invalid organization id without signing out", async () => {
+		fetchMock.mockResolvedValueOnce(json({
+			code: "VALIDATION_ERROR",
+			message: "Request validation failed.",
+		}, 400));
+
+		renderPage("/organizations/not-a-uuid");
+
+		expect(await screen.findByText("Organization not found")).toBeInTheDocument();
+		expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+		expect(screen.getByRole("link", { name: /Back to organizations/ }))
+			.toHaveAttribute("href", "/organizations");
+		expect(screen.queryByText(organization.name)).not.toBeInTheDocument();
+		expect(getAccessToken()).toBe("organization-ui-test-token");
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not hide a non-400 response behind a validation error code", async () => {
+		fetchMock
+			.mockResolvedValueOnce(json({
+				code: "VALIDATION_ERROR",
+				message: "Unexpected server failure.",
+			}, 503))
+			.mockResolvedValueOnce(json(organization));
+
+		const user = userEvent.setup();
+		renderPage(`/organizations/${organization.id}`);
+
+		expect(await screen.findByRole("alert")).toHaveTextContent("Unexpected server failure.");
+		expect(screen.queryByText("Organization not found")).not.toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Retry" }));
+		expect(await screen.findByText(organization.name)).toBeInTheDocument();
+		expect(getAccessToken()).toBe("organization-ui-test-token");
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+	});
+
 	it("ignores the previous organization's late response after navigation", async () => {
 		let finishOldRequest!: (response: Response) => void;
 

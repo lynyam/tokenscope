@@ -1,5 +1,5 @@
 // Browser Router, enables routing to the components inside it
-import { BrowserRouter, Routes, Route, Outlet } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Outlet, Link } from "react-router-dom";
 //import { BrowserRouter, Navigate, Routes, Route, Outlet} from "react-router-dom"
 //Pages
 import { SignInPage} from "../pages/auth/SignInPage";
@@ -110,7 +110,13 @@ export function AppRouter()
                     />
                 </Route>
 
-                <Route path="*" element={<h1>404 Not Found</h1>} />
+                <Route path="*" element={
+                    <section className="flex min-h-screen flex-col items-center justify-center gap-3">
+                        <h1 className="text-2xl font-bold">404 Not Found</h1>
+                        <p>This page does not exist.</p>
+                        <Link to="/" className="underline">Back to home</Link>
+                    </section>
+                } />
                 </Route>
             </Routes>
         </BrowserRouter>

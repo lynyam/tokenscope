@@ -67,8 +67,14 @@ function OrganizationDetail({ organizationId, }: {
 			})
 			.catch(failure => {
 				if (!controller.signal.aborted && !isAbortError(failure)) {
-					// 404: show the "Organization not found" screen instead of Retry.
-					if (failure instanceof ApiError && failure.code === "ORGANIZATION_NOT_FOUND") {
+					// 404 or invalid id: show the "Organization not found" screen instead of Retry.
+					if (
+						failure instanceof ApiError &&
+						(
+							failure.code === "ORGANIZATION_NOT_FOUND" ||
+							(failure.statusCode === 400 && failure.code === "VALIDATION_ERROR")
+						)
+					) {
 						return;
 					}
 					setError(
@@ -162,6 +168,8 @@ function OrganizationDetail({ organizationId, }: {
 			setOrganization(updated);
 			setNameDraft(updated.name);
 			setIsEditing(false);
+			// Tell the sidebar switcher to show the new name.
+			window.dispatchEvent(new Event("organization-renamed"));
 		} catch (failure) {
 			if (signal.aborted || isAbortError(failure)) return;
 			if (handleAccessFailure(failure)) return;
