@@ -1,3 +1,4 @@
+import { AccessChangesService } from "../../src/access-changes/access-changes.service";
 import "reflect-metadata";
 import { HttpStatus } from "@nestjs/common";
 import { ApiException } from "../../src/common/errors/api.exception";
@@ -58,6 +59,7 @@ function setup() {
 	const service = new OrganizationsService(
 		{ $transaction: transaction } as unknown as PrismaService,
 		{ assertOrganizationRole: authorize } as unknown as OrganizationAccessService,
+		new AccessChangesService(),
 	);
 
 	const archive = (confirmSlug = "acme") =>

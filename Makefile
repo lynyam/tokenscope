@@ -5,6 +5,9 @@ BACKEND := backend
 FRONTEND := frontend
 DATABASE := postgres
 
+# Non-secret seed options. DEMO_PASSWORD belongs in ignored .env or exported env.
+export SEED CONFIRM_DATABASE ANCHOR
+
 
 #APPS
 
@@ -73,6 +76,16 @@ frontendcheck:
 frontendtest:
 	$(COMPOSE) exec $(FRONTEND) npm run test
 
+# Real-browser suite. It runs on the host (Playwright's browsers do not run in the Alpine frontend
+# container) against a stack that is already up: `make up` (http://localhost:5173, the default)
+# or `make eval-up` (E2E_BASE_URL=https://localhost:8443).
+frontende2e-setup:
+	cd frontend && npm ci --no-audit --no-fund && npx playwright install firefox
+	@printf '%s\n' 'Chrome and Edge must also be installed. See docs/BROWSER_COMPATIBILITY-eval.md.'
+
+frontende2e:
+	cd frontend && E2E_BASE_URL=$${E2E_BASE_URL:-http://localhost:5173} npm run test:e2e -- $(E2E_ARGS)
+
 backendcheck:
 	$(COMPOSE) exec $(BACKEND) npm run check
 
@@ -114,72 +127,34 @@ test-backend:
 eval-up:
 	@sh scripts/eval-up.sh
 
+eval-seed:
+	@sh scripts/eval-seed.sh
 
-# EXTERNAL DEMO — local HTTP development setup
-# EXTERNAL DEMO — local HTTP development setup
-DEMO_DIR := $(CURDIR)/examples/external-demo
-DEMO_IMAGE := docker.io/library/node:24-alpine
-DEMO_RUNTIME ?= docker
-DEMO_USER_FLAGS ?= --user "$$(id -u):$$(id -g)"
-DEMO_VOLUME_SUFFIX ?=
-DEMO_CA_FILE ?=
-DEMO_BACKEND_CONTAINER ?= tokenscope_backend_1
-DEMO_BACKEND_DIR ?= /app
+test-eval-startup:
+	@sh scripts/test-eval-startup.sh
 
-demo-install:
-	$(DEMO_RUNTIME) run --rm \
-		$(DEMO_USER_FLAGS) \
-		-e npm_config_cache=/tmp/npm-cache \
-		-v "$(DEMO_DIR):/app:rw$(DEMO_VOLUME_SUFFIX)" \
-		-w /app \
-		$(DEMO_IMAGE) npm ci
+# Optional external application; never a dependency of eval-up or up.
+demo-build:
+	@sh scripts/demo.sh build
+
+demo-config:
+	@bash scripts/demo-config.sh
 
 demo-up:
-	@test -f "$(DEMO_DIR)/.env" || \
-		(echo "Configure examples/external-demo/.env first." && exit 1)
-	@set -eu; \
-	set --; \
-	if [ -n "$(DEMO_CA_FILE)" ]; then \
-		test -s "$(DEMO_CA_FILE)" || \
-			{ echo "Certificate file not found: $(DEMO_CA_FILE)"; exit 1; }; \
-		set -- \
-			-e NODE_EXTRA_CA_CERTS=/certs/caddy-root.crt \
-			-v "$(abspath $(DEMO_CA_FILE)):/certs/caddy-root.crt:ro$(DEMO_VOLUME_SUFFIX)"; \
-	fi; \
-	$(DEMO_RUNTIME) run --rm --init --network host \
-		$(DEMO_USER_FLAGS) \
-		"$$@" \
-		-v "$(DEMO_DIR):/app:ro$(DEMO_VOLUME_SUFFIX)" \
-		-w /app \
-		$(DEMO_IMAGE) npm start
+	@sh scripts/demo.sh up
 
-demo-up-42:
-	$(MAKE) demo-up DEMO_RUNTIME=podman \
-		DEMO_USER_FLAGS=--userns=keep-id DEMO_VOLUME_SUFFIX=,Z
+demo-down:
+	@sh scripts/demo.sh down
 
-demo-install-42:
-	$(MAKE) demo-install DEMO_RUNTIME=podman \
-		DEMO_USER_FLAGS=--userns=keep-id DEMO_VOLUME_SUFFIX=,z
+demo-logs:
+	@sh scripts/demo.sh logs
 
-demo-pricing-42:
-	podman cp "$(DEMO_DIR)/config/model-prices.json" \
-		"$(DEMO_BACKEND_CONTAINER):/tmp/external-demo-prices.json"
-	podman exec -w "$(DEMO_BACKEND_DIR)" "$(DEMO_BACKEND_CONTAINER)" \
-		npm run pricing:load -- --file /tmp/external-demo-prices.json
+demo-test:
+	@sh scripts/demo.sh test
 
-demo-setup-42:
-	bash scripts/demo-config.sh
-	$(MAKE) demo-install-42
-	$(MAKE) demo-pricing-42
+test-demo-startup:
+	@sh scripts/test-demo-startup.sh
 
-demo-setup-eval-42:
-	$(MAKE) demo-setup-42 DEMO_BACKEND_DIR=/opt/tokenscope/backend
-
-demo-up-eval-42:
-	$(MAKE) demo-up-42 DEMO_CA_FILE="$(CURDIR)/.local/eval/caddy-root.crt"
-
-
-.PHONY: demo-install demo-install-42 demo-up demo-up-42 demo-pricing-42 demo-setup-42 demo-setup-eval-42 demo-up-eval-42
 #HELP
 
 help:
@@ -197,8 +172,22 @@ help:
 	@echo "  make logs                          Follow service logs"
 	@echo "  make ps                            Show service status"
 	@echo "  make eval-up                       Build and start HTTPS evaluation mode"
+	@echo "  make eval-up SEED=1 CONFIRM_DATABASE=name  Start and explicitly seed the local demo"
+	@echo "  make eval-seed CONFIRM_DATABASE=name      Seed the running dev/eval backend"
+	@echo "  make test-eval-startup              Check startup/seed orchestration without Docker"
 	@echo "  make psa                            Show all service status"
 	@echo "  make shell                         Open backend shell"
+	@echo ""
+	@echo "Optional external demo (Ubuntu Docker Engine):"
+	@echo "  make demo-build                    Prepare the demo image without credentials"
+	@echo "  make demo-config                   Configure Gemini and project keys privately"
+	@echo "  make demo-up                       Start only the demo; requires eval-up first"
+	@echo "  make demo-down                     Stop/remove only this checkout's demo container"
+	@echo "  make demo-logs                     Follow demo container logs"
+	@echo "  make demo-test                     Run demo application tests in Docker"
+	@echo "  make test-demo-startup             Check demo lifecycle orchestration"
+	@echo "  Evaluation prices load automatically during make eval-up."
+	@echo "  Guide: docs/EXTERNAL_DEMO-eval.md"
 	@echo ""
 	@echo "Database:"
 	@echo "  make db-shell                      Open PostgreSQL shell"
@@ -215,9 +204,13 @@ help:
 	@echo "  make fullclean                     Also remove volumes/local images"
 	@echo "  make test-backend                  Check, build, unit, E2E and isolated database tests"
 	@echo "  make frontendtest                  Run frontend Vitest suite"
+	@echo "  make frontende2e-setup             Install host dependencies and Chromium for browser tests"
+	@echo "  make frontende2e                   Run Playwright browser tests (E2E_BASE_URL, E2E_ARGS)"
 	@echo ""
 
 .PHONY: \
-	up eval-up start stop restart logs ps shell \
+	up eval-up eval-seed test-eval-startup start stop restart logs ps shell \
 	db-shell db-generate db-migrate db-migration db-seed db-status db-studio db-setup \
-	clean fullclean help test-db test-db-clean test-db-fresh test-backend frontendtest
+	clean fullclean help test-db test-db-clean test-db-fresh test-backend frontendtest \
+	frontende2e frontende2e-setup \
+	demo-build demo-config demo-up demo-down demo-logs demo-test test-demo-startup

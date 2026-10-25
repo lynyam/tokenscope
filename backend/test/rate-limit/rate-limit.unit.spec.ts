@@ -62,4 +62,22 @@ describe("Shared fixed-window limiter", () => {
 		expect(limits.consume("capacity", "new", 1).allowed)
 			.toBe(true);
 	});
+	it("does not charge either rolling budget when one rejects admission", () => {
+		const project = { namespace: "assistant-project", identity: "p", limit: 1 };
+		limits.consumeRolling([{ namespace: "assistant-user", identity: "a", limit: 1 }, project]);
+		const otherUser = { namespace: "assistant-user", identity: "b", limit: 1 };
+		expect(limits.consumeRolling([otherUser, project]).allowed).toBe(false);
+		expect(limits.consumeRolling([otherUser, { ...project, identity: "other" }]).allowed).toBe(true);
+	});
+
+	it("bounds rolling counters and reclaims expired entries", () => {
+		const budget = { namespace: "rolling-capacity", identity: "", limit: 1 };
+		for (let i = 0; i < 10_000; i += 1) {
+			expect(limits.consumeRolling([{ ...budget, identity: String(i) }]).allowed).toBe(true);
+		}
+		expect(limits.consumeRolling([{ ...budget, identity: "new" }]).allowed).toBe(false);
+		now = 60_000;
+		expect(limits.consumeRolling([{ ...budget, identity: "new" }]).allowed).toBe(true);
+	});
+
 });

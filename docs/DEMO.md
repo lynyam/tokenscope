@@ -1,5 +1,11 @@
 # M1 demo and acceptance runbook
 
+For the **current evaluation demo**, start with
+[Evaluation demo data — TSE-70](EVALUATION_SEED.md): accounts, one-command HTTPS
+startup with explicit seeding, exact analytics, independent mutation scenarios
+and tests. Do not use the historical M1 reset procedure below to prepare a
+shared working database.
+
 > This runbook’s existing numbered procedure verifies the Sprint 1 identity/workspace baseline.
 >
 > References to M2 placeholders and excluded features apply to that historical baseline. They do not prohibit the evaluation extensions defined in [EVALUATION_ARCHITECTURE.md](./EVALUATION_ARCHITECTURE.md).
@@ -188,7 +194,7 @@ ALICE_ORGANIZATION_JSON=$(
     }'
 )
 
-ALICE_ORGANIZATION_ID=$(
+ALICE_ORGANIZATION_ID=$(x
   printf '%s' "$ALICE_ORGANIZATION_JSON" | jq -r '.id'
 )
 
@@ -524,6 +530,27 @@ In each window:
 3. Verify protected pages redirect to sign-in.
 4. Verify the token has been removed from frontend storage.
 
+### Documents page (TSE-79)
+
+Documents are stored privately for project members. They are not used by the
+assistant. Use `UI Demo Project` with Alice (OWNER) and Bob (MEMBER); small
+sample files are in `fixtures/evaluation/uploads/`.
+
+1. As Alice, open the project and choose **Documents**
+   (`/organizations/:organizationId/projects/:projectId/documents`).
+2. Verify the empty state only appears after the list has loaded.
+3. Choose `sample-brief.pdf`. Verify nothing is sent until **Upload** is pressed.
+4. Press **Upload**. Verify the progress bar, then **Processing file…** once all
+   bytes are sent. The document appears only after the server answers `201`.
+5. Try `empty.txt` and a renamed `.exe`: both are refused locally with an inline message.
+   `malformed.pdf` and `invalid-utf8.txt` pass the local checks and are rejected by the server.
+6. **Preview** the PDF (first page, "Page 1 of N"), `sample-guide.md` and
+   `sample-policy.txt` (escaped plain text, first 100 KiB). Close and reopen each.
+7. **Download** a file and compare its bytes with the fixture (`cmp`).
+8. As Bob (MEMBER): the list, **Preview** and **Download** work; there is no upload form and no **Delete**.
+9. As Alice, **Delete** a document: Cancel sends nothing; confirming removes the row and the list refreshes.
+10. Archive the project and reload the page: an unavailable message appears and Alice stays signed in.
+
 ## 4. Automated checks
 
 Run from the repository root:
@@ -602,6 +629,34 @@ Do not reuse older test totals as fresh evidence.
 | Browsers | Chrome, Firefox and Edge evidence |
 | Public pages | Accessible Privacy/Terms reflecting actual implementation |
 
+### API keys management UI — TSE-74
+
+Status: NOT RUN. These steps can be performed by hand. `frontend/test/e2e/api-keys.spec.ts` automates the same journey against a running stack (see [LOCAL_DEVELOPMENT.md](./LOCAL_DEVELOPMENT.md)); a skipped journey is not a pass.
+
+Use Alice (OWNER) and Bob (MEMBER) in two browser windows, as in section 3. Never record a real key: take screenshots before the key is displayed or with the key field hidden, and keep it out of notes, logs and shared recordings.
+
+| # | Steps | Expected |
+|---|---|---|
+| 1 | Alice opens `UI Demo Project` and selects **API keys** | The list loads; with no key it reads "No API keys yet." |
+| 2 | Alice creates a key named `Demo writer` | A dialog shows the full key once, with a Copy button and the scope wording |
+| 3 | Alice clicks **Copy** and pastes into a scratch editor | "Copied to clipboard." appears only after the clipboard accepted the key; the pasted value is complete |
+| 4 | Alice closes the dialog and reloads the page | The list shows the name, the prefix and `Active`; the full key appears nowhere |
+| 5 | Alice clicks **Revoke**, then **Cancel** | No request is sent (browser network tab) |
+| 6 | Alice clicks **Revoke**, then **Revoke key** | The row shows `Revoked` and a date after the list refresh |
+| 7 | Bob opens the same URL | A permission-denied message, no controls and no list request |
+| 8 | Alice archives the project and reopens the page | "Project not found." and no list request (the backend would answer 404 for an archived project) |
+| 9 | Before revocation, use the UI-created key to POST a canonical trace; after UI revocation, GET that trace with the same key | POST returns 201; the JWT project detail endpoint finds the trace in the intended project; after revocation the public GET returns 401 INVALID_API_KEY |
+| 10 | Alice creates a key, then presses Escape on the secret dialog | "Close without saving?" appears and the key stays visible; a second Escape goes back to the key |
+| 11 | With the secret dialog open, Alice clicks outside it, then **Close and discard** | The same confirmation appears; after **Close and discard** the key is gone and cannot be shown again |
+
+Public clients send the key in exactly one header. A JWT is not accepted there, and the key is not accepted on browser workspace routes (see [API.md](./API.md)). The public trace routes and interactive documentation at `/api/v1/public/docs` are available:
+
+```sh
+curl "$TOKENSCOPE_ORIGIN/api/v1/public/traces" -H "X-API-Key: <PROJECT_API_KEY>"
+```
+
+For each row record the commit SHA, the environment, PASS, FAIL, BLOCKED or NOT RUN, and safe evidence only.
+
 ### Canonical analytics fixture
 
 Use the full UTC day:
@@ -637,7 +692,7 @@ Keep the 51-row pagination dataset, cross-tenant data and mutation demonstration
 
 - Fixtures do not automatically populate the application.
 - Evaluation seeding is explicit and uses an operator-supplied password.
-- Normal startup must not reset or seed user data.
+- Normal startup must not reset or seed user data; `SEED=1` explicitly requests demo preparation.
 - Mocked HTTP tests do not prove database authorization.
 - Simulated streams do not prove a working Gemini account.
 - A Chromium run does not prove Firefox or actual Edge compatibility.
@@ -645,6 +700,27 @@ Keep the 51-row pagination dataset, cross-tenant data and mutation demonstration
 - A passing retry does not erase an unexplained flaky failure.
 
 The 16-point figure remains a target until complete functionality and the subject’s requirements have been demonstrated.
+
+### Assistant demo — TSE-80
+
+Backend/proxy check (golden project loaded as in
+LOCAL_DEVELOPMENT.md, "Dashboard assistant — TSE-80 / TSE-81").
+The UI demonstration follows under "Dashboard assistant UI — TSE-81":
+
+1. Select the golden period: `2026-10-01T00:00:00.000Z` to `2026-10-02T00:00:00.000Z`, no filters.
+2. Ask: "Which model contributes most to the estimated cost?"
+3. Show `start`: its `context` has the scope, the generation time, 6 traces,
+   `"0.015350000000"` USD and `containsSyntheticPricing: true`.
+4. Show the `delta` lines arriving over time, then `done`.
+5. The answer should name `fixture-b/demo-large` (`"0.008200000000"`) and say the
+   prices are synthetic. Do not expect exact wording.
+6. Stop: run the same request and interrupt it. An immediate new question
+   is accepted (`200`, not `429`).
+7. Access loss: while an answer streams, remove the member or archive the
+   project; the stream ends with an `error` event `PROJECT_NOT_FOUND` within 5 seconds.
+
+`backend/test/manual/assistant-proxy-check.sh` runs steps 2–6 through the
+Vite proxy or the evaluation HTTPS proxy. It uses real Gemini quota.
 
 ### Canonical evaluation data
 
@@ -657,6 +733,258 @@ The golden period is 2026-10-01T00:00:00.000Z inclusive through
 The six golden traces total 0.015350000000 USD in synthetic
 estimated cost.
 
-TSE-70 owns loading usable evaluation data. Fixture presence alone
-does not demonstrate implemented feature endpoints or live Gemini
-integration.
+Load the complete dataset with
+`make eval-up SEED=1 CONFIRM_DATABASE=tokenscope` after setting your own
+`DEMO_PASSWORD` in the existing ignored `.env`. Use
+`make eval-seed CONFIRM_DATABASE=tokenscope` against an already-running dev or
+eval backend. See [EVALUATION_SEED.md](EVALUATION_SEED.md) for safety checks and
+the required actual test runs. Fixture presence or a successful seed alone does
+not demonstrate every feature endpoint, uploads or live Gemini integration.
+
+## Private documents — TSE-78 manual check
+
+Replace the variables with a real organization and an owner access token.
+
+```bash
+# Use a fresh, active project: the archive step above made the earlier $PROJECT_ID inaccessible.
+PROJECT_ID=$(curl --fail --silent -X POST "$DEMO_API_BASE/organizations/$ORG_ID/projects" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"name": "Documents demo"}' | jq -r '.id')
+
+P="$DEMO_API_BASE/organizations/$ORG_ID/projects/$PROJECT_ID/documents"
+H="Authorization: Bearer $TOKEN"
+
+printf 'hello' > /tmp/demo.txt
+DOC_ID=$(curl --fail --silent -H "$H" -F "file=@/tmp/demo.txt" "$P" | jq -r '.id')   # upload: 201 summary, no storage key
+curl -s -H "$H" "$P"                                          # list, newest first
+curl -s -H "$H" "$P/$DOC_ID/content"                          # hello
+curl -s -D - -o /dev/null -H "$H" "$P/$DOC_ID/content?download=true"   # attachment, nosniff, no-store
+```
+
+Member access (before the document is deleted):
+
+```bash
+# Add a second user as MEMBER (see section 2), then:
+curl -s -H "Authorization: Bearer $MEMBER_TOKEN" "$P/$DOC_ID/content"        # 200, same bytes
+curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $MEMBER_TOKEN" -F "file=@/tmp/demo.txt" "$P"   # 403
+
+curl -s -o /dev/null -w '%{http_code}\n' -X DELETE -H "Authorization: Bearer $MEMBER_TOKEN" "$P/$DOC_ID"   # 403
+```
+
+Delete, then archive retention:
+
+```bash
+curl -s -X DELETE -o /dev/null -w '%{http_code}\n' -H "$H" "$P/$DOC_ID"  # 204
+curl -s -X DELETE -o /dev/null -w '%{http_code}\n' -H "$H" "$P/$DOC_ID"  # 404
+
+# Upload one more document, then archive the project: access is denied, files are kept.
+curl -s -o /dev/null -H "$H" -F "file=@/tmp/demo.txt" "$P"
+curl --fail --silent -X DELETE -H "$H" "$DEMO_API_BASE/organizations/$ORG_ID/projects/$PROJECT_ID"
+curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" "$P"   # 404 PROJECT_NOT_FOUND
+docker compose exec backend ls -R /var/lib/tokenscope/documents                    # the bytes are still there
+```
+
+Expected rejections: a `.docx` file gives `415`, a text file with invalid UTF-8 gives `422`, an 11 MiB file gives `413`, the sixth upload within a minute gives `429` with `Retry-After`, and a member token gives `403` on upload or delete.
+### Trace Explorer (read-only)
+
+Open a project, then **Traces**. The list shows UTC time, provider/model, workflow, tokens, estimated cost,
+latency and status for the last seven days (resolved to explicit dates in the URL). For the golden period use:
+
+```
+/organizations/<org>/projects/<project>/traces?from=2026-10-01T00:00:00.000Z&to=2026-10-02T00:00:00.000Z
+```
+
+Search, filters, sorting and paging all live in the URL, so a copied link reproduces the screen.
+Integration and shared-filter ownership:
+`docs/EVALUATION_ARCHITECTURE.md`, “Frontend Trace Explorer integration — TSE-75”.
+Realtime refresh remains pending shared frontend client integration.
+
+## Realtime handoff — TSE-73 / TSE-76
+
+1. Load the documented synthetic price catalogue and use a disposable organization/project.
+2. Open two authorized dashboard sessions when TSE-76 is integrated. Both must subscribe
+   successfully to the same project. Confirm another project does not receive its notifications.
+3. Select `[2026-10-01T00:00:00.000Z, 2026-10-02T00:00:00.000Z)` for the supplied
+   `fixtures/evaluation/realtime/live-trace-request.json`; its timestamp is historical.
+4. Send that body to `POST /api/v1/public/traces` with a valid project `X-API-Key`.
+   Use a fresh externalId for each demonstration; identical POST replay produces no notification.
+5. Confirm one minimal `traces.changed` reaches each authorized viewer, then the dashboard
+   fetches fresh analytics with its current applied dates/filters. Under normal local evaluation
+   conditions both dashboards should update within two seconds (TSE-76 integrated evidence).
+6. Correct the trace with PUT and the current If-Match, then soft-delete with DELETE and
+   the new If-Match. Both actual commits must invalidate; no-op PUT must not.
+7. Remove a member or archive a parent: affected sockets receive `access.revoked` and
+   stop receiving data. Demotion to MEMBER keeps read access. Expired JWT disconnects.
+8. Disconnect/reconnect a browser: it must re-subscribe and refetch; no missed-event replay is promised.
+
+Before the dashboard is available, run `frontend/test/e2e/realtime.spec.ts` in development
+and HTTPS evaluation modes using LOCAL_DEVELOPMENT.md. Record commit, mode, commands and
+actual results. Transport-only evidence must not be presented as a completed dashboard demo.
+
+For a disposable evaluation project, set `TOKENSCOPE_KEY` locally and send the fixture:
+
+```sh
+curl --fail-with-body --cacert .local/eval/caddy-root.crt \
+  -H "X-API-Key: $TOKENSCOPE_KEY" \
+  -H 'Content-Type: application/json' \
+  --data-binary @fixtures/evaluation/realtime/live-trace-request.json \
+  https://localhost:8443/api/v1/public/traces
+```
+
+Keep the returned trace id and ETag for PUT/DELETE. Do not commit the key.
+
+
+### Project Overview dashboard — TSE-76
+
+1. Load the canonical price catalogue explicitly and ingest the six golden traces into a disposable project.
+2. Open its Overview and apply `2026-10-01T00:00:00.000Z` to `2026-10-02T00:00:00.000Z`.
+3. Confirm 6 traces, 6,000 input tokens, 1,200 output tokens and estimated cost USD 0.015350000000.
+4. Open each chart's exact-value table and operate its legend with the keyboard.
+5. Open the project in two authorized browser contexts and wait for Live.
+6. Ingest `fixtures/evaluation/realtime/live-trace-request.json` with a new externalId.
+   Its fixed occurrence time is inside the selected golden period. Both dashboards must update within two seconds.
+7. Correct and delete that new trace with its current ETag; both dashboards must refetch authoritative totals.
+8. Disconnect one browser, write again, reconnect and verify recovery. Remove a member and confirm their
+   project content disappears while their login remains valid.
+9. For genuinely current traces, deliberately choose a custom UTC window covering their occurrence times.
+   Presets resolve once: Live does not silently advance their upper boundary.
+
+Record dev and trusted-HTTPS browser results separately. Dashboard realtime does not establish
+Explorer realtime: TSE-87 verifies the real list and detail screens separately.
+Leave an Explorer browser open while another client ingests, corrects and deletes a trace in its
+applied period. Check the rows/detail change without Refresh or reload, then check reconnection
+and access revocation. Keep the same URL selection throughout; notifications do not advance dates.
+
+
+### Dashboard assistant UI — TSE-81
+
+This is an **opt-in live Gemini check**, not the intercepted Playwright suite.
+Use a disposable project, backend-only Gemini configuration and the canonical
+catalogue + six golden traces described in LOCAL_DEVELOPMENT.md. Do not load
+transcripts into the application or use uploaded documents as assistant context.
+
+1. Sign in as an organization member and open the project detail's Analytics dashboard.
+   Apply `2026-10-01T00:00:00.000Z` to `2026-10-02T00:00:00.000Z`, without filters.
+2. Open **Ask assistant**. Confirm no assistant POST occurs until Ask. Read the disclosure.
+3. Ask which model contributes most to estimated cost. In Network verify one authenticated
+   POST containing only `question`, `from`, `to`, `filters`; do not export credentials.
+4. Expand **Context used** and verify six traces, 6,000 input + 1,200 output = 7,200 total tokens,
+   `$0.01535` (wire value `0.015350000000`), explicit UTC dates, generation timestamp
+   and synthetic pricing. Verify visible text arrives before completion, without
+   asserting exact Gemini wording. The expected highest-cost group is fixture-b/demo-large.
+5. Refresh dashboard data for the same selection: the answer/context stay unchanged.
+   Edit a date draft without applying: it also stays. Apply changed dates or filters:
+   the answer/context clear, and any current generation is aborted.
+6. Deliberately submit another question. While requesting/streaming, click **Stop**.
+   Text must stop growing and show **Stopped — answer incomplete** (or
+   **Stopped before an answer was received.** if no text arrived). Verify the backend
+   records `assistant_answer` with `outcome: client_left` for that request. If it had
+   already completed, that attempt did not test cancellation; record it honestly.
+7. After cleanup, use **Reuse question**, then Ask (or type a new question):
+   one new request may succeed; no automatic retry.
+   Close and reopen: question, context and answer are cleared. Test keyboard Escape too.
+8. Repeat generation and Stop through `https://localhost:8443`, with the real CA trusted.
+   Use a fresh rate-limit window between runs. A timeout/quota failure is a visible failure,
+   not proof of successful streaming. Never change deadlines just to get this check green.
+
+OWNER, ADMIN and MEMBER mounting, deterministic failures and scope handling are also
+covered by `assistant.spec.ts`; those assistant responses are intercepted. Keep that
+result separate from this live-provider proof. Record commit, mode, results and limits;
+redact JWTs, API keys and Gemini credentials from evidence.
+
+#### Assistant improvements — TSE-89
+
+Repeat these checks in dev and HTTPS eval using the live setup above. Rebuild
+eval after source changes. Do not replace the live result with an intercepted test.
+
+1. Submit a question with Enter (Shift+Enter adds a line). The field clears
+   immediately and the question appears in its bubble while "Preparing answer…"
+   is shown. Stop before text: the question remains in the bubble, the input stays
+   empty, and the stopped status explains that no answer arrived. **Reuse question**
+   fills the input without sending; a deliberate Ask sends one new request.
+   Ordinary failures follow the same explicit reuse flow, with no automatic retry.
+2. While an answer is arriving, Expand/Collapse using Enter or Space on the button.
+   Confirm one POST throughout, unchanged context, and continuing answer text.
+   Drag to the minimum size: wheel scrolling must still reach the composer and Stop.
+   Resize the viewport too; Close, Expand and Stop must remain reachable.
+3. With enough answer text to scroll, stay at the bottom and observe following.
+   Scroll up: incoming text must not pull the view back down. Use **New text below**
+   to resume following. Stop must remain effective in expanded and compact modes.
+4. In DevTools, record when the first complete `delta` is received, when its text
+   appears, and when `done` arrives. Use a longer but bounded question, for example
+   "Compare both models and explain costs, tokens and errors in six short paragraphs."
+   Text must appear while the response is still in progress. Do not require a
+   particular number of tokens per fragment or add artificial typing delays.
+5. If the answer arrives all at once, use the existing unbuffered
+   `backend/test/manual/assistant-proxy-check.sh` with the same mode/model/scope.
+   Progressive wire events with delayed UI point to frontend rendering; batching
+   on the wire requires comparing provider/backend/proxy timing before assigning
+   a cause. Dev success alone does not validate HTTPS. A single short provider
+   fragment followed immediately by `done` is inconclusive for progressive display.
+
+6. Ask a second question in the same scope. Both exchanges remain in order, with
+   their own context and status. Stop partway through another answer: its partial
+   text remains when the following question is submitted. Inspect the outgoing
+   request: it still contains only question/from/to/filters, never earlier exchanges.
+7. **Context used** starts collapsed. Open/close it and its nested **By provider /
+   model** disclosure with mouse and keyboard. Values are unchanged and no request
+   is sent. Check generated Markdown renders bold text, lists and inline code;
+   incomplete Markdown may reformat as more streamed text arrives. Do not insert
+   artificial typing delays. No model-generated images or links should load.
+8. Change applied period/filters or project: all retained exchanges disappear.
+   Close/reopen and logout also clear them. A same-selection refresh preserves them.
+
+Record the tested commit, mode, model, whether partial text appeared before `done`,
+Stop outcome and any unresolved batching. Automated frontend tests exercise bytes
+and UI behavior; they do not establish live Gemini cadence or proxy delivery.
+
+### Dashboard exports — TSE-77 manual check
+
+Use a project containing the six golden traces with the synthetic catalogue
+loaded. Open its Analytics section; apply the exact UTC period
+`2026-10-01T00:00:00.000Z` to `2026-10-02T00:00:00.000Z` (exclusive end).
+
+1. Confirm six traces, 6000 input tokens, 1200 output tokens and estimated cost
+   USD 0.01535. Export CSV and PDF; neither click should request analytics again.
+2. CSV has 24 columns and 27 data rows: one summary, 24 series buckets and two
+   models. Its summary cost is exactly `0.015350000000`. Selection metadata and
+   snapshot identity agree across every row.
+3. Open the actual PDF. Check project identity, generated time, UTC period,
+   filters, summary, all model/series rows, repeated table headers, page numbers
+   and the estimate/synthetic-pricing note. Check wrapping with a long name.
+4. Filter `provider=fixture-a`: three traces and cost `0.007150000000`. Both files
+   describe that filter. Then select an empty period: export stays available,
+   series contains zero buckets and PDF null averages/rates say `No observations`.
+5. While a new applied selection loads, exports are disabled. A same-selection
+   refresh can export the last displayed snapshot. Sign-out, access loss or
+   navigation must discard pending downloads; generation failure offers Retry.
+6. Verify a name such as `Équipe Ελληνικά Кириллица` visually. DejaVu Sans does
+   not cover all accepted Unicode characters (notably CJK and some emoji): do
+   not count that test as proof of unrestricted Unicode coverage. Broader font
+   coverage remains an acceptance gap until a font/fallback is supplied and tested.
+
+Run in development and HTTPS evaluation mode using the setup in
+`docs/LOCAL_DEVELOPMENT.md`, “Dashboard export checks — TSE-77”. Record the tested
+commit/mode and distinguish automated download checks from visual PDF inspection.
+
+## Public legal pages and responsive navigation — PR #40
+
+1. Open `/privacy` and `/terms` directly, signed out; refresh each. Verify headings,
+   browser titles, footer links and long-text readability at 375px and 200% zoom.
+2. Keep a token stored and deliberately block `/api/v1/auth/me`. The application
+   shows its existing verification error; its legal links must still work. Direct
+   legal navigation must not call `/auth/me` or erase the token. Remove the block
+   before returning to the application.
+3. Toggle light/dark, visit a legal page and reload. Verify the preference persists;
+   check notifications after a normal application action use the same theme.
+4. At 375px, open navigation using the keyboard. Tab remains inside the drawer;
+   Escape/Close returns focus to Open menu. Follow Members and switch organizations;
+   the drawer closes and the destination is usable. At 768px and 1440px, desktop
+   navigation is visible. Resize back without losing a page's unsaved form draft.
+5. Open project Analytics, Traces/detail, Documents and API Keys using existing role
+   accounts. Verify links, guarded access, realtime and assistant behavior still
+   work. This is integration verification, not a replacement for TSE-88's full
+   responsive matrix or TSE-84's cross-browser checks.
+6. Before declaring TSE-82 complete, supply the real operator/private-contact and
+   deployment facts listed in `SECURITY.md`. Verify the published text against the
+   final deployment; public GitHub issues must not solicit personal information.

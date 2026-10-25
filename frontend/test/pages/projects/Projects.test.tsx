@@ -11,6 +11,7 @@ import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, expect, it, vi } from "vitest";
 import { ProjectsPage } from "@/pages/projects/ProjectsPage";
 import { ProjectDetailPage } from "@/pages/projects/ProjectDetailPage";
+import { ProjectSettingsPage } from "@/pages/projects/ProjectSettingsPage";
 import { useOrganizationProjects } from "@/hooks/useOrganizationProjects";
 import {
 	archiveProject,
@@ -20,6 +21,9 @@ import {
 import { getAccessToken, saveAccessToken } from "@/api/auth-session";
 import type { MembershipRole, Project } from "@/types/workspace.types";
 import { notifyProjectsChanged } from "@/api/project-events";
+
+// Dashboard behavior is covered by its own component and real-browser suites.
+vi.mock("@/pages/projects/ProjectDashboard", () => ({ ProjectDashboard: () => null }));
 
 const org = "00000000-0000-4000-8000-000000000001";
 const otherOrg = "00000000-0000-4000-8000-000000000003";
@@ -44,6 +48,8 @@ const other = {
 
 const listPath = "/organizations/" + org + "/projects";
 const detailPath = listPath + "/" + project.id;
+// Edit and archive live on the project settings page.
+const settingsPath = detailPath + "/settings";
 const otherPath =
 	"/organizations/" + otherOrg + "/projects/" + other.id;
 
@@ -74,6 +80,10 @@ function view(path = listPath) {
 				<Route
 					path="/organizations/:organizationId/projects/:projectId"
 					element={<ProjectDetailPage />}
+				/>
+				<Route
+					path="/organizations/:organizationId/projects/:projectId/settings"
+					element={<ProjectSettingsPage />}
 				/>
 			</Routes>
 		</MemoryRouter>,
@@ -252,7 +262,7 @@ it.each(["OWNER", "ADMIN"] as const)(
 		write = () => new Promise(resolve => { finish = resolve; });
 
 		const user = userEvent.setup();
-		view(detailPath);
+		view(settingsPath);
 
 		await user.click(await screen.findByRole("button", { name: "Edit" }));
 		const input = screen.getByLabelText("Name");
@@ -296,7 +306,7 @@ it("rejects an unchanged edit, resets cancelled drafts and sends null to clear d
 	write = async () => json({ ...project, description: null });
 
 	const user = userEvent.setup();
-	view(detailPath);
+	view(settingsPath);
 
 	await user.click(await screen.findByRole("button", { name: "Edit" }));
 	await user.click(screen.getByRole("button", { name: "Save" }));
@@ -338,7 +348,7 @@ it.each([400, 403, 404, 503])(
 		}, status);
 
 		const user = userEvent.setup();
-		view(detailPath);
+		view(settingsPath);
 
 		await user.click(await screen.findByRole("button", { name: "Edit" }));
 		fireEvent.change(screen.getByLabelText("Name"), {
@@ -370,7 +380,7 @@ it.each(["OWNER", "ADMIN"] as const)(
 		};
 
 		const user = userEvent.setup();
-		view(detailPath);
+		view(settingsPath);
 
 		await user.click(
 			await screen.findByRole("button", { name: "Archive project" }),
@@ -399,7 +409,7 @@ it.each([403, 404, 503])(
 		}, status);
 
 		const user = userEvent.setup();
-		view(detailPath);
+		view(settingsPath);
 
 		await user.click(
 			await screen.findByRole("button", { name: "Archive project" }),
@@ -413,7 +423,7 @@ it.each([403, 404, 503])(
 	},
 );
 
-it("shows a concealed detail 404 without logging out", async () => {
+it.each([detailPath, settingsPath])("shows a concealed 404 at %s without logging out", async path => {
 	const respond = fetchMock.getMockImplementation()!;
 	fetchMock.mockImplementation((url, options) =>
 		url === "/api/v1" + detailPath
@@ -424,14 +434,88 @@ it("shows a concealed detail 404 without logging out", async () => {
 			: respond(url, options),
 	);
 
-	view(detailPath);
+	view(path);
 
 	expect(await screen.findByRole("alert"))
 		.toHaveTextContent("Project not found.");
 	expect(screen.queryByRole("button", { name: "Edit" }))
 		.not.toBeInTheDocument();
+	expect(screen.queryByRole("button", { name: "Retry" }))
+		.not.toBeInTheDocument();
+	expect(screen.getByRole("link", { name: "Back to projects" }))
+		.toHaveAttribute("href", listPath);
 	expect(getAccessToken()).toBe("project-ui-token");
 });
+
+it.each([
+	["organization", ""], ["project", ""],
+	["organization", "/settings"], ["project", "/settings"],
+] as const)(
+	"shows not-found for an invalid %s id on %s without logging out",
+	async (invalidPart, suffix) => {
+		const invalidOrg = invalidPart === "organization" ? "not-a-uuid" : org;
+		const invalidProject = invalidPart === "project" ? "not-a-uuid" : project.id;
+		const invalidListPath = "/organizations/" + invalidOrg + "/projects";
+		const invalidDetailPath = invalidListPath + "/" + invalidProject;
+		const respond = fetchMock.getMockImplementation()!;
+
+		fetchMock.mockImplementation((url, options) => {
+			if (
+				url === "/api/v1" + invalidDetailPath ||
+				(invalidPart === "organization" && url === "/api/v1/organizations/" + invalidOrg)
+			) {
+				return Promise.resolve(json({
+					code: "VALIDATION_ERROR",
+					message: "Request validation failed.",
+				}, 400));
+			}
+			return respond(url, options);
+		});
+
+		view(invalidDetailPath + suffix);
+
+		expect(await screen.findByRole("alert")).toHaveTextContent("Project not found.");
+		expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+		expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
+		expect(screen.getByRole("link", { name: "Back to projects" }))
+			.toHaveAttribute("href", invalidListPath);
+		expect(getAccessToken()).toBe("project-ui-token");
+	},
+);
+
+it.each([detailPath, settingsPath].flatMap(path => [
+	[path, "network", "Unable to reach the server"],
+	[path, "server", "Service unavailable."],
+	[path, "other-400", "Request rejected."],
+]))(
+	"keeps Retry at %s and recovers from a %s failure",
+	async (path, kind, message) => {
+		const respond = fetchMock.getMockImplementation()!;
+		let shouldFail = true;
+		fetchMock.mockImplementation((url, options) => {
+			if (shouldFail && url === "/api/v1" + detailPath) {
+				shouldFail = false;
+				if (kind === "network") return Promise.reject(new TypeError("offline"));
+				return Promise.resolve(json({
+					code: kind === "server" ? "SERVICE_UNAVAILABLE" : "BAD_REQUEST",
+					message,
+				}, kind === "server" ? 503 : 400));
+			}
+			return respond(url, options);
+		});
+
+		const user = userEvent.setup();
+		view(path);
+
+		expect(await screen.findByRole("alert")).toHaveTextContent(message);
+		expect(screen.queryByText("Project not found.")).not.toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Retry" }));
+		expect(await screen.findByRole("heading", { name: project.name })).toBeInTheDocument();
+		expect(getAccessToken()).toBe("project-ui-token");
+		expect(fetchMock.mock.calls.filter(([url]) => url === "/api/v1" + detailPath))
+			.toHaveLength(2);
+	},
+);
 
 it.each(["update", "archive"] as const)(
 	"ignores a late %s after navigation to another organization",
@@ -441,7 +525,7 @@ it.each(["update", "archive"] as const)(
 		vi.spyOn(window, "confirm").mockReturnValue(true);
 
 		const user = userEvent.setup();
-		view(detailPath);
+		view(settingsPath);
 
 		if (operation === "update") {
 			await user.click(
@@ -586,7 +670,7 @@ it("clears the project detail after an update returns PROJECT_NOT_FOUND", async 
 	}, 404);
 
 	const user = userEvent.setup();
-	view(detailPath);
+	view(settingsPath);
 
 	await user.click(await screen.findByRole("button", { name: "Edit" }));
 	const input = screen.getByLabelText("Name");
@@ -615,7 +699,7 @@ it("clears the project detail after an archive returns PROJECT_NOT_FOUND", async
 		}, 404);
 
 		const user = userEvent.setup();
-		view(detailPath);
+		view(settingsPath);
 
 		await user.click(await screen.findByRole("button", { name: "Archive project" }));
 

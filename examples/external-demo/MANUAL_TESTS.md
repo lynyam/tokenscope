@@ -1,5 +1,10 @@
 # External demo: manual verification
 
+> Historical evidence from the PR author, before the Ubuntu container launcher
+> and current `gemini-3.5-flash-lite` configuration. This is not acceptance
+> evidence for the revised packaging/model. Complete the new rehearsal in
+> [EXTERNAL_DEMO-eval.md](../../docs/EXTERNAL_DEMO-eval.md) on the tested commit.
+
 Verification date: 2026-10-18.
 Environment: Ubuntu VM, Docker, TokenScope evaluation stack with HTTPS.
 Provider: Gemini, model gemini-3.8-flash.

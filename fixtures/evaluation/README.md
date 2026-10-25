@@ -33,6 +33,7 @@ Use these explicit dates in tests. Do not depend on a moving
 | realtime/ | A trace insertion used in refresh demonstrations | TSE-73, TSE-76 |
 | uploads/ and uploads-manifest.json | File samples, sizes and hashes | TSE-78, TSE-79 |
 | assistant/ | Dashboard request, context and SSE transcripts | TSE-80, TSE-81 |
+| analytics-demo/ | Twelve additional synthetic prices and exact generated-data expectations | TSE-70 rich demo, seed unit/integration/browser tests |
 
 Wrapper IDs in trace input files are seed metadata.
 Only each wrapper's `body` is an HTTP trace request.
@@ -55,7 +56,30 @@ Prices and provider/model labels are synthetic.
 No usable password, JWT, provider credential or plaintext project
 API key belongs in these files.
 
-TSE-70 owns repeatable database loading and password hashing.
+TSE-70 supplies explicit repeatable loading and authentication-owned password
+hashing. Set your own `DEMO_PASSWORD` in the existing ignored `.env`, then use
+`make eval-up SEED=1 CONFIRM_DATABASE=tokenscope`, or
+`make eval-seed CONFIRM_DATABASE=tokenscope` against an already-running dev/eval
+backend. The database name must match your configuration. Full instructions,
+accounts, expectations and tests are in [EVALUATION_SEED.md](../../docs/EVALUATION_SEED.md).
+
+Manifest version 1.2 adds four stable membership IDs (`60000000-…-0001` through
+`…-0004`) and explicitly labels the 51 pagination traces `workflow=pagination`.
+The dataset contains 4 users, 2 organizations, 4 memberships, 5 projects,
+3 prices and 59 traces. These canonical files and their tests stay unchanged.
+The version 1.3 evaluation loader also generates an Analytics Demo project with
+840 traces and twelve additional prices: 6 projects, 15 prices and 899 traces
+in total. Installation writes one independent seed receipt, including the frozen
+analytics-window end. See [the extension README](analytics-demo/README.md).
+Unchanged reruns write nothing; collisions, altered/deleted data and a changed
+anchor/password fail rather than restoring or overwriting records. The seed
+never creates an API key, upload or live assistant interaction.
+
+`ANCHOR=YYYY-MM-DD` shifts source dates in memory, including prices, archives
+and the generated live/correction requests; it does not rewrite these files or
+change the real application clock. Use the printed explicit dashboard interval.
+The response/SSE files remain canonical contract examples, including their
+fixed illustrative timestamps, not byte-for-byte responses for every seed run.
 
 Organization/project archive retains child records and private files.
 Individual trace deletion retains its external-ID reservation.
@@ -70,6 +94,21 @@ The context comes from the canonical analytics example.
 SSE output is deterministic test data, not live-provider evidence.
 The fixture model label is not a deployable Gemini model name.
 
+| File | Shows |
+|---|---|
+| request.json | Golden window, no filters |
+| request-filtered.json | Golden window with provider + status filters |
+| context.json | The `start.context` for request.json |
+| success.sse | start, two deltas (Unicode), done/stop |
+| length.sse | Output-limit completion (done/length) |
+| refusal.sse | Provider accepted the request, then refused (start + error) |
+| partial-timeout.sse | Partial answer, then LLM_TIMEOUT |
+| unexpected-eof.sse | Connection cut: no terminal event |
+| chunk-boundaries.json | Byte offsets for split-frame and UTF-8 decoding tests |
+
+The backend test `test/assistant/assistant-fixtures.unit.spec.ts` regenerates
+every `.sse` file with the fake provider and checks it byte for byte.
+
 ## Verification
 
 The backend fixture unit test checks golden arithmetic, upload
@@ -77,3 +116,12 @@ checksums and the dashboard assistant context.
 
 Passing these tests does not prove live ingestion, analytics,
 uploads, realtime or Gemini integration.
+
+## Dashboard CSV example (TSE-77 / C06)
+
+`responses/dashboard-golden.csv` exports `responses/analytics-golden.json`
+with the authorized fixture project name `Support Golden`. It contains the
+canonical 24-column header, one summary, 24 hourly buckets (including zeroes)
+and two model rows. UTF-8 and CRLF record separators are deliberate.
+The frontend tests compare this file byte for byte and independently check
+its parsed columns, rows, exact decimal strings and formula escaping.

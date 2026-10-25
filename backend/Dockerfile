@@ -22,6 +22,7 @@ WORKDIR /opt/tokenscope/backend
 # node_modules complet : la CLI Prisma (devDependency) est nécessaire au démarrage
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/package*.json ./
+COPY --from=build /app/scripts/run-evaluation-seed.cjs ./scripts/run-evaluation-seed.cjs
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/prisma.config.ts ./prisma.config.ts

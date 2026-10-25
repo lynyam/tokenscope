@@ -1,0 +1,14 @@
+# Explicit allowlist: private configuration can never enter the build context.
+*
+!Dockerfile
+!.dockerignore
+!package.json
+!package-lock.json
+!src/
+!src/**
+!public/
+!public/**
+!config/
+!config/model-prices.json
+!test/
+!test/**

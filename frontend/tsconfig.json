@@ -9,13 +9,13 @@
 		"lib": ["ES2022", "DOM", "DOM.Iterable"],
 		"skipLibCheck": true,
 		"isolatedModules": true,
-		"types": ["vite/client"],
+		"types": ["vite/client", "node"],
 		// tells TypeScript "@" means src/, matching the Vite alias
 		"paths": {
 			"@/*": ["./src/*"]
 		}
 	},
-	"include": ["src", "test"]
+	"include": ["src", "test", "playwright.config.ts"]
 }
 
 /*

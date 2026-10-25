@@ -34,8 +34,8 @@ if [[ "$chat_key" == "$translation_key" ]]; then
   exit 1
 fi
 
-if [[ ! "$base_url" =~ ^https?://[A-Za-z0-9.-]+(:[0-9]+)?/?$ ]]; then
-  echo "Enter an HTTP(S) origin, without a path."
+if [[ ! "$base_url" =~ ^https://localhost(:[0-9]+)?/?$ ]]; then
+  echo "Enter the evaluation HTTPS origin: https://localhost:<port>, without a path."
   exit 1
 fi
 
@@ -51,4 +51,4 @@ fi
   } > "$config_file"
 )
 
-echo "Private demo configuration saved."
+echo "Private demo configuration saved. Start it separately with make demo-up."

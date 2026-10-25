@@ -13,6 +13,18 @@ CA_PATH="/data/caddy/pki/authorities/local/root.crt"
 WAIT=120
 INTERVAL=2
 
+# Optional, deliberate preparation; never an implicit startup side effect.
+case "${SEED:-0}" in
+  0|'') ;;
+  1)
+    if [ -z "${CONFIRM_DATABASE:-}" ]; then
+      printf '%s\n' 'SEED=1 requires CONFIRM_DATABASE=<your local database name>.' >&2
+      exit 1
+    fi
+    ;;
+  *) printf '%s\n' 'SEED must be 0 or 1.' >&2; exit 1 ;;
+esac
+
 stage() {
   printf '\n==> [%s] %s\n' "$1" "$2"
 }
@@ -109,7 +121,7 @@ fi
 
 # Copy into the temporary directory first. A failed copy must not replace
 # the previously exported certificate.
-if ! compose exec -T frontend cat "$CA_PATH" > "$work_dir/root.crt"; then
+if ! compose cp "frontend:$CA_PATH" "$work_dir/root.crt"; then
   fail certificate "could not copy Caddy's public CA to the host"
 fi
 
@@ -187,6 +199,31 @@ check_url \
   '{"status":"healthy"}'
 
 check_url "frontend" "$BASE_URL/" html
+
+# Reference pricing is needed by real ingestion even without synthetic demo data.
+# Use the reviewed, committed catalogue; never fetch provider prices at startup.
+stage pricing "Loading the external demo's verified model-price catalogue"
+
+price_catalogue="examples/external-demo/config/model-prices.json"
+container_catalogue="/tmp/tokenscope-external-demo-model-prices.json"
+
+[ -f "$price_catalogue" ] && [ -s "$price_catalogue" ] \
+  || fail pricing "the committed external-demo price catalogue is missing or empty"
+
+compose cp "$price_catalogue" "backend:$container_catalogue" \
+  || fail pricing "could not copy the external-demo price catalogue into the backend"
+
+# The existing loader inserts missing versions, leaves identical versions alone,
+# and rejects conflicting versions without overwriting historical prices.
+compose exec -T -w /opt/tokenscope/backend backend \
+  npm run pricing:load -- --file "$container_catalogue" \
+  || fail pricing "application started, but model-price loading failed; startup is incomplete"
+
+if [ "${SEED:-0}" = "1" ]; then
+  stage seed "Preparing the explicitly requested evaluation dataset"
+  sh ./scripts/eval-seed.sh \
+    || fail seed "application started, but demo data preparation failed; no demo-ready claim"
+fi
 
 printf '\nTokenScope is running: %s\n' "$BASE_URL"
 printf 'Trust the public CA once: %s\n' "$CERT_FILE"
