@@ -59,6 +59,19 @@ test("a session failure can open legal pages and returning resumes authenticatio
   expect(checks).toBeGreaterThan(before);
 });
 
+for (const [colorScheme, fill] of [["light", "rgb(17, 24, 39)"], ["dark", "rgb(248, 250, 252)"]] as const) {
+  test(`the standalone SVG favicon adapts to ${colorScheme} browser chrome`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme });
+    await page.goto("/");
+    await expect(page.locator('link[rel="icon"][type="image/svg+xml"]'))
+      .toHaveAttribute("href", "/logo/favicon.svg");
+    // Inspect the standalone asset, not the page's <img> with dark:invert.
+    const response = await page.goto("/logo/favicon.svg");
+    expect(response?.ok()).toBe(true);
+    await expect(page.locator("svg g")).toHaveCSS("fill", fill);
+  });
+}
+
 test("theme toggles persist across public navigation and reload", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light" });
   await page.goto("/");
