@@ -34,6 +34,10 @@ services:
       target: ${APP_MODE:-dev}
     volumes:
       - type: bind
+        source: ./fixtures/evaluation
+        target: /fixtures/evaluation
+        read_only: true
+      - type: bind
         source: ./backend
         target: /app/
       - type: volume
@@ -45,6 +49,9 @@ services:
     expose:
       - "${BACKEND_PORT}"
     environment:
+      APP_MODE: "${APP_MODE:-dev}"
+      DEMO_PASSWORD: "${DEMO_PASSWORD:-}"
+      EVALUATION_SEED_ENABLED: "${EVALUATION_SEED_ENABLED:-false}"
       BACKEND_PORT: "${BACKEND_PORT}"
       DATABASE_URL: "${DATABASE_URL}"
       JWT_SECRET: "${JWT_SECRET}"

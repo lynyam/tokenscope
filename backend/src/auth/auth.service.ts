@@ -1,5 +1,5 @@
 import { HttpStatus, Injectable } from "@nestjs/common";
-import * as argon2 from "argon2";
+import { hashPassword, verifyPassword } from "./password";
 import { ApiException } from "../common/errors/api.exception";
 import { UsersService } from "../users/users.service";
 import { TokenService } from "./token.service";
@@ -23,21 +23,11 @@ export interface AuthResponse {
 const DUMMY_PASSWORD_HASH =
   "$argon2id$v=19$m=65536,p=4,t=3$PWGbYr6/w10JvKMxTGqBKQ$btxj8qjva5iUElvooJpfp3AwOe0uZNS8kxSpJLpIdRo";
 
-  // Configure password hashing in this auth-owned provider.
-// These costs match the dummy verifier above.
-const PASSWORD_OPTIONS = {
-  type: argon2.argon2id,
-  memoryCost: 65536,
-  timeCost: 3,
-  parallelism: 4,
-} as const;
 /**
  * Orchestrates sign-up / sign-in / current-user.
  *
- * This is the single auth-owned provider that configures password
- * hashing (SECURITY.md: "Configure hashing in one auth-owned provider,
- * not separately in controllers"). No other file in the backend calls
- * argon2 directly.
+ * The auth-owned password helper is shared with evaluation seeding.
+ * Password hashing is never configured independently by callers.
  *
  * Every failure is thrown as an ApiException(status, code, message).
  * This project's global exception filter (common/filters/
@@ -67,8 +57,7 @@ export class AuthService {
     // argon2id specifically — NOT argon2i or argon2d. The `id` variant
     // resists both GPU brute force and side-channel attacks, and is
     // exactly what SECURITY.md and this ticket require.
-    const passwordHash = await argon2.hash(dto.password, PASSWORD_OPTIONS,
-    );
+    const passwordHash = await hashPassword(dto.password);
     let user: User;
 
     try {
@@ -112,7 +101,7 @@ export class AuthService {
     // Both existing and unknown accounts perform password verification.
     // This performs comparable expensive work; it does not promise that
     // the entire HTTP request has perfectly identical execution time.
-    const passwordMatches = await argon2.verify(
+    const passwordMatches = await verifyPassword(
       user?.passwordHash ?? DUMMY_PASSWORD_HASH,
       dto.password,
     );

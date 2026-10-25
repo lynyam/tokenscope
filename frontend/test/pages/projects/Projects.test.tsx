@@ -433,8 +433,79 @@ it("shows a concealed detail 404 without logging out", async () => {
 		.toHaveTextContent("Project not found.");
 	expect(screen.queryByRole("button", { name: "Edit" }))
 		.not.toBeInTheDocument();
+	expect(screen.queryByRole("button", { name: "Retry" }))
+		.not.toBeInTheDocument();
+	expect(screen.getByRole("link", { name: "Back to projects" }))
+		.toHaveAttribute("href", listPath);
 	expect(getAccessToken()).toBe("project-ui-token");
 });
+
+it.each(["organization", "project"] as const)(
+	"shows not-found for an invalid %s id without logging out",
+	async invalidPart => {
+		const invalidOrg = invalidPart === "organization" ? "not-a-uuid" : org;
+		const invalidProject = invalidPart === "project" ? "not-a-uuid" : project.id;
+		const invalidListPath = "/organizations/" + invalidOrg + "/projects";
+		const invalidDetailPath = invalidListPath + "/" + invalidProject;
+		const respond = fetchMock.getMockImplementation()!;
+
+		fetchMock.mockImplementation((url, options) => {
+			if (
+				url === "/api/v1" + invalidDetailPath ||
+				(invalidPart === "organization" && url === "/api/v1/organizations/" + invalidOrg)
+			) {
+				return Promise.resolve(json({
+					code: "VALIDATION_ERROR",
+					message: "Request validation failed.",
+				}, 400));
+			}
+			return respond(url, options);
+		});
+
+		view(invalidDetailPath);
+
+		expect(await screen.findByRole("alert")).toHaveTextContent("Project not found.");
+		expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+		expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
+		expect(screen.getByRole("link", { name: "Back to projects" }))
+			.toHaveAttribute("href", invalidListPath);
+		expect(getAccessToken()).toBe("project-ui-token");
+	},
+);
+
+it.each([
+	["network", "Unable to reach the server"],
+	["server", "Service unavailable."],
+	["other-400", "Request rejected."],
+] as const)(
+	"keeps Retry and recovers from a project detail %s failure",
+	async (kind, message) => {
+		const respond = fetchMock.getMockImplementation()!;
+		let shouldFail = true;
+		fetchMock.mockImplementation((url, options) => {
+			if (shouldFail && url === "/api/v1" + detailPath) {
+				shouldFail = false;
+				if (kind === "network") return Promise.reject(new TypeError("offline"));
+				return Promise.resolve(json({
+					code: kind === "server" ? "SERVICE_UNAVAILABLE" : "BAD_REQUEST",
+					message,
+				}, kind === "server" ? 503 : 400));
+			}
+			return respond(url, options);
+		});
+
+		const user = userEvent.setup();
+		view(detailPath);
+
+		expect(await screen.findByRole("alert")).toHaveTextContent(message);
+		expect(screen.queryByText("Project not found.")).not.toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Retry" }));
+		expect(await screen.findByRole("heading", { name: project.name })).toBeInTheDocument();
+		expect(getAccessToken()).toBe("project-ui-token");
+		expect(fetchMock.mock.calls.filter(([url]) => url === "/api/v1" + detailPath))
+			.toHaveLength(2);
+	},
+);
 
 it.each(["update", "archive"] as const)(
 	"ignores a late %s after navigation to another organization",
