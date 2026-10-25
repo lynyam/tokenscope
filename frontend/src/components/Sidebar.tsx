@@ -7,12 +7,17 @@ import { OrganizationSwitcher } from "./OrganizationSwitcher";
 import { UserMenu } from "./UserMenu";
 import { CollapsibleNavItem } from "./ProjectMenu";
 import { Separator } from "../components/ui/separator";
-import { Link, useLocation, useParams } from "react-router-dom";
+import { Link, NavLink, useLocation, useParams } from "react-router-dom";
 import { useOrganizationProjects } from "../hooks/useOrganizationProjects";
+import { useOrganizationRole } from "../hooks/useOrganizationRole";
+
+const projectLinkClass = ({ isActive }: { isActive: boolean }) =>
+	`rounded-md px-3 py-1.5 text-sm transition-colors ${isActive ? "bg-muted font-semibold text-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`;
 
 
 export function Sidebar() {
-	const { organizationId } = useParams();
+	const { organizationId, projectId } = useParams();
+	const { pathname } = useLocation();
 	const {
 		projects,
 		isLoading,
@@ -21,9 +26,16 @@ export function Sidebar() {
 		accessLost,
 	} = useOrganizationProjects(organizationId);
 
+	const currentProject = projects.find(project => project.id === projectId);
+	const { role, error: roleError, reload: reloadRole } = useOrganizationRole(
+		organizationId, Boolean(currentProject) && !accessLost, pathname,
+	);
+	const projectBase = organizationId && projectId
+		? `/organizations/${encodeURIComponent(organizationId)}/projects/${encodeURIComponent(projectId)}`
+		: null;
+
 	const [open, setOpen] = useState(false);
 	const [desktop, setDesktop] = useState(() => window.matchMedia("(min-width: 768px)").matches);
-	const { pathname } = useLocation();
 
 	useEffect(() => {
 		const media = window.matchMedia("(min-width: 768px)");
@@ -92,6 +104,31 @@ export function Sidebar() {
 								}))}
 								organizationId={organizationId}
 							/>
+
+							{projectBase && currentProject?.archivedAt === null && (
+								<div role="group" aria-label="Project sections" className="mt-2 flex flex-col gap-1">
+									<p className="truncate px-3 text-xs font-medium uppercase text-muted-foreground">
+										{currentProject.name}
+									</p>
+									<div className="ml-3 flex flex-col gap-1 border-l pl-3">
+										<NavLink end to={projectBase} className={projectLinkClass}>Overview</NavLink>
+										<NavLink to={`${projectBase}/traces`} className={projectLinkClass}>Traces</NavLink>
+										<NavLink to={`${projectBase}/documents`} className={projectLinkClass}>Documents</NavLink>
+										{roleError && (
+											<div className="px-3 text-sm">
+												<p role="alert">{roleError}</p>
+												<button type="button" onClick={reloadRole} className="underline">Retry project permissions</button>
+											</div>
+										)}
+										{(role === "OWNER" || role === "ADMIN") && (
+											<NavLink to={`${projectBase}/api-keys`} className={projectLinkClass}>API keys</NavLink>
+										)}
+										{(role === "OWNER" || role === "ADMIN") && (
+											<NavLink to={`${projectBase}/settings`} className={projectLinkClass}>Settings</NavLink>
+										)}
+									</div>
+								</div>
+							)}
 						</>
 					)
 				)}

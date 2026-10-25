@@ -25,6 +25,7 @@ import { ApiKeysPage } from "../pages/projects/ApiKeysPage";
 import { AuthProvider } from "../context/AuthContext";
 import { PrivacyPage } from "../pages/legal/PrivacyPage";
 import { TermsPage } from "../pages/legal/TermsPage";
+import { ProjectSettingsPage } from "../pages/projects/ProjectSettingsPage";
 
 //Root redirection
 // function RootRedirect() {
@@ -83,6 +84,11 @@ export function AppRouter()
                     <Route
                     path="/organizations/:organizationId/projects/:projectId"
                     element={<ProjectDetailPage />}
+                    />
+
+                    <Route
+                    path="/organizations/:organizationId/projects/:projectId/settings"
+                    element={<ProjectSettingsPage />}
                     />
 
                     <Route

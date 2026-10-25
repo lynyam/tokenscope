@@ -8,9 +8,6 @@ if (!baseURL) {
   );
 }
 
-// Optional: use an installed Chromium instead of Playwright's download.
-const executablePath = process.env.E2E_CHROMIUM_PATH;
-
 export default defineConfig({
   testDir: "./test/e2e",
   // Browser specs end in .spec.ts; Vitest only discovers .test.ts/.test.tsx.
@@ -21,22 +18,32 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: 0,
-  // The seeded suite uses an operator password; do not persist action arguments
-  // (including fill values) in an HTML report for this explicit run.
+  // Keep develop's protection: HTML action steps may contain DEMO_PASSWORD.
   reporter: process.env.E2E_EVALUATION_SEED === "1"
     ? [["line"]]
     : [["list"], ["html", { open: "never" }]],
   use: {
     baseURL,
-    // The evaluation Caddy uses a local CA that browsers do not trust by default.
-    //ignoreHTTPSErrors: true,
     acceptDownloads: true,
     // Login and authenticated requests contain credentials.
     // Do not record them in automatic test artifacts.
     trace: "off",
     screenshot: "off",
     video: "off",
-    launchOptions: executablePath ? { executablePath, args: ["--no-sandbox"] } : {},
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    // Installed Google Chrome (not Playwright's Chromium).
+    { name: "chrome", use: { ...devices["Desktop Chrome"], channel: "chrome" } },
+    // OS roots work on macOS/Windows; Linux needs explicit CA provisioning.
+    // See docs/BROWSER_COMPATIBILITY-eval.md. This does not bypass TLS checks.
+    {
+      name: "firefox",
+      use: {
+        ...devices["Desktop Firefox"],
+        launchOptions: { firefoxUserPrefs: { "security.enterprise_roots.enabled": true } },
+      },
+    },
+    // Installed Microsoft Edge.
+    { name: "edge", use: { ...devices["Desktop Edge"], channel: "msedge" } },
+  ],
 });

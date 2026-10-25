@@ -141,7 +141,7 @@ export function useOrganizationProjects(organizationId?: string) {
 				return {
 					...previous,
 					projects:
-						change.kind === "archive"
+						change.kind !== "upsert"
 							? previous.projects.filter(
 								project => project.id !== change.projectId,
 							)
