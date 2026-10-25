@@ -17,6 +17,7 @@ model EvaluationSeedReceipt {
   anchor             String   @db.VarChar(10)
   fixtureFingerprint String   @db.VarChar(64)
   stateFingerprint   String   @db.VarChar(64)
+  analyticsWindowEnd DateTime? @db.Timestamptz(3)
   createdAt          DateTime @default(now())
 }
 

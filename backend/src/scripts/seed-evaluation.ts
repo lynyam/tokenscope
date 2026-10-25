@@ -5,7 +5,7 @@ import type { EnvironmentVariables } from "../config/env.validation";
 import { PrismaService } from "../database/prisma.service";
 import { DEFAULT_ANCHOR, readSeedConfig, requireSeed, safeSeedFailure, SeedError } from "../evaluation/seed-config";
 import { loadSeedFixtures } from "../evaluation/seed-fixtures";
-import { seedEvaluation } from "../evaluation/seed-evaluation";
+import { seedEvaluationWithAnalytics } from "../evaluation/seed-evaluation";
 
 export async function main(): Promise<void> {
   let db: PrismaService | undefined;
@@ -27,7 +27,7 @@ export async function main(): Promise<void> {
     // No HTTP application, cleanup workers, WebSockets or LLM adapter are started.
     db = new PrismaService(new ConfigService<EnvironmentVariables>({ DATABASE_URL: config.databaseUrl }));
     await db.$connect();
-    const result = await seedEvaluation(db, config, fixtures);
+    const result = await seedEvaluationWithAnalytics(db, config, fixtures);
     await db.$disconnect();
     db = undefined;
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);

@@ -5,6 +5,12 @@ the existing `.env`, `compose.yaml` and `frontend`, `backend`, `postgres` servic
 It does not require starting development mode first. There is no new service,
 separate evaluation environment file, provider account or reset command.
 
+The current loader is version **1.3**: the original 59 verification traces plus
+an **Analytics Demo** project with 840 varied traces across four fictional
+providers and twelve models. See [the analytics demo guide](ANALYTICS_DEMO.md)
+for its recent seven-day window, exact totals, price catalogue and safe upgrade.
+The canonical contract fixture manifest remains version 1.2 intentionally.
+
 ## Start directly in evaluation mode
 
 Prerequisites: Docker with Compose, Make, curl and OpenSSL. Use a local,
@@ -82,9 +88,9 @@ its receipt cause a conflict, even if those rows look identical.
 | Users | 4 | Real sign-in accounts, independently salted Argon2id hashes |
 | Organizations | 2 | Acme Demo and Other Tenant |
 | Memberships | 4 | Three Acme roles and an isolated outsider |
-| Projects | 5 | Golden, empty, pagination, other-tenant and archived |
-| Synthetic model-price versions | 3 | Historical pricing, including a noon boundary |
-| Traces | 59 | 6 golden + 51 pagination + 2 isolation/archive |
+| Projects | 6 | Golden, empty, pagination, other-tenant, archived and Analytics Demo |
+| Synthetic model-price versions | 15 | 3 original historical versions + 12 analytics prices |
+| Traces | 899 | 6 golden + 51 pagination + 2 isolation/archive + 840 analytics |
 | Seed receipt | 1 | Detects changes or deletion without recreating data |
 
 All fixture IDs are stable UUIDs. The seed reuses authentication hashing,
@@ -108,11 +114,31 @@ Open `/signin` and use your `DEMO_PASSWORD` with:
 | `outsider@demo.tokenscope.test` | Other Tenant | OWNER |
 
 The outsider has no Acme membership. Owner/admin/member see Support Golden,
-Empty Project and Pagination Project. The outsider sees Private Other Tenant.
+Empty Project, Pagination Project and Analytics Demo. The outsider sees Private Other Tenant.
 Archived Project remains stored with its trace, but is absent from the active
 project list and cannot be opened through the normal project API.
 
-## Dates and expected dashboard values
+## Analytics Demo: the recent, varied dashboard
+
+Use **Acme Demo → Analytics Demo** for the main analytics demonstration.
+Its 840 traces contain 6,277,671 tokens, an estimated synthetic cost of
+`8.550480200000` USD and 49 simulated upstream errors (5.83%).
+It includes unequal daily volume, twelve provider/model combinations, four
+workflows, varied input/output sizes, latency outliers and quiet hours.
+No external provider request is made to create these records.
+
+On first installation or the verified 1.2 upgrade, the seed captures the last
+completed UTC hour and generates the preceding seven-day window. The receipt
+stores that end time. Later reruns reuse it; they do not move old traces forward.
+The summary prints `analyticsDemo.range` and `analyticsDemo.dashboardPath`.
+Open the path on your frontend origin for the exact full dataset, even after
+it has aged out of the current "Last 7 days" preset.
+
+`ANCHOR` still controls only the original golden fixtures described below.
+It does not refresh the analytics window. See [ANALYTICS_DEMO.md](ANALYTICS_DEMO.md)
+for prices, daily expectations, demonstration steps and fresh rehearsal isolation.
+
+## Golden fixtures: dates and exact verification values
 
 Default anchor: `2026-10-01`. Select this explicit UTC interval, not a moving
 "last seven days" preset:
@@ -179,12 +205,22 @@ real assistant requests use the richer description from the seeded project.
 
 An unchanged rerun reports `already-present` and writes nothing: IDs, hashes,
 costs, trace versions and timestamps stay unchanged. Different password,
-anchor/version/content, changed or missing fixture rows, and extra related
+anchor/content, changed or missing fixture rows, and extra related
 projects/traces/memberships/prices cause `SEED_CONFLICT`. Unrelated data is left
 alone. The seed does not restore, upsert, reset, delete or repair user data.
 
+There is one explicitly supported version transition: an **unchanged 1.2
+installation → 1.3**. After applying the code and its new nullable receipt-column
+migration, run the same `make eval-up SEED=1 CONFIRM_DATABASE=tokenscope`
+(and the same `ANCHOR` if you used a custom one). The seed verifies the old
+fingerprint, all stored baseline records and the password, checks new reserved
+IDs/prices, and adds the project, twelve prices and 840 traces in one transaction.
+Only the receipt is updated; existing accounts, hashes, memberships, projects,
+traces, prices and timestamps are untouched. Success reports `upgraded`.
+Any failure rolls back the complete upgrade. Unsupported versions are refused.
+
 One `EvaluationSeedReceipt` database row stores fixture/state fingerprints and
-the anchor/version. It has no foreign keys, so deleting the demo organization
+the anchor/version and nullable analytics-window end. It has no foreign keys, so deleting the demo organization
 cannot erase the record of the installation and cause an automatic resurrection
 on the next seed. It contains neither plaintext passwords nor copied user rows.
 A transaction-scoped lock refuses concurrent seed execution with `SEED_BUSY`.
@@ -273,8 +309,12 @@ E2E_EVALUATION_SEED=1 E2E_BASE_URL=https://localhost:8443 \
   make frontende2e E2E_ARGS=evaluation-seed.spec.ts
 ```
 
-It performs four normal sign-ins and checks tenant/project visibility and direct
-404 responses. It is skipped without explicit opt-in, does not seed itself,
+It verifies four accounts' normal sign-in and tenant/project visibility,
+including direct 404 responses for the outsider's Analytics Demo access. A fifth
+test reads the persisted demo window through the authenticated price API, opens
+the exact dashboard, checks twelve model rows and filters, and asserts no
+browser console warnings/errors, unhandled errors or assistant requests.
+It is skipped without explicit opt-in, does not seed itself,
 does not bypass HTTPS verification and disables automatic credentials-bearing
 trace/video/screenshot artifacts. It does not prove live Gemini or uploads.
 The opt-in also selects the console-only reporter, and password-entry failures

@@ -29,6 +29,13 @@ export interface SeedFixtures extends Identities {
   expected: Record<string, Record<string, unknown>>;
   expectedTraces: Array<Record<string, any>>;
   requests: { live: NormalizedTracePayload; correction: NormalizedTracePayload };
+  analyticsDemo?: {
+    projectId: string;
+    range: { from: string; to: string };
+    providers: number;
+    models: number;
+    traces: number;
+  };
 }
 
 export function stableJson(value: unknown): string {

@@ -945,11 +945,19 @@ No provider client or application background worker is started by the CLI.
 
 All fixture rows and one independent `EvaluationSeedReceipt` are committed in
 one serializable transaction. The receipt has no tenant foreign key and stores
-only version/anchor/fingerprints and creation time, so deleting a tenant does
+only version/anchor/fingerprints, the optional analytics-window end and creation time, so deleting a tenant does
 not authorize recreating its fixtures. Unchanged reruns do not rewrite hashes
 or timestamps; mutations and collisions fail. There is no destructive reset
 flag. See [EVALUATION_SEED.md](EVALUATION_SEED.md) for rehearsal isolation and
 credential-safe browser testing.
+
+The rich dataset supports one additive 1.2 → 1.3 upgrade. It verifies the exact
+legacy receipt and stored state before inserting anything, rejects new reserved
+ID/provider/model collisions, preserves all old entity rows, and updates the
+receipt in the same transaction as the new project/prices/traces. It does not
+introduce a reset, repair, date refresh, provider connection or credential.
+The recorded analytics window is reused on reruns, not recomputed from today's
+date. Simulated trace ERROR statuses are data, not application console errors.
 
 ## Private documents — TSE-78
 

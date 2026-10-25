@@ -894,6 +894,12 @@ use `make eval-seed CONFIRM_DATABASE=tokenscope`; it does not switch modes.
 See [the seed guide](EVALUATION_SEED.md) for accounts, dates, safety checks,
 repeatability, expected analytics and tests.
 
+The current seed also installs [Analytics Demo](ANALYTICS_DEMO.md): 840 recent
+synthetic traces and twelve model prices. It safely upgrades an unchanged 1.2
+seed and preserves its original verification fixtures. Rebuild with
+`make eval-up SEED=1 CONFIRM_DATABASE=tokenscope` after applying this update so
+the new receipt-column migration and compiled CLI are both installed.
+
 Service readiness waits, certificate availability and each HTTPS
 readiness check have a 120-second limit. Image downloads and builds
 are separate and may take longer.

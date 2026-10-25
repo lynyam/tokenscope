@@ -9,8 +9,10 @@ import { PrismaService } from "../../src/database/prisma.service";
 import { RateLimitClock } from "../../src/common/rate-limit/rate-limit.service";
 import { ASSISTANT_PROVIDER } from "../../src/assistant/assistant.provider";
 import { readSeedConfig, DATASET_ID, DEFAULT_ANCHOR } from "../../src/evaluation/seed-config";
-import { loadSeedFixtures } from "../../src/evaluation/seed-fixtures";
-import { seedEvaluation } from "../../src/evaluation/seed-evaluation";
+import { loadSeedFixtures, readFixture } from "../../src/evaluation/seed-fixtures";
+import { seedEvaluation, seedEvaluationWithAnalytics } from "../../src/evaluation/seed-evaluation";
+import { buildAnalyticsDemo, ANALYTICS_PROJECT_ID } from "../../src/evaluation/analytics-demo";
+import { demoExpectations } from "../evaluation/analytics-demo-oracle";
 import { PricingService } from "../../src/pricing/pricing.service";
 import { calculateTraceCost } from "../../src/pricing/calculate-trace-cost";
 import { hashTracePayload } from "../../src/traces/trace-payload";
@@ -261,6 +263,188 @@ describe("explicit evaluation seed with real PostgreSQL and HTTP", () => {
       .set("Authorization", await login()).query(shifted.range).expect(200);
     expect(result.body.summary).toEqual(f.expected.baseline);
     expect((await db.modelPrice.findUniqueOrThrow({ where: { id: f.prices[1].id } })).effectiveFrom.toISOString()).toBe("2026-10-02T12:00:00.000Z");
+  });
+
+  describe("rich analytics dataset and additive 1.2 upgrade", () => {
+    const demoNow = new Date("2026-10-24T18:30:00.000Z");
+    const demo = buildAnalyticsDemo(org, "2026-10-24T18:00:00.000Z", demoNow);
+    const richSeed = (at = demoNow) => seedEvaluationWithAnalytics(db, config, f, at);
+    const expected = readFixture("analytics-demo/expected-results.json") as ReturnType<typeof demoExpectations>;
+    const analyticsUrl = base + "/" + ANALYTICS_PROJECT_ID + "/analytics";
+    const legacyState = async () => {
+      const state = JSON.parse(await snapshot());
+      delete state.receipts;
+      state.projects = state.projects.filter((row: { id: string }) => row.id !== ANALYTICS_PROJECT_ID);
+      state.prices = state.prices.filter((row: { id: string }) => !demo.prices.some(price => price.id === row.id));
+      state.traces = state.traces.filter((row: { projectId: string }) => row.projectId !== ANALYTICS_PROJECT_ID);
+      return JSON.stringify(state);
+    };
+
+    it("fresh-seeds 899 traces atomically and exposes exact dashboard analytics and tenant boundaries", async () => {
+      const summary = await richSeed();
+      expect(summary).toMatchObject({ outcome: "inserted", fixtureVersion: "1.3",
+        counts: { projects: 6, modelPrices: 15, traces: 899 }, analyticsDemo: { range: demo.range } });
+      expect(await Promise.all([db.project.count(), db.modelPrice.count(), db.trace.count(), db.evaluationSeedReceipt.count()]))
+        .toEqual([6, 15, 899, 1]);
+      const authorization = await login();
+      const result = await request(app.getHttpServer()).get(analyticsUrl)
+        .set("Authorization", authorization).query(demo.range).expect(200);
+      expect(result.body.summary).toEqual(expected.baseline);
+      expect(result.body.byModel).toHaveLength(12);
+      for (const row of result.body.byModel) {
+        const totals = expected.byModel[row.provider + "/" + row.model];
+        expect(row).toMatchObject({ traceCount: totals.traceCount, inputTokens: totals.inputTokens,
+          outputTokens: totals.outputTokens, estimatedCostUsd: totals.estimatedCostUsd });
+      }
+      // Frozen golden fixtures still give exactly the original totals in the enriched DB.
+      const goldenResult = await request(app.getHttpServer()).get(base + "/" + golden + "/analytics")
+        .set("Authorization", authorization).query(f.range).expect(200);
+      expect(goldenResult.body.summary).toEqual(f.expected.baseline);
+      await request(app.getHttpServer()).get(analyticsUrl)
+        .set("Authorization", await login(3)).query(demo.range).expect(404);
+      const stored = await db.trace.findMany({ where: { projectId: ANALYTICS_PROJECT_ID }, orderBy: { id: "asc" } });
+      for (const [index, row] of stored.entries()) {
+        expect(row.payloadHash).toBe(hashTracePayload(demo.traces[index].body));
+        expect(row).toMatchObject({ version: 1, deletedAt: null });
+      }
+    });
+
+    it("verifies provider/model/workflow/status filters, daily variation, quiet buckets and pagination", async () => {
+      await richSeed();
+      const authorization = await login();
+      for (const [key, group] of [["provider", expected.byProvider], ["workflow", expected.byWorkflow]] as const) {
+        for (const [value, summary] of Object.entries(group)) {
+          const result = await request(app.getHttpServer()).get(analyticsUrl)
+            .set("Authorization", authorization).query({ ...demo.range, [key]: value }).expect(200);
+          expect(result.body.summary).toEqual(summary);
+        }
+      }
+      const model = await request(app.getHttpServer()).get(analyticsUrl)
+        .set("Authorization", authorization).query({ ...demo.range, provider: "demo-boreal", model: "boreal-pro" }).expect(200);
+      expect(model.body.summary).toEqual(expected.byModel["demo-boreal/boreal-pro"]);
+      const errors = await request(app.getHttpServer()).get(analyticsUrl)
+        .set("Authorization", authorization).query({ ...demo.range, status: "ERROR" }).expect(200);
+      expect(errors.body.summary).toMatchObject({ traceCount: 49, errorCount: 49, errorRatePct: 100 });
+      const start = Date.parse(demo.range.from);
+      for (let day = 0; day < 7; day++) {
+        const result = await request(app.getHttpServer()).get(analyticsUrl)
+          .set("Authorization", authorization).query({
+            from: new Date(start + day * 86_400_000).toISOString(),
+            to: new Date(start + (day + 1) * 86_400_000).toISOString(),
+          }).expect(200);
+        expect(result.body.summary).toEqual(expected.byRollingDay[String(day + 1)]);
+        expect(result.body.series.some((row: { traceCount: number }) => row.traceCount === 0)).toBe(true);
+      }
+      const ids: string[] = [];
+      for (let page = 1; page <= 9; page++) {
+        const result = await request(app.getHttpServer()).get(base + "/" + ANALYTICS_PROJECT_ID + "/traces")
+          .set("Authorization", authorization).query({ ...demo.range, pageSize: 100, page }).expect(200);
+        expect(result.body.items).toHaveLength(page === 9 ? 40 : 100);
+        ids.push(...result.body.items.map((row: { id: string }) => row.id));
+      }
+      expect(new Set(ids).size).toBe(840);
+    });
+
+    it("uses all twelve models and synthetic-price disclosure in the real assistant context without live quota", async () => {
+      await richSeed();
+      provider.script = [delta("The report-generation spike is synthetic."), done()];
+      await request(app.getHttpServer()).post(base + "/" + ANALYTICS_PROJECT_ID + "/assistant")
+        .set("Authorization", await login())
+        .send({ question: "Which models contribute most to cost?", ...demo.range, filters: {} }).expect(200);
+      expect(provider.lastContext?.summary).toEqual(expected.baseline);
+      expect(provider.lastContext?.project.description).toBe(demo.project.description);
+      expect(provider.lastContext?.pricing.containsSyntheticPricing).toBe(true);
+      expect(provider.calls).toBe(1);
+    });
+
+    it("upgrades an unchanged 1.2 receipt without modifying any existing entity, hash, date or price", async () => {
+      await seed();
+      const before = await legacyState();
+      const receipt = await db.evaluationSeedReceipt.findUniqueOrThrow({ where: { id: DATASET_ID } });
+      expect(receipt.analyticsWindowEnd).toBeNull();
+      expect((await richSeed()).outcome).toBe("upgraded");
+      expect(await legacyState()).toBe(before);
+      const upgraded = await db.evaluationSeedReceipt.findUniqueOrThrow({ where: { id: DATASET_ID } });
+      expect(upgraded.createdAt).toEqual(receipt.createdAt);
+      expect(upgraded.analyticsWindowEnd?.toISOString()).toBe(demo.range.to);
+      expect(upgraded.anchor).toBe(receipt.anchor);
+      expect(upgraded.fixtureVersion).toBe("1.3");
+    });
+
+    it("reuses the installed clock and changes absolutely nothing on a rerun several days later", async () => {
+      await richSeed();
+      const before = await snapshot();
+      const later = await richSeed(new Date("2026-11-02T23:59:00.000Z"));
+      expect(later).toMatchObject({ outcome: "already-present", analyticsDemo: { range: demo.range } });
+      expect(await snapshot()).toBe(before);
+    });
+
+    it.each(["fresh", "upgrade"])("rolls back an analytics insertion failure during %s", async scenario => {
+      if (scenario === "upgrade") await seed();
+      const before = await snapshot();
+      const original = PricingService.prototype.findEffectivePrice;
+      jest.spyOn(PricingService.prototype, "findEffectivePrice").mockImplementation(function (this: PricingService, ...args) {
+        if (args[1] === "demo-boreal") throw new Error("deliberate analytics failure");
+        return original.apply(this, args);
+      });
+      await expect(richSeed()).rejects.toThrow("deliberate analytics failure");
+      expect(await snapshot()).toBe(before);
+    });
+
+    it.each(["legacy-trace", "legacy-account", "added-project", "new-price", "new-id"])(
+      "refuses an unsafe upgrade: %s", async scenario => {
+        await seed();
+        if (scenario === "legacy-trace") await db.trace.update({ where: { id: f.traces[0].id }, data: { version: 2 } });
+        if (scenario === "legacy-account") await db.user.update({ where: { id: f.users[0].id }, data: { displayName: "Changed" } });
+        if (scenario === "added-project") await db.project.create({ data: { organizationId: org, name: "Extra", slug: "extra" } });
+        if (scenario === "new-price") await db.modelPrice.create({ data: {
+          ...demo.prices[0], id: randomUUID(), effectiveFrom: new Date(demo.range.from),
+        } });
+        if (scenario === "new-id") await db.project.create({ data: {
+          id: ANALYTICS_PROJECT_ID, organizationId: f.organizations[1].id, name: "Existing", slug: "other",
+        } });
+        const before = await snapshot();
+        await expect(richSeed()).rejects.toMatchObject({ code: "SEED_CONFLICT" });
+        expect(await snapshot()).toBe(before);
+      });
+
+    it.each(["changed", "soft-deleted", "deleted-project", "new-trace", "receipt-window"])(
+      "does not repair a modified enriched seed: %s", async scenario => {
+        await richSeed();
+        if (scenario === "changed") await db.trace.update({ where: { id: demo.traces[0].id }, data: { inputTokens: 1 } });
+        if (scenario === "soft-deleted") await db.trace.update({ where: { id: demo.traces[0].id }, data: { deletedAt: new Date(), version: 2 } });
+        if (scenario === "deleted-project") {
+          await db.trace.deleteMany({ where: { projectId: ANALYTICS_PROJECT_ID } });
+          await db.project.delete({ where: { id: ANALYTICS_PROJECT_ID } });
+        }
+        if (scenario === "new-trace") {
+          const row = await db.trace.findUniqueOrThrow({ where: { id: demo.traces[0].id } });
+          await db.trace.create({ data: { ...row, metadata: row.metadata!, id: randomUUID(), externalId: "added-after-seed" } });
+        }
+        if (scenario === "receipt-window") await db.evaluationSeedReceipt.update({
+          where: { id: DATASET_ID }, data: { analyticsWindowEnd: null },
+        });
+        const before = await snapshot();
+        await expect(richSeed()).rejects.toMatchObject({ code: "SEED_CONFLICT" });
+        expect(await snapshot()).toBe(before);
+      });
+
+    it("preserves unrelated data and rejects password/anchor changes during upgrade and subsequent reruns", async () => {
+      await seed();
+      const unrelated = await db.user.create({ data: {
+        email: "rich-unrelated@control.test", displayName: "Control", passwordHash: "not-a-login",
+      } });
+      for (const upgraded of [false, true]) {
+        if (upgraded) await richSeed();
+        const before = await snapshot();
+        await expect(seedEvaluationWithAnalytics(db, { ...config, password: randomBytes(24).toString("hex") }, f, demoNow))
+          .rejects.toMatchObject({ code: "SEED_CONFLICT" });
+        await expect(seedEvaluationWithAnalytics(db, { ...config, anchor: "2026-10-02" }, loadSeedFixtures("2026-10-02"), demoNow))
+          .rejects.toMatchObject({ code: "SEED_CONFLICT" });
+        expect(await snapshot()).toBe(before);
+      }
+      expect(await db.user.findUnique({ where: { id: unrelated.id } })).toEqual(unrelated);
+    });
   });
 
   it.each(["live", "correction", "delete"] as const)("verifies independent %s mutation through the public API", async scenario => {
