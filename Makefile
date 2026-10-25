@@ -114,6 +114,42 @@ test-backend:
 eval-up:
 	@sh scripts/eval-up.sh
 
+
+# EXTERNAL DEMO — local HTTP development setup
+# EXTERNAL DEMO — local HTTP development setup
+DEMO_DIR := $(CURDIR)/examples/external-demo
+DEMO_IMAGE := docker.io/library/node:24-alpine
+DEMO_RUNTIME ?= docker
+DEMO_USER_FLAGS ?= --user "$$(id -u):$$(id -g)"
+DEMO_VOLUME_SUFFIX ?=
+
+demo-install:
+	$(DEMO_RUNTIME) run --rm \
+		$(DEMO_USER_FLAGS) \
+		-e npm_config_cache=/tmp/npm-cache \
+		-v "$(DEMO_DIR):/app:rw$(DEMO_VOLUME_SUFFIX)" \
+		-w /app \
+		$(DEMO_IMAGE) npm ci
+
+demo-up:
+	@test -f "$(DEMO_DIR)/.env" || \
+		(echo "Configure examples/external-demo/.env first." && exit 1)
+	$(DEMO_RUNTIME) run --rm --init --network host \
+		$(DEMO_USER_FLAGS) \
+		-v "$(DEMO_DIR):/app:ro$(DEMO_VOLUME_SUFFIX)" \
+		-w /app \
+		$(DEMO_IMAGE) npm start
+
+demo-up-42:
+	$(MAKE) demo-up DEMO_RUNTIME=podman \
+		DEMO_USER_FLAGS=--userns=keep-id DEMO_VOLUME_SUFFIX=,Z
+
+demo-install-42:
+	$(MAKE) demo-install DEMO_RUNTIME=podman \
+		DEMO_USER_FLAGS=--userns=keep-id DEMO_VOLUME_SUFFIX=,z
+
+.PHONY: demo-install demo-install-42 demo-up demo-up-42
+
 #HELP
 
 help:

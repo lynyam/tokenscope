@@ -1,5 +1,59 @@
 # TokenScope external demo
 
+## Quick launch at 42 — local development
+
+These commands use rootless Podman and require TokenScope to be
+running separately at http://localhost:5173.
+
+### One-time preparation
+
+Install demo dependencies from the repository root:
+
+```bash
+make demo-install-42
+```
+
+Configure `examples/external-demo/.env` privately with:
+
+- `PORT=8080`
+- `LLM_MODEL=gemini-3.5-flash-lite`
+- `TOKENSCOPE_BASE_URL=http://localhost:5173`
+- Your Gemini API key.
+- Separate TokenScope API keys for Chat and Translation.
+
+Never commit `.env` or API keys.
+
+Load the model pricing into the running development backend:
+
+```bash
+podman cp examples/external-demo/config/model-prices.json \
+  tokenscope_backend_1:/tmp/external-demo-prices.json
+
+podman exec -w /app tokenscope_backend_1 \
+  npm run pricing:load -- --file /tmp/external-demo-prices.json
+```
+
+These commands assume the backend container is named
+`tokenscope_backend_1`; check with `podman ps`.
+
+### Each demo session
+
+With TokenScope running, start the demo from the repository root:
+
+```bash
+make demo-up-42
+```
+
+Open http://127.0.0.1:8080 and keep the terminal running.
+Press Ctrl+C to stop the demo.
+
+Saved keys and pricing can be reused while the keys remain valid
+and the TokenScope database is preserved. A new computer or reset
+database requires setup again.
+
+This HTTP setup is separate from the HTTPS evaluation stack
+described below.
+
 Standalone Chat and Translation workflows powered by Gemini.
 Each workflow sends usage traces to a separate TokenScope project through
 the same tracing wrapper.
@@ -47,7 +101,7 @@ Edit `examples/external-demo/.env` locally:
 | --- | --- |
 | `PORT` | Demo HTTP port; default 8080. |
 | `GEMINI_API_KEY` | Gemini credential, used only by the demo server. |
-| `LLM_MODEL` | Gemini model ID; the supplied catalogue uses `gemini-3.8-flash`. |
+| `LLM_MODEL` | Gemini model ID; the supplied catalogue uses `gemini-3.5-flash-lite`. |
 | `TOKENSCOPE_BASE_URL` | TokenScope origin, normally `https://localhost:8443`. |
 | `TOKENSCOPE_CHAT_API_KEY` | Key belonging to the Chat project. |
 | `TOKENSCOPE_TRANSLATION_API_KEY` | Different key belonging to the Translation project. |
@@ -72,7 +126,7 @@ docker compose exec -w /opt/tokenscope/backend backend \
 ```
 
 The catalogue records Google's Standard paid text rates, checked on
-2026-10-18: USD 0.75 per million input tokens and USD 3.75 per million
+2026-10-25: USD 0.30 per million input tokens and USD 2.50 per million
 output tokens, including thinking tokens.
 
 These are estimated costs, not a statement of the user's actual bill.
@@ -83,9 +137,8 @@ Source: https://ai.google.dev/gemini-api/docs/pricing
 The configured effective date is the local catalogue activation date,
 not a claim about Google's price announcement date.
 
-Google lists these rates through 2026-12-31, with higher rates from
-2027-01-01. Verify pricing and add the appropriate new catalogue version
-before using this configuration for later requests.
+Verify current provider pricing before future evaluations and update
+the catalogue when necessary.
 
 ## Start the demo
 
