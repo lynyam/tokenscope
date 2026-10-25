@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { ProjectDetailPage } from "@/pages/projects/ProjectDetailPage";
 import { ProjectSettingsPage } from "@/pages/projects/ProjectSettingsPage";
 import { saveAccessToken, getAccessToken } from "@/api/auth-session";
+import * as projectEvents from "@/api/project-events";
 
 vi.mock("@/api/projects.api", () => ({ getOrganizationProject: vi.fn(), updateProject: vi.fn(), archiveProject: vi.fn() }));
 vi.mock("@/api/organizations.api", () => ({ getOrganization: vi.fn() }));
@@ -21,11 +22,14 @@ beforeEach(() => {
   });
 });
 it.each(["OWNER", "ADMIN", "MEMBER"] as const)("%s clears the project on access loss", async role => {
+  const notify = vi.spyOn(projectEvents, "notifyProjectsChanged");
   vi.mocked(getOrganization).mockResolvedValue({ id: "o", name: "Org", slug: "org", createdAt: "", updatedAt: "", currentUserRole: role });
   render(<MemoryRouter initialEntries={["/organizations/o/projects/p"]}>
     <Routes><Route path="/organizations/:organizationId/projects/:projectId" element={<ProjectDetailPage />} /></Routes>
   </MemoryRouter>);
   await screen.findByRole("heading", { name: "Support" });
+  expect(screen.getByText("Description: No description yet.")).toBeInTheDocument();
+  expect(screen.getByText("Status: Active")).toBeInTheDocument();
   // Edit and archive moved to the settings page.
   expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Archive project" })).not.toBeInTheDocument();
@@ -36,6 +40,7 @@ it.each(["OWNER", "ADMIN", "MEMBER"] as const)("%s clears the project on access 
   expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
   expect(getAccessToken()).toBe("current");
   expect(vi.mocked(getOrganizationProject).mock.calls.at(-1)![2]?.aborted).toBe(true);
+  expect(notify).toHaveBeenCalledWith({ organizationId: "o", projectId: "p", kind: "unavailable" });
 });
 
 it.each([["OWNER", true], ["ADMIN", true], ["MEMBER", false]] as const)("%s on the settings page: edit and archive available = %s", async (role, allowed) => {

@@ -17,6 +17,7 @@ const projectLinkClass = ({ isActive }: { isActive: boolean }) =>
 
 export function Sidebar() {
 	const { organizationId, projectId } = useParams();
+	const { pathname } = useLocation();
 	const {
 		projects,
 		isLoading,
@@ -25,15 +26,16 @@ export function Sidebar() {
 		accessLost,
 	} = useOrganizationProjects(organizationId);
 
-	const role = useOrganizationRole(organizationId, Boolean(projectId));
 	const currentProject = projects.find(project => project.id === projectId);
+	const { role, error: roleError, reload: reloadRole } = useOrganizationRole(
+		organizationId, Boolean(currentProject) && !accessLost, pathname,
+	);
 	const projectBase = organizationId && projectId
 		? `/organizations/${encodeURIComponent(organizationId)}/projects/${encodeURIComponent(projectId)}`
 		: null;
 
 	const [open, setOpen] = useState(false);
 	const [desktop, setDesktop] = useState(() => window.matchMedia("(min-width: 768px)").matches);
-	const { pathname } = useLocation();
 
 	useEffect(() => {
 		const media = window.matchMedia("(min-width: 768px)");
@@ -103,15 +105,21 @@ export function Sidebar() {
 								organizationId={organizationId}
 							/>
 
-							{projectBase && (
-								<div className="mt-2 flex flex-col gap-1">
+							{projectBase && currentProject?.archivedAt === null && (
+								<div role="group" aria-label="Project sections" className="mt-2 flex flex-col gap-1">
 									<p className="truncate px-3 text-xs font-medium uppercase text-muted-foreground">
-										{currentProject?.name ?? "Project"}
+										{currentProject.name}
 									</p>
 									<div className="ml-3 flex flex-col gap-1 border-l pl-3">
 										<NavLink end to={projectBase} className={projectLinkClass}>Overview</NavLink>
 										<NavLink to={`${projectBase}/traces`} className={projectLinkClass}>Traces</NavLink>
 										<NavLink to={`${projectBase}/documents`} className={projectLinkClass}>Documents</NavLink>
+										{roleError && (
+											<div className="px-3 text-sm">
+												<p role="alert">{roleError}</p>
+												<button type="button" onClick={reloadRole} className="underline">Retry project permissions</button>
+											</div>
+										)}
 										{(role === "OWNER" || role === "ADMIN") && (
 											<NavLink to={`${projectBase}/api-keys`} className={projectLinkClass}>API keys</NavLink>
 										)}

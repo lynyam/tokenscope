@@ -18,7 +18,10 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: 0,
-  reporter: [["list"], ["html", { open: "never" }]],
+  // Keep develop's protection: HTML action steps may contain DEMO_PASSWORD.
+  reporter: process.env.E2E_EVALUATION_SEED === "1"
+    ? [["line"]]
+    : [["list"], ["html", { open: "never" }]],
   use: {
     baseURL,
     acceptDownloads: true,
@@ -31,7 +34,8 @@ export default defineConfig({
   projects: [
     // Installed Google Chrome (not Playwright's Chromium).
     { name: "chrome", use: { ...devices["Desktop Chrome"], channel: "chrome" } },
-    // Playwright's Firefox build; trusts the system certificate store for the evaluation CA.
+    // OS roots work on macOS/Windows; Linux needs explicit CA provisioning.
+    // See docs/BROWSER_COMPATIBILITY-eval.md. This does not bypass TLS checks.
     {
       name: "firefox",
       use: {

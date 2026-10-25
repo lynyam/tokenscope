@@ -465,9 +465,13 @@ and PostgreSQL). Start and migrate the application first, then from `frontend/`:
 
 ```bash
 npm ci
-npx playwright install chromium
+npx playwright install firefox
 E2E_BASE_URL="http://localhost:5173" npm run test:e2e
 ```
+
+Install Google Chrome and Microsoft Edge separately: the runner now uses the installed
+`chrome`/`msedge` channels and Playwright Firefox. HTTP runs are debugging only; final
+compatibility uses trusted HTTPS. See [browser setup and current evidence](BROWSER_COMPATIBILITY-eval.md).
 
 Adjust `E2E_BASE_URL` to the actual frontend origin. The specs live in
 `frontend/test/e2e/*.spec.ts` and create unique disposable accounts and
@@ -897,7 +901,7 @@ The 100-write burst test uses real ingestion transactions directly because 100 H
 requests from one IP would exceed the separate public API quota of 60/minute.
 
 Browser proxy verification uses the test-only Socket.IO bundle installed under backend/node_modules.
-Run `npm ci` in backend and frontend on the host, then `npx playwright install chromium`
+Run `npm ci` in backend and frontend on the host, then `npx playwright install firefox`
 in frontend. No production frontend dependency is added by TSE-73.
 
 An evaluation-seeded database already has the synthetic catalogue: skip the following import there. Only for a disposable browser-test database that will not receive the evaluation seed, import prices explicitly. In development mode, first run `docker compose exec backend npm run build` as described in [Explicit price catalogue loading](#explicit-price-catalogue-loading):

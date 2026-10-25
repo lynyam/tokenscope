@@ -423,7 +423,7 @@ it.each([403, 404, 503])(
 	},
 );
 
-it("shows a concealed detail 404 without logging out", async () => {
+it.each([detailPath, settingsPath])("shows a concealed 404 at %s without logging out", async path => {
 	const respond = fetchMock.getMockImplementation()!;
 	fetchMock.mockImplementation((url, options) =>
 		url === "/api/v1" + detailPath
@@ -434,7 +434,7 @@ it("shows a concealed detail 404 without logging out", async () => {
 			: respond(url, options),
 	);
 
-	view(detailPath);
+	view(path);
 
 	expect(await screen.findByRole("alert"))
 		.toHaveTextContent("Project not found.");
@@ -447,9 +447,12 @@ it("shows a concealed detail 404 without logging out", async () => {
 	expect(getAccessToken()).toBe("project-ui-token");
 });
 
-it.each(["organization", "project"] as const)(
-	"shows not-found for an invalid %s id without logging out",
-	async invalidPart => {
+it.each([
+	["organization", ""], ["project", ""],
+	["organization", "/settings"], ["project", "/settings"],
+] as const)(
+	"shows not-found for an invalid %s id on %s without logging out",
+	async (invalidPart, suffix) => {
 		const invalidOrg = invalidPart === "organization" ? "not-a-uuid" : org;
 		const invalidProject = invalidPart === "project" ? "not-a-uuid" : project.id;
 		const invalidListPath = "/organizations/" + invalidOrg + "/projects";
@@ -469,7 +472,7 @@ it.each(["organization", "project"] as const)(
 			return respond(url, options);
 		});
 
-		view(invalidDetailPath);
+		view(invalidDetailPath + suffix);
 
 		expect(await screen.findByRole("alert")).toHaveTextContent("Project not found.");
 		expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
@@ -480,13 +483,13 @@ it.each(["organization", "project"] as const)(
 	},
 );
 
-it.each([
-	["network", "Unable to reach the server"],
-	["server", "Service unavailable."],
-	["other-400", "Request rejected."],
-] as const)(
-	"keeps Retry and recovers from a project detail %s failure",
-	async (kind, message) => {
+it.each([detailPath, settingsPath].flatMap(path => [
+	[path, "network", "Unable to reach the server"],
+	[path, "server", "Service unavailable."],
+	[path, "other-400", "Request rejected."],
+]))(
+	"keeps Retry at %s and recovers from a %s failure",
+	async (path, kind, message) => {
 		const respond = fetchMock.getMockImplementation()!;
 		let shouldFail = true;
 		fetchMock.mockImplementation((url, options) => {
@@ -502,7 +505,7 @@ it.each([
 		});
 
 		const user = userEvent.setup();
-		view(detailPath);
+		view(path);
 
 		expect(await screen.findByRole("alert")).toHaveTextContent(message);
 		expect(screen.queryByText("Project not found.")).not.toBeInTheDocument();

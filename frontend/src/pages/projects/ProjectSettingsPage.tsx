@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getAuthSessionSnapshot } from "../../api/auth-session";
 import { EditProjectForm } from "./EditProjectForm";
+import { notifyProjectsChanged } from "../../api/project-events";
 
 export function ProjectSettingsPage() {
   const { organizationId, projectId } = useParams();
@@ -61,10 +62,15 @@ function ProjectSettings({ organizationId, projectId }: { organizationId: string
       })
       .catch(failure => {
         if (controller.signal.aborted || isAbortError(failure)) return;
-        // Do not reveal whether an inaccessible project exists.
-        setLoadError(failure instanceof ApiError && failure.statusCode === 404
-          ? "Project not found."
-          : getApiErrorMessage(failure, "Failed to load project."));
+        // Preserve develop's concealed not-found screen, including malformed IDs.
+        if (failure instanceof ApiError && (
+          failure.statusCode === 404 ||
+          (failure.statusCode === 400 && failure.code === "VALIDATION_ERROR")
+        )) {
+          notifyProjectsChanged({ organizationId, projectId, kind: "unavailable" });
+          return;
+        }
+        setLoadError(getApiErrorMessage(failure, "Failed to load project."));
       })
       .finally(() => {
         if (!controller.signal.aborted) setIsLoading(false);
@@ -89,6 +95,7 @@ function ProjectSettings({ organizationId, projectId }: { organizationId: string
     setSaveError(null);
     setArchiveError(null);
     setProject(null);
+    notifyProjectsChanged({ organizationId, projectId, kind: "unavailable" });
   }
 
   async function handleUpdateSubmit(event: FormEvent) {
@@ -189,7 +196,7 @@ function ProjectSettings({ organizationId, projectId }: { organizationId: string
   );
 
   return (
-    <section className="mx-auto max-w-6xl space-y-6 p-6">
+    <section className="mx-auto min-w-0 max-w-6xl space-y-6 p-3 sm:p-6 [overflow-wrap:anywhere]">
       <Link to={listPath}>← Back to projects</Link>
       <h1 className="text-2xl font-semibold">{project.name}</h1>
       <p className="text-sm text-muted-foreground">{project.slug}</p>
@@ -206,7 +213,7 @@ function ProjectSettings({ organizationId, projectId }: { organizationId: string
       {canManage && (
         <>
           <Dialog open={isEditing} onOpenChange={handleEditingChange}>
-            <DialogContent className="rounded-lg" showCloseButton={!isMutating}>
+            <DialogContent className="max-h-[90dvh] overflow-y-auto rounded-lg" showCloseButton={!isMutating}>
               <DialogHeader>
                 <DialogTitle>Edit project</DialogTitle>
                 <DialogDescription>Update the project name or description.</DialogDescription>
@@ -219,7 +226,7 @@ function ProjectSettings({ organizationId, projectId }: { organizationId: string
               />
             </DialogContent>
           </Dialog>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button variant="outline" disabled={isMutating} onClick={() => handleEditingChange(true)}>Edit</Button>
             <Button variant="destructive" disabled={isMutating} onClick={handleArchive}>
               {isArchiving ? "Archiving…" : "Archive project"}

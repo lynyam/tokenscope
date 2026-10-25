@@ -622,7 +622,7 @@ npm run build
 cd ..
 ```
 
-Expected: each command exits 0. In development mode, `make frontendcheck` and `make frontendtest` provide container alternatives. Do not use those targets in HTTPS evaluation mode: its frontend container runs Caddy, not Node/npm. Browser tests require a running application and the setup in [Local Development](LOCAL_DEVELOPMENT-eval.md); the committed Playwright configuration runs Chromium and does not establish Firefox or Edge compatibility.
+Expected: each command exits 0. In development mode, `make frontendcheck` and `make frontendtest` provide container alternatives. Do not use those targets in HTTPS evaluation mode: its frontend container runs Caddy, not Node/npm. Browser tests require a running application and the setup in [Local Development](LOCAL_DEVELOPMENT-eval.md). The runner has Chrome, Firefox and Edge projects; configuration alone does not establish compatibility. See [the current candidate matrix and historical results](BROWSER_COMPATIBILITY-eval.md).
 
 Record actual outputs with commit and environment. Check browser consoles and backend logs for unexpected errors, and verify responses exclude password hashes. Database integration tests establish persistence/authorization separately from mocked HTTP tests; live Gemini behaviour needs separate provider evidence.
 

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { getAuthSessionSnapshot } from "../../api/auth-session";
 import { ProjectDashboard } from "./ProjectDashboard";
 import { DashboardAssistant } from "./DashboardAssistant";
+import { notifyProjectsChanged } from "../../api/project-events";
 
 export function ProjectDetailPage() {
   const { organizationId, projectId } = useParams();
@@ -44,6 +45,7 @@ function ProjectDetail({ organizationId, projectId }: { organizationId: string; 
             (failure.statusCode === 400 && failure.code === "VALIDATION_ERROR")
           )
         ) {
+          notifyProjectsChanged({ organizationId, projectId, kind: "unavailable" });
           return;
         }
         setLoadError(getApiErrorMessage(failure, "Failed to load project."));
@@ -59,6 +61,7 @@ function ProjectDetail({ organizationId, projectId }: { organizationId: string; 
   function clearProject() {
     requests.current?.abort();
     setProject(null);
+    notifyProjectsChanged({ organizationId, projectId, kind: "unavailable" });
   }
 
   if (isLoading) return <p role="status">Loading project…</p>;
@@ -81,6 +84,12 @@ function ProjectDetail({ organizationId, projectId }: { organizationId: string; 
       <Link to={listPath}>← Back to projects</Link>
       <h1 className="text-2xl font-semibold">{project.name}</h1>
       <p className="text-sm text-muted-foreground">{project.slug}</p>
+      <div className="rounded-lg border p-4 space-y-2 text-sm [overflow-wrap:anywhere]">
+        <p>Description: {project.description ?? "No description yet."}</p>
+        <p>Status: {project.archivedAt ? "Archived" : "Active"}</p>
+        <p>Created at: {project.createdAt}</p>
+        <p>Updated at: {project.updatedAt}</p>
+      </div>
       <ProjectDashboard
         organizationId={organizationId}
         projectId={projectId}

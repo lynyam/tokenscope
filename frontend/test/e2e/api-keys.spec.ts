@@ -104,7 +104,7 @@ test("OWNER sees the empty state on a new project", async ({ page }) => {
 
 test("OWNER creates a key, sees the secret once, then revokes it", async ({ page, context, browserName }) => {
   // Clipboard permissions can only be granted to Chromium-based browsers (Chrome, Edge).
-  // In Firefox the copied content is verified manually (see docs/EVALUATION.md).
+  // Firefox needs a separate manual clipboard check (docs/BROWSER_COMPATIBILITY-eval.md).
   if (browserName === "chromium") await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await signInThroughUi(page, ws.owner);
   const name = "Journey " + RUN;
