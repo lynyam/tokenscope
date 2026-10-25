@@ -183,7 +183,7 @@ describe("organization screens with the real HTTP adapter", () => {
 		expect(getAccessToken()).toBe("organization-ui-test-token");
 	});
 
-	it("shows an inaccessible organization's 404 without clearing authentication", async () => {
+	it("shows not-found and supports keyboard return without clearing authentication", async () => {
 		fetchMock.mockResolvedValueOnce(
 			json(
 				{
@@ -194,12 +194,54 @@ describe("organization screens with the real HTTP adapter", () => {
 			),
 		);
 
+		fetchMock.mockResolvedValueOnce(json([]));
+		const user = userEvent.setup();
 		renderPage(`/organizations/${organization.id}`);
 
-		expect(await screen.findByRole("alert"))
-			.toHaveTextContent("Organization not found.");
+		expect(await screen.findByText("Organization not found")).toBeInTheDocument();
+		expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+		expect(screen.queryByText(organization.name)).not.toBeInTheDocument();
+		expect(screen.queryByText(organization.slug)).not.toBeInTheDocument();
 		expect(getAccessToken()).toBe("organization-ui-test-token");
+
+		const back = screen.getByRole("link", { name: /Back to organizations/ });
+		expect(back).toHaveAttribute("href", "/organizations");
+		await user.tab(); // Test harness's "Open other organization" link.
+		await user.tab();
+		expect(back).toHaveFocus();
+		await user.keyboard("{Enter}");
+
+		expect(await screen.findByText("No organizations yet.")).toBeInTheDocument();
+		expect(screen.queryByText(organization.name)).not.toBeInTheDocument();
+		expect(getAccessToken()).toBe("organization-ui-test-token");
+		expect(fetchMock).toHaveBeenCalledTimes(2);
 	});
+
+	it.each(["network", "server"] as const)(
+		"keeps Retry for an organization detail %s failure",
+		async kind => {
+			if (kind === "network") {
+				fetchMock.mockRejectedValueOnce(new TypeError("offline"));
+			} else {
+				fetchMock.mockResolvedValueOnce(json({
+					code: "SERVICE_UNAVAILABLE",
+					message: "Service unavailable.",
+				}, 503));
+			}
+			fetchMock.mockResolvedValueOnce(json(organization));
+			const user = userEvent.setup();
+			renderPage(`/organizations/${organization.id}`);
+
+			expect(await screen.findByRole("alert")).toHaveTextContent(
+				kind === "network" ? "Unable to reach the server" : "Service unavailable.",
+			);
+			expect(screen.queryByText("Organization not found")).not.toBeInTheDocument();
+			await user.click(screen.getByRole("button", { name: "Retry" }));
+			expect(await screen.findByText(organization.name)).toBeInTheDocument();
+			expect(getAccessToken()).toBe("organization-ui-test-token");
+			expect(fetchMock).toHaveBeenCalledTimes(2);
+		},
+	);
 
 	it("ignores the previous organization's late response after navigation", async () => {
 		let finishOldRequest!: (response: Response) => void;
