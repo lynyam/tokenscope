@@ -75,7 +75,7 @@ export function OrganizationSwitcher() {
           <Building2 className="h-4 w-4 text-muted-foreground" />
         </div>
 
-        <span className="flex-1 truncate text-sm font-medium">
+        <span className="min-w-0 flex-1 truncate text-sm font-medium" title={currentOrganization?.name}>
           {currentOrganization?.name ?? "Select organization"}
         </span>
 
@@ -114,7 +114,7 @@ export function OrganizationSwitcher() {
                 }
               >
                 <Building2 className="h-4 w-4" />
-                {organization.name}
+                <span className="min-w-0 [overflow-wrap:anywhere]">{organization.name}</span>
               </DropdownMenuItem>
             ))}
           </DropdownMenuGroup>

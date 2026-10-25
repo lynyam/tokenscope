@@ -148,7 +148,7 @@ export function ProjectDashboard({ organizationId, projectId, renderExtras, onUn
   } : null;
 
   return (
-    <section aria-label="Analytics" className="space-y-4">
+    <section aria-label="Analytics" className="space-y-4 pb-16">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-xl font-semibold">Analytics</h2>
         <p role="status" aria-live="polite" className="text-xs uppercase tracking-wide text-muted-foreground"

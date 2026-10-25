@@ -45,7 +45,7 @@ export function AddMemberForm({ onAdd }: AddMemberFormProps) {
       <DialogContent className="rounded-lg" showCloseButton={!isSubmitting}>
         <DialogHeader>
           <DialogTitle>Add member</DialogTitle>
-          <DialogDescription>Add someone who already has a TokenScope account.</DialogDescription>
+          <DialogDescription>Add someone who already has a tokenscope account.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col gap-3" aria-busy={isSubmitting}>
           <Label htmlFor="member-email">Email</Label>

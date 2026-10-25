@@ -92,7 +92,7 @@ export function LandingPage() {
         </h1>
 
         <p className="mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground">
-          TokenScope is being built to bring AI usage, estimated costs,
+          tokenscope is being built to bring AI usage, estimated costs,
           and request details into one shared workspace—so your team
           can understand where its spending comes from.
         </p>
@@ -182,7 +182,7 @@ export function LandingPage() {
           </h2>
 
           <p className="mt-4 max-w-2xl text-muted-foreground">
-            The intended TokenScope journey, with upcoming steps marked below.
+            The intended tokenscope journey, with upcoming steps marked below.
           </p>
 
           <ol className="mt-10 grid list-none gap-8 md:grid-cols-3">
@@ -209,7 +209,7 @@ export function LandingPage() {
               </h3>
               <p className="mt-3 leading-relaxed text-muted-foreground">
                 Connect your application’s usage reporting to your project
-                using a TokenScope API key.
+                using a tokenscope API key.
               </p>
             </li>
 
@@ -240,7 +240,7 @@ export function LandingPage() {
           </h2>
 
           <p className="mt-4 max-w-2xl text-muted-foreground">
-            Start exploring TokenScope as the product takes shape.
+            Start exploring tokenscope as the product takes shape.
           </p>
 
           <div className="mt-8 flex flex-wrap items-center gap-4">
@@ -250,7 +250,7 @@ export function LandingPage() {
 
         <footer className="mt-24 border-t border-border py-10">
           <div className="flex flex-col gap-4 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-            <p>TokenScope — collaborative LLM cost observability.</p>
+            <p>tokenscope — collaborative LLM cost observability.</p>
 
             <nav
               aria-label="Footer navigation"

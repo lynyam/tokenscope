@@ -163,6 +163,24 @@ describe("organization screens with the real HTTP adapter", () => {
 		},
 	);
 
+	it("keeps the full long name and slug in the detail and confirmation dialog", async () => {
+		const name = "W".repeat(100);
+		const slug = "w".repeat(100);
+		fetchMock.mockResolvedValueOnce(json({ ...organization, name, slug }));
+		const user = userEvent.setup();
+		renderPage(`/organizations/${organization.id}`);
+		expect(await screen.findByRole("heading", { level: 1, name: `Detail of ${name}` }))
+			.toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Delete organization" }));
+		const dialog = screen.getByRole("dialog");
+		expect(dialog).toHaveTextContent(name);
+		expect(dialog).toHaveTextContent(slug);
+		await user.click(screen.getByRole("button", { name: "Cancel" }));
+		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(getAccessToken()).toBe("organization-ui-test-token");
+	});
+
 	it("displays a load failure and lets the user retry", async () => {
 		fetchMock
 			.mockRejectedValueOnce(new TypeError("offline"))
