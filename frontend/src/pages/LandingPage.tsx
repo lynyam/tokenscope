@@ -77,7 +77,7 @@ export function LandingPage() {
   const isLoggedIn = Boolean(user);
 
   return (
-    <div className="dark min-h-screen bg-background text-foreground">
+    <div className="min-h-screen bg-background text-foreground">
       <LandingHeader isLoggedIn={isLoggedIn} />
 
       <main className="mx-auto max-w-6xl px-6 py-20 sm:py-28">

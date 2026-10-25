@@ -4,21 +4,29 @@ const screenshots = [
   {
     src: "/screenshots/3.webp",
     label: "Analytics overview",
+    width: 1024,
+    height: 702,
     alt: "TokenScope analytics with period filters, estimated cost, traces, token counts, average latency, and error rate.",
   },
   {
     src: "/screenshots/2.webp",
     label: "Costs and tokens",
+    width: 1021,
+    height: 389,
     alt: "TokenScope charts comparing estimated costs and input and output tokens by provider and model.",
   },
   {
     src: "/screenshots/1.webp",
     label: "AI assistant",
+    width: 1024,
+    height: 895,
     alt: "TokenScope AI assistant answering a question about median estimated daily cost alongside analytics charts.",
   },
   {
     src: "/screenshots/4.webp",
-    label: "Light mode",
+    label: "Light-theme preview",
+    width: 1023,
+    height: 561,
     alt: "TokenScope analytics filters and summary metrics displayed in light mode.",
   },
 ];
@@ -38,7 +46,7 @@ export function ProductPreview() {
       >
         <p className="font-semibold">A closer look at your AI spending</p>
         <p className="mt-1 text-sm text-muted-foreground">
-          Screenshots from TokenScope · Demo data · Estimated costs
+          Static screenshots from tokenscope · Demo data · Estimated costs
         </p>
       </figcaption>
 
@@ -75,11 +83,17 @@ export function ProductPreview() {
           <img
             src={screenshot.src}
             alt={screenshot.alt}
+            width={screenshot.width}
+            height={screenshot.height}
+            loading="lazy"
+            decoding="async"
             className="mx-auto block h-auto w-full max-w-5xl rounded-lg border border-border"
           />
         </a>
         <p className="mt-3 text-center text-xs text-muted-foreground">
-          Select a view above. Click the screenshot to open it full size.
+          Select a screenshot above; this does not change the site theme.
+          Use the header theme button to change the site theme.
+          Open the screenshot to view it full size in a new tab.
         </p>
       </div>
     </figure>
