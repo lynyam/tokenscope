@@ -1,5 +1,5 @@
 {
-  "specVersion": "1.1",
+  "specVersion": "1.2",
   "baselineCommit": "854da94f66582553738591a13a235ec379624394",
   "anchor": "2026-10-01",
   "fixedTestNow": "2026-10-02T08:00:00.000Z",
@@ -14,11 +14,12 @@
   "counts": {
     "users": 4,
     "organizations": 2,
+    "memberships": 4,
     "projects": 5,
     "modelPrices": 3,
     "goldenTraces": 6,
     "paginationTraces": 51,
     "isolationTraces": 2
   },
-  "note": "Canonical synthetic fixtures only. No automatic seed or live-provider evidence. Assistant uses dashboard scope."
+  "note": "Canonical synthetic fixtures. Seed only on explicit request (eval-seed or eval-up SEED=1); never on ordinary startup. Assistant uses dashboard scope; fixtures are not live-provider evidence."
 }
