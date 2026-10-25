@@ -102,8 +102,10 @@ test("OWNER sees the empty state on a new project", async ({ page }) => {
   await expect(page.getByText("No API keys yet.")).toBeVisible();
 });
 
-test("OWNER creates a key, sees the secret once, then revokes it", async ({ page, context }) => {
-  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+test("OWNER creates a key, sees the secret once, then revokes it", async ({ page, context, browserName }) => {
+  // Clipboard permissions can only be granted to Chromium-based browsers (Chrome, Edge).
+  // In Firefox the copied content is verified manually (see docs/EVALUATION.md).
+  if (browserName === "chromium") await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await signInThroughUi(page, ws.owner);
   const name = "Journey " + RUN;
   await page.goto(keysUrl(ws.orgId, ws.projectId));
@@ -116,8 +118,10 @@ test("OWNER creates a key, sees the secret once, then revokes it", async ({ page
 
   await page.getByRole("button", { name: "Copy" }).click();
   await expect(page.getByText("Copied to clipboard.")).toBeVisible();
-  const clipboard = await page.evaluate(() => navigator.clipboard.readText());
-  expect(clipboard === secret, "clipboard holds the full key").toBe(true);
+  if (browserName === "chromium") {
+    const clipboard = await page.evaluate(() => navigator.clipboard.readText());
+    expect(clipboard === secret, "clipboard holds the full key").toBe(true);
+  }
 
   // Use the actual key returned by this UI creation, not a second API-created key.
   const body = { ...fixtureBodies("traces-golden.json")[0], externalId: randomUUID() };

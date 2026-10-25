@@ -435,7 +435,9 @@ function observeRealtime(page: Page, readPath: RegExp) {
     notices.push(Date.now());
     for (const match of text.matchAll(/"projectId":"([0-9a-f-]{36})"/g)) noticeProjects.add(match[1]);
   };
-  page.on("load", () => { loads += 1; });
+  // A page opened with context.newPage() fires a load event on about:blank in Firefox (not in Chromium).
+  // That is not a reload of the application, so only real application documents are counted.
+  page.on("load", () => { if (page.url() !== "about:blank") loads += 1; });
   page.on("websocket", socket => {
     sockets.push(socket.url());
     socket.on("close", () => { closes += 1; });
