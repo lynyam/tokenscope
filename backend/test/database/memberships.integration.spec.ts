@@ -13,6 +13,9 @@ import request = require("supertest");
 import { AppModule } from "../../src/app.module";
 import { TokenService } from "../../src/auth/token.service";
 import { configureApp } from "../../src/configure-app";
+import {
+	resetTestDatabase,
+  } from "../support/reset-test-database";
 
 const ids = {
 	owner: randomUUID(), admin: randomUUID(), member: randomUUID(),
@@ -49,10 +52,7 @@ describe("Memberships with PostgreSQL", () => {
 
 	beforeEach(async () => {
 		// The existing Jest setup restricts this suite to the isolated test DB.
-		await prisma.project.deleteMany();
-		await prisma.membership.deleteMany();
-		await prisma.organization.deleteMany();
-		await prisma.user.deleteMany();
+		await resetTestDatabase(prisma);
 
 		await prisma.user.createMany({
 			data: (["owner", "admin", "member", "outsider", "target"] as const)

@@ -1,0 +1,102 @@
+{
+  "baseline": {
+    "traceCount": 6,
+    "inputTokens": "6000",
+    "outputTokens": "1200",
+    "totalTokens": "7200",
+    "estimatedCostUsd": "0.015350000000",
+    "errorCount": 2,
+    "errorRatePct": 33.33,
+    "averageLatencyMs": 1833.333
+  },
+  "provider_fixture_a": {
+    "traceCount": 3,
+    "inputTokens": "3500",
+    "outputTokens": "800",
+    "totalTokens": "4300",
+    "estimatedCostUsd": "0.007150000000",
+    "errorCount": 0,
+    "errorRatePct": 0.0,
+    "averageLatencyMs": 1000.0
+  },
+  "provider_fixture_b": {
+    "traceCount": 3,
+    "inputTokens": "2500",
+    "outputTokens": "400",
+    "totalTokens": "2900",
+    "estimatedCostUsd": "0.008200000000",
+    "errorCount": 2,
+    "errorRatePct": 66.67,
+    "averageLatencyMs": 2666.667
+  },
+  "workflow_batch": {
+    "traceCount": 3,
+    "inputTokens": "4000",
+    "outputTokens": "900",
+    "totalTokens": "4900",
+    "estimatedCostUsd": "0.010750000000",
+    "errorCount": 1,
+    "errorRatePct": 33.33,
+    "averageLatencyMs": 1000.0
+  },
+  "status_ERROR": {
+    "traceCount": 2,
+    "inputTokens": "1500",
+    "outputTokens": "300",
+    "totalTokens": "1800",
+    "estimatedCostUsd": "0.005400000000",
+    "errorCount": 2,
+    "errorRatePct": 100.0,
+    "averageLatencyMs": 2500.0
+  },
+  "to_15_exclusive": {
+    "traceCount": 5,
+    "inputTokens": "4500",
+    "outputTokens": "900",
+    "totalTokens": "5400",
+    "estimatedCostUsd": "0.009950000000",
+    "errorCount": 1,
+    "errorRatePct": 20.0,
+    "averageLatencyMs": 2000.0
+  },
+  "after_live_insert": {
+    "traceCount": 7,
+    "inputTokens": "7000",
+    "outputTokens": "1300",
+    "totalTokens": "8300",
+    "estimatedCostUsd": "0.017450000000",
+    "errorCount": 2,
+    "errorRatePct": 28.57,
+    "averageLatencyMs": 1642.857
+  },
+  "after_T1_correction_from_baseline": {
+    "traceCount": 6,
+    "inputTokens": "7000",
+    "outputTokens": "1400",
+    "totalTokens": "8400",
+    "estimatedCostUsd": "0.017150000000",
+    "errorCount": 2,
+    "errorRatePct": 33.33,
+    "averageLatencyMs": 1833.333
+  },
+  "after_T1_delete_from_baseline": {
+    "traceCount": 5,
+    "inputTokens": "5000",
+    "outputTokens": "1000",
+    "totalTokens": "6000",
+    "estimatedCostUsd": "0.013550000000",
+    "errorCount": 2,
+    "errorRatePct": 40.0,
+    "averageLatencyMs": 2000.0
+  },
+  "empty": {
+    "traceCount": 0,
+    "inputTokens": "0",
+    "outputTokens": "0",
+    "totalTokens": "0",
+    "estimatedCostUsd": "0.000000000000",
+    "errorCount": 0,
+    "errorRatePct": null,
+    "averageLatencyMs": null
+  }
+}

@@ -1,0 +1,35 @@
+[
+  {
+    "id": "40000000-0000-4000-8000-000000000001",
+    "provider": "fixture-a",
+    "model": "demo-fast",
+    "effectiveFrom": "2026-09-01T00:00:00.000Z",
+    "inputUsdPerMillion": "1.000000",
+    "outputUsdPerMillion": "4.000000",
+    "currency": "USD",
+    "isSynthetic": true,
+    "sourceUrl": null
+  },
+  {
+    "id": "40000000-0000-4000-8000-000000000002",
+    "provider": "fixture-a",
+    "model": "demo-fast",
+    "effectiveFrom": "2026-10-01T12:00:00.000Z",
+    "inputUsdPerMillion": "1.500000",
+    "outputUsdPerMillion": "6.000000",
+    "currency": "USD",
+    "isSynthetic": true,
+    "sourceUrl": null
+  },
+  {
+    "id": "40000000-0000-4000-8000-000000000003",
+    "provider": "fixture-b",
+    "model": "demo-large",
+    "effectiveFrom": "2026-09-01T00:00:00.000Z",
+    "inputUsdPerMillion": "2.000000",
+    "outputUsdPerMillion": "8.000000",
+    "currency": "USD",
+    "isSynthetic": true,
+    "sourceUrl": null
+  }
+]

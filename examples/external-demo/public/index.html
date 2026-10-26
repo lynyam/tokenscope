@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TokenScope — External Demo</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <main>
+    <header>
+      <p class="eyebrow">TokenScope · External demo</p>
+      <h1>Two workflows. One tracing wrapper.</h1>
+      <p class="intro">
+        Ask a question or translate text with Gemini.
+        Each workflow records usage in its own TokenScope project.
+      </p>
+    </header>
+
+    <div class="panels">
+      <section class="panel" aria-labelledby="chat-heading">
+        <div class="panel-heading">
+          <h2 id="chat-heading">Chat</h2>
+          <span class="badge">Demo Chat</span>
+        </div>
+        <p class="description">One question, one answer. Each submission is independent.</p>
+
+        <form id="chat-form">
+          <label for="chat-text">Your question</label>
+          <textarea id="chat-text" name="text" rows="5" required
+            placeholder="Explain what an API key is."></textarea>
+          <p class="hint">1–2,000 characters after trimming.</p>
+          <button type="submit">Ask Gemini</button>
+        </form>
+
+        <p id="chat-progress" class="progress" role="status"></p>
+        <div id="chat-result" class="result" hidden>
+          <h3>Provider result</h3>
+          <p id="chat-answer" class="answer"></p>
+          <h3>Trace delivery</h3>
+          <p id="chat-delivery"></p>
+          <dl id="chat-details"></dl>
+          <details id="chat-payload-section" hidden>
+            <summary>Trace payload for manual replay</summary>
+            <p class="hint">Contains usage metadata only; no prompt, answer or credentials.</p>
+            <pre id="chat-payload"></pre>
+            <button id="chat-copy" class="secondary" type="button">Copy trace payload</button>
+            <p id="chat-copy-status" role="status"></p>
+          </details>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="translation-heading">
+        <div class="panel-heading">
+          <h2 id="translation-heading">Translation</h2>
+          <span class="badge">Demo Translation</span>
+        </div>
+        <p class="description">Translate a short passage into your selected language.</p>
+
+        <form id="translation-form">
+          <label for="translation-text">Text to translate</label>
+          <textarea id="translation-text" name="text" rows="5" required
+            placeholder="Hello, how are you?"></textarea>
+          <p class="hint">1–2,000 characters after trimming.</p>
+          <label for="target-language">Target language</label>
+          <select id="target-language" name="targetLanguage">
+            <option>English</option>
+            <option selected>French</option>
+            <option>Spanish</option>
+          </select>
+          <button type="submit">Translate</button>
+        </form>
+
+        <p id="translation-progress" class="progress" role="status"></p>
+        <div id="translation-result" class="result" hidden>
+          <h3>Provider result</h3>
+          <p id="translation-answer" class="answer"></p>
+          <h3>Trace delivery</h3>
+          <p id="translation-delivery"></p>
+          <dl id="translation-details"></dl>
+          <details id="translation-payload-section" hidden>
+            <summary>Trace payload for manual replay</summary>
+            <p class="hint">Contains usage metadata only; no prompt, answer or credentials.</p>
+            <pre id="translation-payload"></pre>
+            <button id="translation-copy" class="secondary" type="button">Copy trace payload</button>
+            <p id="translation-copy-status" role="status"></p>
+          </details>
+        </div>
+      </section>
+    </div>
+
+    <footer>
+      Generated text and trace delivery are separate outcomes.
+      A delivery failure does not discard a successful answer.
+    </footer>
+  </main>
+</body>
+</html>

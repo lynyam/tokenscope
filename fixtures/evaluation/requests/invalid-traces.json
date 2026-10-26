@@ -1,0 +1,104 @@
+[
+  {
+    "case": "negative-input",
+    "body": {
+      "externalId": "golden-001",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": -1,
+      "outputTokens": 200,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    },
+    "expectedStatus": 400,
+    "expectedCode": "VALIDATION_ERROR"
+  },
+  {
+    "case": "numeric-string",
+    "body": {
+      "externalId": "golden-001",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": "1000",
+      "outputTokens": 200,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    },
+    "expectedStatus": 400,
+    "expectedCode": "VALIDATION_ERROR"
+  },
+  {
+    "case": "unpriced-model",
+    "body": {
+      "externalId": "golden-001",
+      "provider": "fixture-a",
+      "model": "missing-model",
+      "workflow": "support",
+      "inputTokens": 1000,
+      "outputTokens": 200,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      }
+    },
+    "expectedStatus": 400,
+    "expectedCode": "MODEL_PRICE_NOT_FOUND"
+  },
+  {
+    "case": "mass-assignment",
+    "body": {
+      "externalId": "golden-001",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 1000,
+      "outputTokens": 200,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "environment": "evaluation",
+        "synthetic": true
+      },
+      "projectId": "30000000-0000-4000-8000-000000000003"
+    },
+    "expectedStatus": 400,
+    "expectedCode": "VALIDATION_ERROR"
+  },
+  {
+    "case": "nested-metadata",
+    "body": {
+      "externalId": "golden-001",
+      "provider": "fixture-a",
+      "model": "demo-fast",
+      "workflow": "support",
+      "inputTokens": 1000,
+      "outputTokens": 200,
+      "latencyMs": 1000,
+      "status": "SUCCESS",
+      "occurredAt": "2026-10-01T10:00:00.000Z",
+      "metadata": {
+        "nested": {
+          "x": 1
+        }
+      }
+    },
+    "expectedStatus": 400,
+    "expectedCode": "VALIDATION_ERROR"
+  }
+]

@@ -7,12 +7,14 @@ import { configureApp } from "./configure-app";
 
 
 async function bootstrap() {
-	const app = await NestFactory.create(AppModule);
+	const app = await NestFactory.create(AppModule, {
+		rawBody: true,
+	});
 	configureApp(app);
 	app.enableShutdownHooks();
 
 	const config = app.get<ConfigService<EnvironmentVariables>>(ConfigService);
-	const port = config.getOrThrow("BACKEND_PORT", {infer : true});
+	const port = config.getOrThrow("BACKEND_PORT", { infer: true });
 	await app.listen(port);
 	new Logger("Bootstrap").log(`Server is listening on port ${port}`);
 }

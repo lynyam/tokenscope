@@ -4,6 +4,9 @@ import {
   Prisma,
   PrismaClient,
 } from "../../src/generated/prisma/client";
+import {
+  resetTestDatabase,
+} from "../support/reset-test-database";
 
 const adapter = new PrismaPg({
   connectionString: process.env.DATABASE_URL!,
@@ -13,10 +16,7 @@ const prisma = new PrismaClient({ adapter });
 
 describe("M1 data model", () => {
   beforeEach(async () => {
-    await prisma.project.deleteMany();
-    await prisma.membership.deleteMany();
-    await prisma.organization.deleteMany();
-    await prisma.user.deleteMany();
+    await resetTestDatabase(prisma);
   });
 
   afterAll(async () => {

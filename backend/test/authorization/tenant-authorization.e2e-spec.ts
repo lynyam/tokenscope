@@ -136,9 +136,19 @@ describe("Tenant authorization HTTP contract", () => {
       .expect(200)
       .expect({ organizationId: ids.organization, name: "Renamed workspace" });
 
-    expect(prisma.membership.findUnique).toHaveBeenCalledWith(expect.objectContaining({
-      where: { organizationId_userId: { organizationId: ids.organization, userId: ids.actor } },
-    }));
+    expect(prisma.membership.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          organizationId_userId: {
+            organizationId: ids.organization,
+            userId: ids.actor,
+          },
+          organization: {
+            archivedAt: null,
+          },
+        },
+      }),
+    );
   });
 
   it("returns a correlated organization 404 when membership is absent", async () => {

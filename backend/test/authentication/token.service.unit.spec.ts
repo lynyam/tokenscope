@@ -44,6 +44,13 @@ describe("TokenService", () => {
     expect(service.verifyAccessToken(accessToken).sub).toBe(TEST_USER_ID);
   });
 
+  it("returns the verified expiry for long-lived transports", () => {
+    const { accessToken } = service.signAccessToken(TEST_USER_ID);
+    const verified = service.verifyAccessToken(accessToken);
+    expect(verified).toEqual({ sub: TEST_USER_ID, exp: jwtService.verify(accessToken).exp });
+    expect(verified.exp).toBeGreaterThan(Date.now() / 1000);
+  });
+
   it("reports the configured TTL as expiresIn", () => {
     expect(service.signAccessToken(TEST_USER_ID).expiresIn).toBe(3600);
   });

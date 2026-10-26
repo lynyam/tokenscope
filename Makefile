@@ -5,11 +5,15 @@ BACKEND := backend
 FRONTEND := frontend
 DATABASE := postgres
 
+# Non-secret seed options. DEMO_PASSWORD belongs in ignored .env or exported env.
+export SEED CONFIRM_DATABASE ANCHOR
+
 
 #APPS
 
+# Rebuild the development targets when switching back from evaluation mode.
 up:
-	$(COMPOSE) up -d
+	APP_MODE=dev $(COMPOSE) up -d --build
 
 start:
 	$(COMPOSE) start
@@ -72,6 +76,16 @@ frontendcheck:
 frontendtest:
 	$(COMPOSE) exec $(FRONTEND) npm run test
 
+# Real-browser suite. It runs on the host (Playwright's browsers do not run in the Alpine frontend
+# container) against a stack that is already up: `make up` (http://localhost:5173, the default)
+# or `make eval-up` (E2E_BASE_URL=https://localhost:8443).
+frontende2e-setup:
+	cd frontend && npm ci --no-audit --no-fund && npx playwright install firefox
+	@printf '%s\n' 'Chrome and Edge must also be installed. See docs/BROWSER_COMPATIBILITY-eval.md.'
+
+frontende2e:
+	cd frontend && E2E_BASE_URL=$${E2E_BASE_URL:-http://localhost:5173} npm run test:e2e -- $(E2E_ARGS)
+
 backendcheck:
 	$(COMPOSE) exec $(BACKEND) npm run check
 
@@ -108,6 +122,39 @@ test-backend:
 		npm run test:unit && \
 		npm run test:e2e && \
 		npm run test:integration'
+
+#EVAL
+eval-up:
+	@sh scripts/eval-up.sh
+
+eval-seed:
+	@sh scripts/eval-seed.sh
+
+test-eval-startup:
+	@sh scripts/test-eval-startup.sh
+
+# Optional external application; never a dependency of eval-up or up.
+demo-build:
+	@sh scripts/demo.sh build
+
+demo-config:
+	@bash scripts/demo-config.sh
+
+demo-up:
+	@sh scripts/demo.sh up
+
+demo-down:
+	@sh scripts/demo.sh down
+
+demo-logs:
+	@sh scripts/demo.sh logs
+
+demo-test:
+	@sh scripts/demo.sh test
+
+test-demo-startup:
+	@sh scripts/test-demo-startup.sh
+
 #HELP
 
 help:
@@ -115,7 +162,7 @@ help:
 	@echo "TokenScope"
 	@echo ""
 	@echo "Application:"
-	@echo "  make up                            create and Start services"
+	@echo "  make up                            Build and start development mode"
 	@echo "  make start                         Start services"
 	@echo "  make restart                       Restart services"
 	@echo "  make pause                         Pause services"
@@ -124,8 +171,23 @@ help:
 
 	@echo "  make logs                          Follow service logs"
 	@echo "  make ps                            Show service status"
+	@echo "  make eval-up                       Build and start HTTPS evaluation mode"
+	@echo "  make eval-up SEED=1 CONFIRM_DATABASE=name  Start and explicitly seed the local demo"
+	@echo "  make eval-seed CONFIRM_DATABASE=name      Seed the running dev/eval backend"
+	@echo "  make test-eval-startup              Check startup/seed orchestration without Docker"
 	@echo "  make psa                            Show all service status"
 	@echo "  make shell                         Open backend shell"
+	@echo ""
+	@echo "Optional external demo (Ubuntu Docker Engine):"
+	@echo "  make demo-build                    Prepare the demo image without credentials"
+	@echo "  make demo-config                   Configure Gemini and project keys privately"
+	@echo "  make demo-up                       Start only the demo; requires eval-up first"
+	@echo "  make demo-down                     Stop/remove only this checkout's demo container"
+	@echo "  make demo-logs                     Follow demo container logs"
+	@echo "  make demo-test                     Run demo application tests in Docker"
+	@echo "  make test-demo-startup             Check demo lifecycle orchestration"
+	@echo "  Evaluation prices load automatically during make eval-up."
+	@echo "  Guide: docs/EXTERNAL_DEMO-eval.md"
 	@echo ""
 	@echo "Database:"
 	@echo "  make db-shell                      Open PostgreSQL shell"
@@ -142,9 +204,13 @@ help:
 	@echo "  make fullclean                     Also remove volumes/local images"
 	@echo "  make test-backend                  Check, build, unit, E2E and isolated database tests"
 	@echo "  make frontendtest                  Run frontend Vitest suite"
+	@echo "  make frontende2e-setup             Install host dependencies and Chromium for browser tests"
+	@echo "  make frontende2e                   Run Playwright browser tests (E2E_BASE_URL, E2E_ARGS)"
 	@echo ""
 
 .PHONY: \
-	start stop restart logs ps shell \
+	up eval-up eval-seed test-eval-startup start stop restart logs ps shell \
 	db-shell db-generate db-migrate db-migration db-seed db-status db-studio db-setup \
-	clean fullclean help test-db test-db-clean test-db-fresh test-backend frontendtest
+	clean fullclean help test-db test-db-clean test-db-fresh test-backend frontendtest \
+	frontende2e frontende2e-setup \
+	demo-build demo-config demo-up demo-down demo-logs demo-test test-demo-startup

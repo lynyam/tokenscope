@@ -7,6 +7,9 @@ import { MembershipRole } from "../../src/generated/prisma/client";
 import { OrganizationAccessService } from "../../src/memberships/organization-access.service";
 import { ProjectAccessService } from "../../src/projects/project-access.service";
 import { ProjectsModule } from "../../src/projects/projects.module";
+import {
+  resetTestDatabase,
+} from "../support/reset-test-database";
 
 const ids = {
   owner: randomUUID(),
@@ -56,10 +59,7 @@ describe("Tenant authorization with PostgreSQL", () => {
 
   beforeEach(async () => {
     // This suite is restricted to postgres-test by the Jest setup file.
-    await prisma.project.deleteMany();
-    await prisma.membership.deleteMany();
-    await prisma.organization.deleteMany();
-    await prisma.user.deleteMany();
+    await resetTestDatabase(prisma);
 
     await prisma.user.createMany({
       data: (["owner", "alice", "outsider"] as const).map((name) => ({
@@ -211,44 +211,191 @@ describe("Tenant authorization with PostgreSQL", () => {
   });
 
   it("uses the supplied transaction for membership and role checks", async () => {
-  const rollback = new Error("Intentional rollback for transaction test");
+    const rollback = new Error("Intentional rollback for transaction test");
 
-  await expect(
-    prisma.$transaction(async (tx) => {
-      // Alice starts as OWNER; this change is not yet committed.
-      await tx.membership.update({
-        where: aliceInA(),
-        data: { role: MembershipRole.MEMBER },
-      });
+    await expect(
+      prisma.$transaction(async (tx) => {
+        // Alice starts as OWNER; this change is not yet committed.
+        await tx.membership.update({
+          where: aliceInA(),
+          data: { role: MembershipRole.MEMBER },
+        });
+
+        await expect(
+          organizations.assertOrganizationMember(ids.alice, ids.orgA, tx),
+        ).resolves.toMatchObject({
+          userId: ids.alice,
+          organizationId: ids.orgA,
+          role: MembershipRole.MEMBER,
+        });
+
+        await expect(
+          organizations.assertOrganizationRole(
+            ids.alice,
+            ids.orgA,
+            [MembershipRole.OWNER],
+            tx,
+          ),
+        ).rejects.toMatchObject(FORBIDDEN);
+
+        throw rollback;
+      }),
+    ).rejects.toBe(rollback);
+
+    // Rollback restores OWNER. Existing calls still work without a client.
+    await expect(
+      organizations.assertOrganizationRole(
+        ids.alice,
+        ids.orgA,
+        [MembershipRole.OWNER],
+      ),
+    ).resolves.toMatchObject({ role: MembershipRole.OWNER });
+  });
+
+  it(
+    "uses the supplied transaction for the project read and nested membership read",
+    async () => {
+      const rollback = new Error("rollback transaction probe");
 
       await expect(
-        organizations.assertOrganizationMember(ids.alice, ids.orgA, tx),
-      ).resolves.toMatchObject({
-        userId: ids.alice,
-        organizationId: ids.orgA,
-        role: MembershipRole.MEMBER,
-      });
+        prisma.$transaction(async tx => {
+          const fresh = await tx.project.create({
+            data: {
+              organizationId: ids.orgA,
+              name: "Uncommitted",
+              slug: "uncommitted",
+            },
+          });
+
+          // The root client cannot see this uncommitted project.
+          await expect(
+            projects.assertProjectAccess(
+              ids.alice,
+              ids.orgA,
+              fresh.id,
+              READ_ROLES,
+              tx,
+            ),
+          ).resolves.toMatchObject({
+            id: fresh.id,
+          });
+
+          await tx.membership.update({
+            where: aliceInA(),
+            data: {
+              role: MembershipRole.MEMBER,
+            },
+          });
+
+          // The nested organization check must see this uncommitted role.
+          await expect(
+            projects.assertProjectAccess(
+              ids.alice,
+              ids.orgA,
+              fresh.id,
+              WRITE_ROLES,
+              tx,
+            ),
+          ).rejects.toMatchObject(FORBIDDEN);
+
+          throw rollback;
+        }),
+      ).rejects.toBe(rollback);
+
+      expect(
+        await prisma.project.findFirst({
+          where: {
+            slug: "uncommitted",
+          },
+        }),
+      ).toBeNull();
+    },
+  );
+
+  it(
+    "sees an organization archive inside the supplied transaction, then its rollback",
+    async () => {
+      const rollback = new Error("rollback archive probe");
 
       await expect(
-        organizations.assertOrganizationRole(
+        prisma.$transaction(async tx => {
+          await tx.organization.update({
+            where: {
+              id: ids.orgA,
+            },
+            data: {
+              archivedAt: new Date(),
+            },
+          });
+
+          await expect(
+            organizations.assertOrganizationMember(
+              ids.alice,
+              ids.orgA,
+              tx,
+            ),
+          ).rejects.toMatchObject(ORGANIZATION_NOT_FOUND);
+
+          await expect(
+            projects.assertProjectAccess(
+              ids.alice,
+              ids.orgA,
+              ids.projectA,
+              READ_ROLES,
+              tx,
+            ),
+          ).rejects.toMatchObject(PROJECT_NOT_FOUND);
+
+          throw rollback;
+        }),
+      ).rejects.toBe(rollback);
+
+      await expect(
+        projects.assertProjectAccess(
           ids.alice,
           ids.orgA,
-          [MembershipRole.OWNER],
-          tx,
+          ids.projectA,
+          READ_ROLES,
         ),
-      ).rejects.toMatchObject(FORBIDDEN);
+      ).resolves.toMatchObject({
+        id: ids.projectA,
+      });
+    },
+  );
 
-      throw rollback;
-    }),
-  ).rejects.toBe(rollback);
+  it(
+    "retains the active-parent condition in the final project query",
+    async () => {
+      const original =
+        organizations.assertOrganizationRole.bind(organizations);
 
-  // Rollback restores OWNER. Existing calls still work without a client.
-  await expect(
-    organizations.assertOrganizationRole(
-      ids.alice,
-      ids.orgA,
-      [MembershipRole.OWNER],
-    ),
-  ).resolves.toMatchObject({ role: MembershipRole.OWNER });
-});
+      jest
+        .spyOn(organizations, "assertOrganizationRole")
+        .mockImplementationOnce(async (...args) => {
+          const result = await original(...args);
+
+          // Deterministically archive between the preliminary check
+          // and the final project query.
+          await prisma.organization.update({
+            where: {
+              id: ids.orgA,
+            },
+            data: {
+              archivedAt: new Date(),
+            },
+          });
+
+          return result;
+        });
+
+      await expect(
+        projects.assertProjectAccess(
+          ids.alice,
+          ids.orgA,
+          ids.projectA,
+          READ_ROLES,
+        ),
+      ).rejects.toMatchObject(PROJECT_NOT_FOUND);
+    },
+  );
 });

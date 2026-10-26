@@ -1,0 +1,3 @@
+TokenScope evaluation fixture.
+Synthetic usage counters only.
+This document is private to its project.

@@ -47,6 +47,15 @@ export function OrganizationSwitcher() {
     return () => controller.abort();
   }, [organizationId, reload]);
 
+  // Reload the list after a rename so the new name is shown.
+  useEffect(() => {
+    function handleRename() {
+      setReload(value => value + 1);
+    }
+    window.addEventListener("organization-renamed", handleRename);
+    return () => window.removeEventListener("organization-renamed", handleRename);
+  }, []);
+
   const currentOrganization = organizations.find(
     organization => organization.id === organizationId,
   );
@@ -66,7 +75,7 @@ export function OrganizationSwitcher() {
           <Building2 className="h-4 w-4 text-muted-foreground" />
         </div>
 
-        <span className="flex-1 truncate text-sm font-medium">
+        <span className="min-w-0 flex-1 truncate text-sm font-medium" title={currentOrganization?.name}>
           {currentOrganization?.name ?? "Select organization"}
         </span>
 
@@ -105,7 +114,7 @@ export function OrganizationSwitcher() {
                 }
               >
                 <Building2 className="h-4 w-4" />
-                {organization.name}
+                <span className="min-w-0 [overflow-wrap:anywhere]">{organization.name}</span>
               </DropdownMenuItem>
             ))}
           </DropdownMenuGroup>

@@ -1,24 +1,17 @@
-# M1 data model - Identity and workspace
+# TokenScope data model
 
 ## Purpose
+This document describes the implemented identity/workspace schema and the explicitly marked evaluation extensions.
 
-This document defines the persistent model and invariants for M1. The Prisma
-schema is the executable database definition; this document explains the
-meaning of that schema and the rules the backend must enforce around it.
+The original entity sections describe the baseline at `854da94`. The evaluation section describes agreed additions awaiting migration.
 
-M1 establishes the ownership boundary required by later TokenScope features:
+The Prisma schema and committed migrations define the implemented database structure. This document explains persistent meaning, constraints and lifecycle requirements.
 
-```text
-User → Membership → Organization → Project
-```
-
-API keys, traces, cost records, and dashboards are M2 concerns. They will be
-scoped to a `Project`, so M1 must make project ownership and access reliable
-before those records exist.
 
 ## Entity relationship
 
-```mermaiderDiagram
+```mermaid
+erDiagram
     User ||--o{ Membership : has
     Organization ||--o{ Membership : has
     Organization ||--o{ Project : owns
@@ -38,6 +31,7 @@ before those records exist.
         string slug UK
         datetime createdAt
         datetime updatedAt
+        datetime archivedAt
     }
 
     Membership {
@@ -92,9 +86,11 @@ organization, and all projects belong to one organization.
 | `slug` | Human-readable stable identifier | Required, globally unique, generated at creation |
 | `createdAt` | Creation timestamp | Generated automatically |
 | `updatedAt` | Last update timestamp | Updated automatically |
+| `archivedAt` | Soft-archive timestamp | Nullable; `null` while the organization is active |
 
 The organization slug does not change when the organization is renamed in M1.
-Organization deletion is out of scope for M1.
+Organizations are never hard-deleted. An owner archives an organization by
+setting `archivedAt` once (see "Organization archive" below).
 
 ### Membership
 
@@ -196,6 +192,11 @@ and test them:
 10. Slugs are generated consistently, validated as non-empty, and checked
     through database uniqueness constraints. A race that reaches the unique
     constraint is mapped to `409 Conflict`.
+11. Archived organizations are excluded from every organization, membership,
+    and project access query. Organization archive updates only the organization
+    row (`archivedAt`, plus the automatic `updatedAt`). Child rows and their
+    existing lifecycle fields, including `Project.archivedAt`, remain unchanged.
+    Access to those rows is denied through the active-parent check.
 
 ## Lifecycle rules
 
@@ -212,6 +213,12 @@ of scope. Membership removal deletes only the membership, not the global user.
 
 Multiple owners are allowed. An owner may remove or demote another owner/or
 themselves only if at least one owner remains.
+### Organization archive
+
+Archiving sets `Organization.archivedAt` once and leaves memberships and
+projects untouched. They become inaccessible because every access query also
+requires an active organization. There is no restore operation. An archived
+organization keeps reserving its slug.
 
 ### Project archive
 
@@ -242,3 +249,227 @@ Concrete query and authorization requirements are defined in
 
 If a schema change is accepted, update the Prisma schema, migration, integration
 tests, this document, and the API contract in the same pull request.
+
+## Evaluation persistence foundation — TSE-64
+
+TSE-64 adds the evaluation-resource schema, the Organization.archivedAt field and its migration.
+
+The schema includes ApiKey, ModelPrice, Trace, ProjectDocument and
+FileDeletionJob. Feature endpoints and workflows are implemented
+by their owning tickets.
+
+TSE-66 implements the organization archive operation and UI using
+the field and access rules supplied by TSE-64.
+
+At baseline `854da94`, none of the new models below exists.
+
+### Migration rules
+
+- Add new migrations; do not edit already-applied migrations.
+- Preserve existing data, IDs, relationships and project archive state.
+- Preserve existing ID storage types and generated-client conventions.
+- Keep restrictive foreign-key behavior.
+- Coordinate a single addition of `Organization.archivedAt`.
+- Test both an empty-database migration and an upgrade with existing workspace data.
+- Do not use `db push` as proof that migrations work.
+
+### Organization archive
+
+Add nullable `archivedAt`.
+
+Existing organizations remain active with `null`.
+
+Archive updates the organization row and its update timestamp. It does not archive every project individually, delete memberships, revoke each key row or delete document files.
+
+Access queries must enforce active parents. Retained children are inaccessible through normal routes.
+
+Organization and project slug uniqueness remains unchanged. No restore endpoint or archive-bypass option is introduced.
+
+### New persistent resources
+
+| Model | Required data and invariants |
+|---|---|
+| `ApiKey` | Project and creator references, name, unique SHA-256 digest, display prefix, creation time, nullable last-used/revoked times |
+| `ModelPrice` | Provider, model, effective date, input/output USD rates, currency, source URL, synthetic flag and creation time |
+| `Trace` | Project/external identity, normalized usage fields, historical price reference and rate snapshots, stored costs, metadata, version, payload hash, timestamps and nullable deletion time |
+| `ProjectDocument` | Project/uploader references, display filename, unique server storage key, validated media type, byte size, SHA-256 digest and creation time |
+| `FileDeletionJob` | Unique storage key, attempt count, next-attempt time, safe error code and creation time |
+
+No conversation, assistant-message, embedding or persisted analytics-snapshot table is required.
+
+### API keys
+
+- Store no plaintext or reversible secret.
+- Names have a maximum of 64 characters.
+- Digest is a 64-character SHA-256 hexadecimal value.
+- Display prefix has a maximum of 12 characters.
+- Index project listing by project ID, creation time and ID.
+- Revocation retains the row.
+- The credential belongs to its project; creator removal does not automatically revoke it.
+- Authentication rejects keys whose organization or project is archived.
+
+### Historical prices and traces
+
+Model-price uniqueness:
+
+```text
+(provider, model, effectiveFrom)
+```
+
+Trace uniqueness:
+
+```text
+(projectId, externalId)
+```
+
+Trace uniqueness includes tombstones. Do not replace it with a partial constraint excluding deleted rows.
+
+Use:
+
+- `Decimal(18,6)` for catalogue rates and trace rate snapshots.
+- `Decimal(24,12)` for stored costs.
+- Bounded integers for individual token counts and latency.
+- Positive trace version, initially 1.
+- A JSON object for metadata, initially `{}`.
+
+Rate bounds are 0 through `999999.999999`.
+
+Token bounds are 0 through 1,000,000,000 per counter. Latency is 0 through 86,400,000 milliseconds.
+
+Required trace indexes cover:
+
+```text
+(projectId, deletedAt, occurredAt, id)
+(projectId, deletedAt, provider, model, occurredAt)
+(projectId, deletedAt, status, occurredAt)
+```
+
+Do not add indexes for every possible sort without an actual query need.
+
+A referenced price cannot be deleted. New price versions do not reprice existing traces.
+
+A genuinely changed PUT updates writable data, historical-price association,
+rate snapshots, input/output/total costs, payloadHash, updatedAt and version
+atomically in one transaction. It selects historical pricing using the
+replacement's occurredAt and increments version exactly once.
+The trace ID, project ID, externalId and createdAt remain unchanged.
+
+An identical normalized POST replay and a current-version no-op PUT preserve
+stored pricing, costs, payloadHash, version, createdAt and updatedAt.
+They do not consult newly available catalogue prices.
+A stale PUT fails even when its content matches the current trace.
+
+Reads return stored historical values without repricing or mutation.
+
+TSE-71 sums stored estimatedCostUsd values using PostgreSQL numeric
+arithmetic. Aggregate token totals are serialized as decimal integer
+strings; aggregate costs use twelve fractional digits.
+
+The assistant's internal containsSyntheticPricing value follows the
+ModelPrice rows referenced by matching traces through priceVersionId.
+It does not inspect only the newest catalogue version.
+
+Analytics introduces no persistent snapshot table or schema migration.
+
+Trace deletion is soft deletion: it sets deletedAt, advances version and
+updates updatedAt while retaining the database row and externalId.
+The existing unique constraint on (projectId, externalId) continues to reserve
+that identity, including after deletion.
+
+Deleted traces are excluded from ordinary list/detail queries and aggregates.
+Subsequent public GET/DELETE returns TRACE_NOT_FOUND; POST reusing the retained
+identity returns TRACE_DELETED. No restoration endpoint is provided.
+
+The persisted historical rate snapshots on Trace are named:
+
+- inputUsdPerMillion: Decimal(18,6)
+- outputUsdPerMillion: Decimal(18,6)
+
+The associated catalogue row is referenced through priceVersionId
+and the Prisma relation priceVersion.
+
+These snapshot values belong to the stored trace. Normal reads
+must not replace them with current catalogue rates.
+
+The Prisma schema is authoritative for exact persisted field names:
+[backend/prisma/schema.prisma](../backend/prisma/schema.prisma).
+
+TSE-68 computes payloadHash as SHA-256 over a fixed ordered tuple of
+normalized writable fields. Metadata entries are sorted by key before
+hashing. Server-generated IDs, costs, price identity, version and
+creation/update timestamps are excluded.
+
+Provider/model identifiers are trimmed and lowercased. Occurrence
+timestamps are normalized to millisecond UTC precision before hashing.
+
+The selected ModelPrice identity and rate snapshots are persisted with
+the trace. Replays return those persisted values without price lookup.
+
+### Private documents
+
+File bytes live outside PostgreSQL in private storage.
+
+`originalName` is display data with a maximum of 255 UTF-8 bytes. Use a storage representation that supports the accepted value and enforce the byte limit consistently. Do not retain a conflicting 120-character restriction.
+
+`storageKey` is a unique server-generated UUID string, never a client path.
+
+Allowed media types:
+
+```text
+application/pdf
+text/plain
+text/markdown
+```
+
+File size is 1 through 10,485,760 bytes.
+
+Index documents by project ID, creation time and ID.
+
+Parent archive retains document metadata and bytes. Orphan cleanup must inspect all document references, including those under archived parents.
+
+Individual deletion removes metadata and inserts a file-deletion job in one transaction.
+
+The cleanup job must survive removal of the document row. Do not require a foreign key to that deleted row. Retain failed jobs until cleanup succeeds.
+
+### Database constraints versus service validation
+
+Use database constraints for:
+
+- Primary and foreign keys.
+- Key-hash, price-version and trace external-ID uniqueness.
+- Counter, rate, cost and file-size bounds.
+- Positive trace versions.
+- Nonnegative cleanup attempts.
+- USD-only currency and supported media types.
+- Metadata being a JSON object.
+
+DTOs and services additionally enforce normalization, detailed metadata limits, byte limits, timestamp rules, actual file-content validation and authorization.
+
+A successful DTO test does not prove that database constraints exist.
+
+SHA-256 digest fields use 64 lowercase hexadecimal characters.
+
+The migration rejects numeric NaN for stored costs. Rate upper
+bounds also reject NaN.
+
+The document filename limit is enforced as 1–255 UTF-8 bytes.
+
+### Private documents: storage and lifecycle (TSE-78)
+
+Bytes are stored under `DOCUMENT_STORAGE_ROOT` as `<first 2 hex>/<uuid>`. The same string is `ProjectDocument.storageKey`. Directories are created with mode `0700` and files with mode `0600`.
+
+Upload sequence: the request is authorized and rate-limited, then the file is received into a temporary file `<root>/.incoming/<uuid>.tmp` on the same volume, so reception does not buffer the body in memory (validation reads at most 10 MiB of file bytes per upload; PDFs also use a worker copy and parser memory). The file is then validated. Finalization (moving the file to its final key and committing the metadata in a short transaction that re-checks access) runs inside an in-process critical section shared with the orphan sweep. A row therefore never points at missing bytes, and the sweep cannot delete a file between its move and its commit.
+
+If the metadata transaction certainly rolled back (access lost, validation error inside the transaction, or a failure before commit) the final file is removed at once. If the outcome is unknown (connection lost around the commit) the bytes are kept, because the database is the source of truth and a committed document must never be deleted because the response was lost.
+
+Individual deletion runs one serializable transaction: authorize, insert the `FileDeletionJob`, delete the row. The response is `204` after commit; it does not wait for physical deletion. The bytes are deleted by the non-overlapping cleanup run, and never while a document row still references the key. A referenced-key job is retained and rescheduled with `STILL_REFERENCED`. A worker polls every 10 s, handles at most 25 due jobs per run and never overlaps runs. A failed deletion keeps the job with an incremented `attempts`, a short error code (never a raw message or path) and the next attempt after 10 s, 30 s, 60 s and then every 5 minutes. Pending jobs survive restarts and are processed at startup. A missing file counts as success. Shutdown waits for a run in flight.
+
+Orphan scans run at startup and once per minute, examining at most 256 entries per final-file scan and 256 per temporary-file scan. Directory cursors resume on the next run and close during shutdown. Only managed files older than one hour are eligible. Final files with any `ProjectDocument` reference (including archived parents) or pending job are retained. Active temporary paths, symbolic links and unknown filenames are excluded. If a final-file reference check fails, that file is not deleted.
+
+Archiving a project or organization keeps rows and bytes and only denies access.
+
+Assumption: one backend instance and one local volume. Running several instances needs a shared volume and a distributed lock for the sweep and workers.
+
+Services remain responsible for normalized identifiers, exact
+cost calculation, price selection, generated UUID storage keys,
+file-content validation and authorization.

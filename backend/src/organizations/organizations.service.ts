@@ -1,3 +1,4 @@
+import { AccessChangesService } from "../access-changes/access-changes.service";
 import { HttpStatus, Injectable } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
 import { ApiException } from '../common/errors/api.exception';
@@ -7,17 +8,25 @@ import { OrganizationAccessService } from "../memberships/organization-access.se
 import { Prisma } from "../generated/prisma/client";
 import { MembershipRole } from "../generated/prisma/enums";
 import { Organization } from "../generated/prisma/client";
+import { ArchiveOrganizationDto } from "./dto/archive-organization.dto";
+import { runSerializable } from "../database/run-serializable";
 
 @Injectable()
 export class OrganizationsService {
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly organizationAccess: OrganizationAccessService,
+        private readonly accessChanges: AccessChangesService,
 	) {}
 
 	async findAllForUser(userId: string) {
 		const memberships = await this.prisma.membership.findMany({
-			where: { userId },
+			where: {
+				userId,
+				organization: {
+				  archivedAt: null,
+				},
+			},
 			include: { organization: true },
 			orderBy: [
 				{ organization: { createdAt: "asc"} },
@@ -32,7 +41,15 @@ export class OrganizationsService {
 		await this.organizationAccess.assertOrganizationMember(userId, organizationId);
 		// The final read still requires the same user's membership
 		const membership = await this.prisma.membership.findUnique({
-			where: { organizationId_userId: { organizationId, userId }},
+			where: {
+				organizationId_userId: {
+				  organizationId,
+				  userId,
+				},
+				organization: {
+				  archivedAt: null,
+				},
+			},
 			include: {organization: true},
 		});
 
@@ -80,7 +97,13 @@ export class OrganizationsService {
 			const organization = await this.prisma.organization.update({
 				where: {
 					id: organizationId,
-					memberships: { some: { userId, role: MembershipRole.OWNER } },
+					archivedAt: null,
+					memberships: {
+					  some: {
+						userId,
+						role: MembershipRole.OWNER,
+					  },
+					},
 				},
 				data: { name: dto.name },
 			});
@@ -99,6 +122,56 @@ export class OrganizationsService {
 			}
 			throw error;
 		}
+	}
+	async archive(userId: string, organizationId: string, dto: ArchiveOrganizationDto): Promise<void> {
+		await runSerializable(this.prisma, async (tx) => {
+			// Authorization comes first, so an outsider never learns whether the slug matches.
+			await this.organizationAccess.assertOrganizationRole(
+				userId, organizationId, [MembershipRole.OWNER], tx,
+			);
+
+			const organization = await tx.organization.findFirst({
+				where: { id: organizationId, archivedAt: null },
+				select: { slug: true },
+			});
+			if (!organization) {
+				throw this.notFound();
+			}
+
+			// Exact comparison: no trim, no lowercase.
+			if (dto.confirmSlug !== organization.slug) {
+				throw new ApiException(
+					HttpStatus.CONFLICT,
+					"ORGANIZATION_CONFIRMATION_MISMATCH",
+					"The confirmation does not match the organization slug.",
+				);
+			}
+
+			try {
+				// The write itself retains the actor and required role.
+				await tx.organization.update({
+					where: {
+						id: organizationId,
+						archivedAt: null,
+						memberships: { some: { userId, role: MembershipRole.OWNER } },
+					},
+					data: { archivedAt: new Date() },
+				});
+			} catch (error) {
+				if (
+					error instanceof Prisma.PrismaClientKnownRequestError &&
+					error.code === "P2025"
+				) {
+					// Resolve lost membership to 404 and lost OWNER status to 403.
+					await this.organizationAccess.assertOrganizationRole(
+						userId, organizationId, [MembershipRole.OWNER], tx,
+					);
+					throw this.notFound();
+				}
+				throw error;
+			}
+		});
+		await this.accessChanges.publish({ kind: "organization.archived", organizationId });
 	}
 
 	private toSummary(organization: Organization, role: MembershipRole) {

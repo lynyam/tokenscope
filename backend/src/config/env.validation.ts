@@ -1,3 +1,6 @@
+import { isAbsolute } from "node:path";
+import { parseRealtimeOrigins } from "./realtime-origins";
+
 export interface EnvironmentVariables {
 	BACKEND_PORT: number;
 	DATABASE_URL: string;
@@ -5,34 +8,50 @@ export interface EnvironmentVariables {
 	JWT_ISSUER: string;
 	JWT_AUDIENCE: string;
 	JWT_ACCESS_TTL_SECONDS: number;
+	DOCUMENT_STORAGE_ROOT: string;
+	TRUSTED_PROXY_HOST?: string;
+	// Assistant (optional): the app starts without them, the assistant answers 503.
+	GEMINI_API_KEY?: string;
+	LLM_MODEL?: string;
+	REALTIME_ALLOWED_ORIGINS?: string[];
+}
+
+// Reads an optional setting. Empty or blank means "not set".
+function optionalString(env: Record<string, unknown>, key: string): string | undefined {
+	const value = env[key];
+
+	if (typeof value !== "string" || value.trim() === "") {
+		return undefined;
+	}
+	return value.trim();
 }
 
 function requiredString(env: Record<string, unknown>, key: string): string {
 	const value = env[key];
 
 	if (typeof value !== "string" || value.trim() === "") {
-	  throw new Error(`Invalid configuration: ${key} is required.`);
+		throw new Error(`Invalid configuration: ${key} is required.`);
 	}
 	return value;
-  }
+}
 
-  function positiveInteger(env: Record<string, unknown>, key: string, max = Number.MAX_SAFE_INTEGER): number {
+function positiveInteger(env: Record<string, unknown>, key: string, max = Number.MAX_SAFE_INTEGER): number {
 	const raw = requiredString(env, key);
 	const value = Number(raw);
 
 	if (!/^\d+$/.test(raw) || !Number.isSafeInteger(value) || value < 1 || value > max
 	) {
-	  throw new Error(
-		`Invalid configuration: ${key} must be an integer between 1 and ${max}.`,
-	  );
+		throw new Error(
+			`Invalid configuration: ${key} must be an integer between 1 and ${max}.`,
+		);
 	}
 
 	return value;
-  }
+}
 
-  export function validateEnvironment(
+export function validateEnvironment(
 	env: Record<string, unknown>,
-  ): EnvironmentVariables {
+): EnvironmentVariables {
 	const port = positiveInteger(env, "BACKEND_PORT", 65535);
 	const ttl = positiveInteger(env, "JWT_ACCESS_TTL_SECONDS");
 
@@ -40,42 +59,86 @@ function requiredString(env: Record<string, unknown>, key: string): string {
 	let parsedUrl: URL;
 
 	try {
-	  parsedUrl = new URL(databaseUrl);
+		parsedUrl = new URL(databaseUrl);
 	} catch {
-	  throw new Error("Invalid configuration: DATABASE_URL must be a PostgreSQL URL.");
+		throw new Error("Invalid configuration: DATABASE_URL must be a PostgreSQL URL.");
 	}
 
 	if (
-	  !["postgresql:", "postgres:"].includes(parsedUrl.protocol) ||
-	  !parsedUrl.hostname ||
-	  parsedUrl.pathname.length < 2 ||
-	  parsedUrl.hash !== "" ||
-	  databaseUrl !== databaseUrl.trim()
+		!["postgresql:", "postgres:"].includes(parsedUrl.protocol) ||
+		!parsedUrl.hostname ||
+		parsedUrl.pathname.length < 2 ||
+		parsedUrl.hash !== "" ||
+		databaseUrl !== databaseUrl.trim()
 	) {
-	  throw new Error(
-		"Invalid configuration: DATABASE_URL must specify a PostgreSQL host and database.",
-	  );
+		throw new Error(
+			"Invalid configuration: DATABASE_URL must specify a PostgreSQL host and database.",
+		);
 	}
 
 	const secret = requiredString(env, "JWT_SECRET");
 
 	if (
-	  Buffer.byteLength(secret, "utf8") < 32 ||
-	  /\s/u.test(secret) ||
-	  /^(.)\1+$/u.test(secret) ||
-	  /change[-_ ]?me|replace|placeholder|example/i.test(secret)
+		Buffer.byteLength(secret, "utf8") < 32 ||
+		/\s/u.test(secret) ||
+		/^(.)\1+$/u.test(secret) ||
+		/change[-_ ]?me|replace|placeholder|example/i.test(secret)
 	) {
-	  throw new Error(
-		"Invalid configuration: JWT_SECRET must be a generated secret of at least 32 bytes, without whitespace or placeholder values.",
-	  );
+		throw new Error(
+			"Invalid configuration: JWT_SECRET must be a generated secret of at least 32 bytes, without whitespace or placeholder values.",
+		);
+	}
+	const proxyHost = env.TRUSTED_PROXY_HOST;
+
+	if (
+		proxyHost !== undefined &&
+		(
+			typeof proxyHost !== "string" ||
+			(
+				proxyHost !== "" &&
+				(
+					proxyHost.length > 253 ||
+					!/^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$/.test(
+						proxyHost,
+					)
+				)
+			)
+		)
+	) {
+		throw new Error(
+			"Invalid configuration: TRUSTED_PROXY_HOST must be a hostname.",
+		);
 	}
 
+	const storageRoot = requiredString(env, "DOCUMENT_STORAGE_ROOT");
+
+	if (
+		storageRoot !== storageRoot.trim() ||
+		!isAbsolute(storageRoot) ||
+		storageRoot.includes("\0")
+	) {
+		throw new Error(
+			"Invalid configuration: DOCUMENT_STORAGE_ROOT must be an absolute path.",
+		);
+	}
+
+	const geminiApiKey = optionalString(env, "GEMINI_API_KEY");
+	const llmModel = optionalString(env, "LLM_MODEL");
+
+	const origins = parseRealtimeOrigins(env.REALTIME_ALLOWED_ORIGINS);
 	return {
-	  BACKEND_PORT: port,
-	  DATABASE_URL: databaseUrl,
-	  JWT_SECRET: secret,
-	  JWT_ISSUER: requiredString(env, "JWT_ISSUER"),
-	  JWT_AUDIENCE: requiredString(env, "JWT_AUDIENCE"),
-	  JWT_ACCESS_TTL_SECONDS: ttl,
+		...(origins.length ? { REALTIME_ALLOWED_ORIGINS: origins } : {}),
+		BACKEND_PORT: port,
+		DATABASE_URL: databaseUrl,
+		JWT_SECRET: secret,
+		JWT_ISSUER: requiredString(env, "JWT_ISSUER"),
+		JWT_AUDIENCE: requiredString(env, "JWT_AUDIENCE"),
+		JWT_ACCESS_TTL_SECONDS: ttl,
+		DOCUMENT_STORAGE_ROOT: storageRoot,
+		...(typeof proxyHost === "string" && proxyHost !== ""
+			? { TRUSTED_PROXY_HOST: proxyHost }
+			: {}),
+		...(geminiApiKey ? { GEMINI_API_KEY: geminiApiKey } : {}),
+		...(llmModel ? { LLM_MODEL: llmModel } : {}),
 	};
-  }
+}

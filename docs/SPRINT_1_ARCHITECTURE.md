@@ -1,5 +1,11 @@
 # TokenScope Sprint 1 — Identity & Workspace Foundation
 
+> **Scope:** this document records the Sprint 1 architecture and its implemented foundation. Its “No Goals” list applies to Sprint 1 only.
+>
+> For current evaluation work, start with [EVALUATION_ARCHITECTURE.md](./EVALUATION_ARCHITECTURE.md). New features extend the existing modules, access helpers, HTTP client and session behavior described here.
+>
+> Historical delivery instructions are not evidence that a feature remains unfinished. Check the current implementation and the evaluation document’s status before starting work.
+
 **Sprint 1 goal:**
 Build the authenticated workspace foundation required for every later TokenScope feature.
 This document is architectural contract for the backend team: which modules, what each module owns, how request flow and which dependencies are allowed.
@@ -53,7 +59,7 @@ clean-browser demo.
 - No email invitations and passwords reset;
 - No WebSockets.
 - No refresh tokens, server-side sessions, and token revocation
-- No organization deletion;
+- No hard organization deletion or organization restore (soft archive only);
 - No project restore;
 - No project-specific roles or ACLs (Access Control List)
 ```
@@ -481,6 +487,9 @@ apiGet<T>(path, options?)
 apiPost<T>(path, body, options?)
 apiPatch<T>(path, body, options?)
 apiDelete(path, options?) // Promise<void>; expects the M1 204 response
+request<T>(method, path, data, options?, emptyResponse?)
+// Organization archive:
+request<void>("DELETE", path, { confirmSlug }, { signal }, true)
 
 // Options: { auth?: "required" | "none"; signal?: AbortSignal }
 ```
@@ -538,6 +547,7 @@ demo procedure. Use `DEMO.md` for full-stack acceptance.
 
 #### Delivery boundaries
 
+TSE-66 adds owner-only organization soft archive (`DELETE /organizations/:organizationId`); restoration remains out of scope.
 TSE-61 provides the shared frontend foundation and real membership adapter/UI.
 TSE-59 provides real authentication and session restoration.
 TSE-60 provides real organization list, detail, create, and rename API calls,

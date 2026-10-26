@@ -203,9 +203,9 @@ export function OrganizationsPage() {
             <Link
               key={organization.id}
               to={`/organizations/${encodeURIComponent(organization.id)}`}
-              className="flex w-full items-center justify-between rounded-lg border p-4 transition-colors hover:bg-muted"
+              className="flex w-full items-center justify-between gap-2 rounded-lg border p-4 transition-colors hover:bg-muted"
             >
-              <span className="font-medium">{organization.name}</span>
+              <span className="min-w-0 font-medium [overflow-wrap:anywhere]">{organization.name}</span>
               <Badge variant="secondary">
                 {organization.currentUserRole}
               </Badge>

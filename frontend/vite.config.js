@@ -11,6 +11,20 @@ const backenUrl = process.env.BACKEND_URL;
 // recreate __dirname in ESM context
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+
+// Preserve Origin/Referer/Fetch Metadata; only sanitize forwarding headers.
+function configureProxy(proxy) {
+    const forward = (proxyReq, req) => {
+        const peer = req.socket.remoteAddress;
+        if (peer) proxyReq.setHeader('X-Forwarded-For', peer);
+        else proxyReq.removeHeader('X-Forwarded-For');
+        proxyReq.removeHeader('Forwarded');
+        proxyReq.removeHeader('X-Real-IP');
+    };
+    proxy.on('proxyReq', forward);
+    proxy.on('proxyReqWs', forward);
+}
+
 export default defineConfig({
 	// registers Tailwind so it processes your CSS on build/dev
 	plugins: [tailwindcss()],
@@ -22,10 +36,17 @@ export default defineConfig({
 	},
 	server: {
 		proxy: {
-			'/api': {
-				target: backenUrl,
-				changeOrigin: true,
-			},
+            '/api': {
+                target: backenUrl,
+                changeOrigin: true,
+                configure: configureProxy,
+            },
+            '/socket.io': {
+                target: backenUrl,
+                changeOrigin: true,
+                ws: true,
+                configure: configureProxy,
+            },
 		},
 	},
 	test: {
@@ -34,6 +55,7 @@ export default defineConfig({
 		execArgv: ['--no-experimental-webstorage'],
 		setupFiles: './test/setup.ts',
 		include: ['test/**/*.test.{ts,tsx}'],
+		fileParallelism: false,
 	},
 })
 
